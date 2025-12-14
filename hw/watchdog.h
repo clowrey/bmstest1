@@ -1,4 +1,1 @@
-#include "hardware/watchdog.h"
-
-void watchdog_init();
-
+void init_watchdog();

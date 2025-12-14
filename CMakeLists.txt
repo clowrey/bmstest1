@@ -20,11 +20,14 @@ add_executable(bms
     hw/internal_adc.c
     hw/duart.c
     hw/time.c
+    hw/watchdog.c
+    debug/counters.c
+    isospi/isospi_master.c
     state_machines/base.c
     state_machines/contactors.c
     )
 
-#pico_generate_pio_header(isosnooper ${CMAKE_CURRENT_LIST_DIR}/isospi_master.pio)
+pico_generate_pio_header(bms ${CMAKE_CURRENT_LIST_DIR}/isospi/isospi_master.pio)
 #pico_generate_pio_header(isosnooper ${CMAKE_CURRENT_LIST_DIR}/isosnoop.pio)
 #pico_generate_pio_header(isosnooper ${CMAKE_CURRENT_LIST_DIR}/isospi_scope.pio)
 #pico_generate_pio_header(isosnooper ${CMAKE_CURRENT_LIST_DIR}/isospi_device.pio)

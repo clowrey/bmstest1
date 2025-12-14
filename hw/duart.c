@@ -1,4 +1,5 @@
 #include "duart.h"
+#include "../debug/counters.h"
 
 #include "hardware/gpio.h"
 #include "pico/time.h"
@@ -343,11 +344,14 @@ size_t duart_read_packet(duart *u, uint8_t *buf, size_t buf_size) {
             if(crc16 != msg_crc16) {
                 // CRC mismatch
                 printf("crc err1: %d calc %04x msg %04x\n", payload_len, crc16, msg_crc16);
+                if(u==&duart0) {
+                    debug_counters.uart0_crc_errors++;
+                } else {
+                    debug_counters.uart1_crc_errors++;
+                }
                 continue;
                 //return 0;
             }
-            //printf("rx: complete\n");
-            return payload_len;
         } else {
 
             // We have a full message, but it wraps around the end of the buffer
@@ -379,12 +383,21 @@ size_t duart_read_packet(duart *u, uint8_t *buf, size_t buf_size) {
             if(crc16 != msg_crc16) {
                 // CRC mismatch
                 printf("crc err2: %d calc %04x msg %04x\n", payload_len, crc16, msg_crc16);
+                if(u==&duart0) {
+                    debug_counters.uart0_crc_errors++;
+                } else {
+                    debug_counters.uart1_crc_errors++;
+                }
                 continue;
                 //return 0;
             }
-            //printf("rx: split\n");
-            return payload_len;
         }
+        if(u==&duart0) {
+            debug_counters.uart0_packets_received++;
+        } else {
+            debug_counters.uart1_packets_received++;
+        }
+        return payload_len;
     }
 }
 
@@ -410,7 +423,15 @@ bool duart_send_packet(duart *u, const uint8_t *payload, size_t payload_len) {
     buf[2 + payload_len] = crc16 & 0xff;
     buf[2 + payload_len + 1] = (crc16 >> 8);
 
-    return duart_send(u, buf, payload_len + 4);
+    bool ret = duart_send(u, buf, payload_len + 4);
+    if(ret) {
+        if(u==&duart0) {
+            debug_counters.uart0_packets_sent++;
+        } else {
+            debug_counters.uart1_packets_sent++;
+        }
+    }
+    return ret;
 }
 
 bool init_duart(duart *u, uint baud_rate, uint tx_pin, uint rx_pin, bool deassert_tx_when_idle) {

@@ -3,7 +3,7 @@
 #include "hardware/watchdog.h"
 #include "pico/stdlib.h"
 
-void watchdog_init() {
+void init_watchdog() {
     if (watchdog_enable_caused_reboot()) {
         printf("Rebooted by Watchdog!\n");
     } else {
@@ -11,6 +11,4 @@ void watchdog_init() {
     }
 
     watchdog_enable(5000, 0); // second arg enables pause on debug
-
-    
 }
