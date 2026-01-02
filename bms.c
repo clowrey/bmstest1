@@ -89,6 +89,10 @@ void read_inputs(bms_model_t *model) {
     model->charge_millis = charge_millis;
 }
 
+uint8_t bitmap_on[16] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                      0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+uint8_t bitmap_off[16] = {0};
+
 void tick() {
     // The main tick function
 
@@ -123,6 +127,7 @@ void tick() {
 
         bmb3y_wakeup_blocking();
         bmb3y_send_command_blocking(BMB3Y_CMD_IDLE_WAKE);
+        //bmb3y_send_command_blocking(BMB3Y_CMD_MUTE);
         bmb3y_send_command_blocking(BMB3Y_CMD_SNAPSHOT);
 
         // 70 sometimes isn't enough time, 100  seems ok
@@ -132,7 +137,12 @@ void tick() {
 
         uint32_t end = time_us_32();
         printf("BMB3Y test took %ld us\n", end - start);
+
+        //bmb3y_send_command_blocking(BMB3Y_CMD_MUTE);
     }
+    //bmb3y_set_balancing(bitmap_off, false);
+
+
     if((timestep() & 0x1ff) == 32) {
         for(int i=0; i<120; i++) {
             printf("[c%3d]: %4d mV | ", i, model.cell_voltages_mV[i]);
@@ -140,7 +150,7 @@ void tick() {
         printf("\n");
     }
 
-    if((timestep() & 63) == 0) {
+    if((timestep() & 63) == 99990) {
         // every 64 ticks, output stuff
         //isosnoop_print_buffer();
         print_bms_events();

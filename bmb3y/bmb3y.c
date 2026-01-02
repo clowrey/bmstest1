@@ -29,9 +29,9 @@ bool bmb3y_get_data_blocking(uint32_t cmd, uint8_t *response, int response_len) 
     
     // TODO: Check whether we need to wake up?
 
-    uint8_t tx[54] = {0};
-    if(response_len > 50) {
-        // Response buffer isn't large enough
+    uint8_t tx[104] = {0};
+    if(response_len > 100) {
+        // Transmit buffer isn't large enough
         return false;
     }
 
@@ -136,11 +136,17 @@ bool bmb3y_set_balancing(uint8_t bitmap[15], bool even) {
         tx_buf[4 + module*6] = bitmap[module*2] & balance_mask;
         tx_buf[5 + module*6] = bitmap[module*2 + 1] & balance_mask;
 
-        uint16_t calc_crc = crc14(tx_buf[2 + module*6], 4, 0x0010);
+        uint16_t calc_crc = crc14(&tx_buf[2 + module*6], 4, 0x0010);
 
         tx_buf[6 + module*6] = (calc_crc >> 8) & 0xFF;
         tx_buf[7 + module*6] = calc_crc & 0xFF;
     }
+
+    // Balance command:
+    // for(int i=0; i<50; i++) {
+    //     printf("%02X ", tx_buf[i]);
+    // }
+    // printf("\n");
 
     // We skip all of the response bytes
     isospi_write_read_blocking(tx_buf, NULL, 50, 50);
