@@ -121,13 +121,13 @@ bool bmb3y_read_test_blocking(uint32_t cmd, int cells) {
     return true;
 }
 
-bool bmb3y_set_balancing(uint8_t bitmap[15], bool even) {
+bool bmb3y_set_balancing(uint8_t bitmap[16], bool even) {
     uint8_t tx_buf[50] = {0};
     
     tx_buf[0] = (BMB3Y_CMD_WRITE_CONFIG >> 8) & 0xFF;
     tx_buf[1] = BMB3Y_CMD_WRITE_CONFIG & 0xFF;
 
-    uint8_t balance_mask = even ? 0x55 : 0xAA;
+    uint8_t balance_mask = even ? 0xAA : 0x55;
 
     for(int module=0; module<8; module++) {
         // was f3
@@ -135,8 +135,8 @@ bool bmb3y_set_balancing(uint8_t bitmap[15], bool even) {
         // was 00
         tx_buf[3 + module*6] = 0;
 
-        tx_buf[4 + module*6] = bitmap[module*2] & balance_mask;
-        tx_buf[5 + module*6] = bitmap[module*2 + 1] & balance_mask;
+        tx_buf[4 + module*6] = bitmap[module*2 + 1] & balance_mask;
+        tx_buf[5 + module*6] = bitmap[module*2] & balance_mask;
 
         uint16_t calc_crc = crc14(&tx_buf[2 + module*6], 4, 0x0010);
 
@@ -154,6 +154,47 @@ bool bmb3y_set_balancing(uint8_t bitmap[15], bool even) {
     isospi_write_read_blocking(tx_buf, NULL, 50, 50);
 
     return true;
+}
+
+// TODO - this needs to be synced with the balancing state machine
+// so that the even/odd share is equal. However it also needs to fit in with the BMB message timing
+void bmb3y_send_balancing(bms_model_t *model) {
+    balancing_sm_t *balancing_sm = &model->balancing_sm;
+
+    uint8_t tx_buf[50] = {0};
+    
+    tx_buf[0] = (BMB3Y_CMD_WRITE_CONFIG >> 8) & 0xFF;
+    tx_buf[1] = BMB3Y_CMD_WRITE_CONFIG & 0xFF;
+
+    for(int module=0; module<8; module++) {
+        // was f3
+        tx_buf[2 + module*6] = 0xf3;
+        // was 00
+        tx_buf[3 + module*6] = 0;
+
+        // Calculate mask index and shift directly
+        // TODO - this assumes 16 cells per module, but there are only 15.
+        // It is unclear whether there's a dummy bit that will need skipping over (there probably is?)
+
+        int mask_idx = 3 - (module / 2);
+        uint32_t mask = balancing_sm->balance_request_mask[mask_idx];
+
+        if (module % 2 == 0) {
+            tx_buf[4 + module*6] = (uint8_t)((mask >> 16) & 0xFF);
+            tx_buf[5 + module*6] = (uint8_t)((mask >> 24) & 0xFF);
+        } else {
+            tx_buf[4 + module*6] = (uint8_t)(mask & 0xFF);
+            tx_buf[5 + module*6] = (uint8_t)((mask >> 8) & 0xFF);
+        }
+
+        uint16_t calc_crc = crc14(&tx_buf[2 + module*6], 4, 0x0010);
+
+        tx_buf[6 + module*6] = (calc_crc >> 8) & 0xFF;
+        tx_buf[7 + module*6] = calc_crc & 0xFF;
+    }
+
+    // We skip all of the response bytes
+    isospi_write_read_blocking(tx_buf, NULL, 50, 50);
 }
 
 bool bmb3y_read_cell_voltages_blocking(bms_model_t *model) {
@@ -197,7 +238,7 @@ bool bmb3y_read_cell_voltages_blocking(bms_model_t *model) {
 
 
         // Go through each module (0-7, 8 total)
-        for(int module=0; module<1; module++) {
+        for(int module=0; module<8; module++) {
 
             // Weird, playing with balancing stopped the CRC working. It also resulted in 16-bit CRC values?
 

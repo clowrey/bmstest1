@@ -43,7 +43,7 @@ typedef struct {
     charging_sm_t charging_sm;
     
 
-    balancing_state_t balancing;
+    balancing_sm_t balancing_sm;
 
     // Battery
     int16_t module_temperatures_dC[8];

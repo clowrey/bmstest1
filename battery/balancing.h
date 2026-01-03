@@ -8,11 +8,21 @@
 
 #include "../hw/chip/time.h"
 
+#include "../state_machines/base.h"
+
 #include <stdint.h>
 
 typedef struct {
+    sm_t;
+
     uint32_t balance_request_mask[4];
-    uint32_t balance_active_mask[4];
-    int32_t balance_charge_mC[120];
-    millis_t last_update_millis;
-} balancing_state_t;
+    int16_t balance_time_remaining[120];
+    bool even_cells;
+//    millis_t last_update_millis;
+} balancing_sm_t;
+
+enum balancing_states {
+    BALANCING_STATE_IDLE = 0,
+    BALANCING_STATE_ACTIVE = 1,
+    
+};

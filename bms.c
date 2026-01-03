@@ -93,15 +93,18 @@ uint8_t bitmap_on[16] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
                       0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 uint8_t bitmap_set[16] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+
+int16_t balance_counters[120] = {0};
 // mapping is a bit strange:
-// 0x0f in last byte is cells 8,9,10,11 (zero based)
-// 0xf0 is cell 12,13,14
-// 0xf00 is cell 0,1,2,3
-// 0x100 is cell 0 ('even')
-// 0x800 is cell 3 ('odd')
-// 0xf000 is cell 4,5,6,7
+// 0x01 in last byte is cell 0
+// 0x0f in last byte is cells 0,1,2,3
+// 0xf0 is cell 4,5,6,7
+// 0xf00 is cell 8,9,10,11
+// 0x7000 is cell 12,13,14
+// no idea how the next module maps...
     
 uint8_t bitmap_off[16] = {0};
+int even_counter = 0;
 
 void tick() {
     // The main tick function
@@ -110,8 +113,6 @@ void tick() {
 
     model.contactor_req = CONTACTORS_REQUEST_CLOSE;
     contactor_sm_tick(&model);
-
-    update_balancing(&model);
 
     if(timestep() & 32) {
         gpio_put(PIN_LED, true);
@@ -132,7 +133,7 @@ void tick() {
         // printf("BMB3Y snapshot took %d us\n", end - start);
     }
 
-    if((timestep() & 0x3f) == 31) {
+    if((timestep() & 0x3f) == 99931) {
         uint32_t start = time_us_32();
 
         bmb3y_wakeup_blocking();
@@ -148,18 +149,86 @@ void tick() {
         uint32_t end = time_us_32();
         printf("BMB3Y test took %ld us\n", end - start);
 
+        
+
         //bmb3y_send_command_blocking(BMB3Y_CMD_MUTE);
-        bmb3y_set_balancing(bitmap_set, false);
+        //bmb3y_set_balancing(bitmap_set, even_counter & 8);
+        // even_counter++;
+        // bmb3y_set_balancing(bitmap_set, even_counter & 8);
+        
+        // We need the balancing state machine to update here so that
+        // it updates in sync with the BMB sends+
+
+        balancing_sm_tick(&model);
+        bmb3y_send_balancing(&model);
     }
 
+    // if((timestep() & 0x7f) == 31) {
+    //     uint8_t rx_buf[100];
 
-    if((timestep() & 0x3f) == 32) {
+    //     bmb3y_wakeup_blocking();
+    //     bmb3y_send_command_blocking(BMB3Y_CMD_IDLE_WAKE);
+    //     bmb3y_send_command_blocking(BMB3Y_CMD_SNAPSHOT);
+
+    //     sleep_us(100);
+
+    //     bmb3y_get_data_blocking(BMB3Y_CMD_READ_CONFIG, rx_buf, 50);
+    //     for(int i=0; i<50; i++) {
+    //         printf("%02X ", rx_buf[i]);
+    //     }
+    //     printf("\n");
+    //     isosnoop_print_buffer();
+    // }
+
+
+    if((timestep() & 0x7f) == 32) {
         //isosnoop_print_buffer();
-        for(int i=0; i<120; i++) {
+        for(int i=0; i<15; i++) {
             printf("[c%3d]: %4d mV | ", i, model.cell_voltages_mV[i]);
         }
         printf("\n");
+        //printf("Bal mask: %02X %02X\n", bitmap_set[14], bitmap_set[15]);
     }
+
+    // every 164 seconds
+    if((timestep() & 0x1fff) == 999930) {
+    //if(timestep() == 100) {
+        // start balancing
+        int16_t min_cell = 0x7FFF;
+        for(int i=0; i<15; i++) {
+            if(model.cell_voltages_mV[i] < min_cell) {
+                min_cell = model.cell_voltages_mV[i];
+            }
+        }
+
+        for(int i=0; i<15; i++) {
+            if(model.cell_voltages_mV[i] > min_cell) {
+                balance_counters[i] = model.cell_voltages_mV[i] - min_cell - 3;
+            }
+        }
+
+        printf("Min cell voltage: %d mV\n", min_cell);
+    }
+
+    // every 20 seconds
+    if((timestep() & 0x3ff) == 99930) {
+        // update balancing bitmap
+        bitmap_set[14] = 0;
+        bitmap_set[15] = 0;
+        for(int i=0; i<15; i++) {
+            if(balance_counters[i] > 0) {
+                bitmap_set[15 - (i / 8)] |= (1 << (i % 8));
+                balance_counters[i] -= 1;
+            }
+        }
+    }
+
+    // if((timestep() & 31) == 0) {
+    //     bmb3y_set_balancing(bitmap_set, true);
+    // } else if((timestep() & 31) == 16) {
+    //     bmb3y_set_balancing(bitmap_set, false);
+    // }
+
 
     if((timestep() & 63) == 99990) {
         // every 64 ticks, output stuff
