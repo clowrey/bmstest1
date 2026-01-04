@@ -2,6 +2,7 @@
 
 #include "../allocation.h"
 #include "../pins.h"
+#include "../../model.h"
 
 #include "hardware/irq.h"
 #include "hardware/i2c.h"
@@ -9,269 +10,340 @@
 #include <stdio.h>
 #include <math.h>
 
-// Global pointer for ISR context
-static ina228_t *ina_irq_ctx = NULL;
-static int32_t current_raw = 0;
-static millis_t current_millis = 0;
-static int64_t charge_raw = 0;
-static uint32_t last_charge_raw = 0;
-static millis_t charge_millis = 0;
+// INA228 CONFIG register bits
+#define INA228_CONFIG_RST          (1 << 15)
+#define INA228_CONFIG_RSTACC       (1 << 14)
+#define INA228_CONFIG_CONVDLY(x)   (((x) & 0xFF) << 6)
+#define INA228_CONFIG_TEMPCOMP     (1 << 5)
+#define INA228_CONFIG_ADCRANGE     (1 << 4)  // 0 = ±163.84 mV, 1 = ±40.96 mV
 
-static bool ina228_periodic_timer_callback(struct repeating_timer *t);
+// ADC_CONFIG register bits
+#define INA228_ADC_MODE_CONT_SHUNT  0xa
+#define INA228_ADC_MODE_CONT_ALL   0xf
 
-// Helper to write a 16-bit register
-static bool write_reg16(ina228_t *dev, uint8_t reg, uint16_t value) {
+
+#define INA228_ADC_VBUSCT(x)       (((x) & 0x7) << 9)
+#define INA228_ADC_VSHCT(x)        (((x) & 0x7) << 6)
+#define INA228_ADC_VTCT(x)         (((x) & 0x7) << 3)
+#define INA228_ADC_AVG(x)          ((x) & 0x7)
+
+// Conversion time settings (samples)
+#define INA228_CT_50US    0
+#define INA228_CT_84US    1
+#define INA228_CT_150US   2
+#define INA228_CT_280US   3
+#define INA228_CT_540US   4
+#define INA228_CT_1052US  5
+#define INA228_CT_2074US  6
+#define INA228_CT_4120US  7
+
+// Averaging settings
+#define INA228_AVG_1      0
+#define INA228_AVG_4      1
+#define INA228_AVG_16     2
+#define INA228_AVG_64     3
+#define INA228_AVG_128    4
+#define INA228_AVG_256    5
+#define INA228_AVG_512    6
+#define INA228_AVG_1024   7
+
+// Global variables for storing current measurements
+static int32_t ina228_current_raw = 0;
+static millis_t ina228_current_millis = 0;
+static int64_t ina228_charge_raw = 0;
+static millis_t ina228_charge_millis = 0;
+
+// Helper function to write a 16-bit register
+static bool ina228_write_reg16(ina228_t *dev, uint8_t reg, uint16_t value) {
     uint8_t buf[3];
     buf[0] = reg;
     buf[1] = (value >> 8) & 0xFF;
     buf[2] = value & 0xFF;
-    return i2c_write_blocking_until(
-        dev->i2c,
-        dev->addr,
-        buf,
-        3, 
-        false,
-        make_timeout_time_us(INA228_I2C_TIMEOUT_US)
-    ) == 3;
+    
+    int result = i2c_write_timeout_us(dev->i2c, dev->addr, buf, 3, false, INA228_I2C_TIMEOUT_US);
+    return result == 3;
 }
 
-// Helper to read a 16-bit register
-static uint16_t read_reg16(ina228_t *dev, uint8_t reg) {
-    uint8_t buf[2];
-    // TODO - handle errors
-    i2c_write_blocking_until(dev->i2c, dev->addr, &reg, 1, true, make_timeout_time_us(INA228_I2C_TIMEOUT_US));
-    i2c_read_blocking_until(dev->i2c, dev->addr, buf, 2, false, make_timeout_time_us(INA228_I2C_TIMEOUT_US));
-    return (buf[0] << 8) | buf[1];
-}
-
-// Helper to read a 24-bit register
-static uint32_t read_reg24(ina228_t *dev, uint8_t reg) {
+// Helper function to read a 20-bit register (3 bytes)
+static bool ina228_read_reg20(ina228_t *dev, uint8_t reg, int32_t *value) {
     uint8_t buf[3];
-    // TODO - handle errors
-    i2c_write_blocking_until(dev->i2c, dev->addr, &reg, 1, true, make_timeout_time_us(INA228_I2C_TIMEOUT_US));
-    i2c_read_blocking_until(dev->i2c, dev->addr, buf, 3, false, make_timeout_time_us(INA228_I2C_TIMEOUT_US));
-    return (buf[0] << 16) | (buf[1] << 8) | buf[2];
-}
-
-static void ina228_start_async_read(ina228_t *dev, uint8_t reg, uint8_t len);
-
-static void ina228_internal_irq_handler(void) {
-    if (ina_irq_ctx) {
-        ina228_irq_handler(ina_irq_ctx);
-    }
-}
-
-void ina228_irq_handler(ina228_t *dev) {
-    i2c_hw_t *hw = i2c_get_hw(dev->i2c);
-
-    // Clear interrupt
-    uint32_t intr_stat = hw->intr_stat;
-    if (intr_stat & I2C_IC_INTR_STAT_R_RX_FULL_BITS) {
-        // Read from FIFO
-        while (hw->rxflr > 0) {
-            uint32_t val = hw->data_cmd;
-            if (dev->async_bytes_received < dev->async_bytes_expected) {
-                dev->async_buf[dev->async_bytes_received++] = (uint8_t)(val & 0xFF);
-            }
-        }
-
-        // Check if transaction complete
-        if (dev->async_bytes_received >= dev->async_bytes_expected) {
-            // Disable RX interrupt
-            hw->intr_mask &= ~I2C_IC_INTR_MASK_M_RX_FULL_BITS;
-
-            // Process data
-            if (dev->async_reg == INA228_REG_CURRENT && dev->async_bytes_expected == 3) {
-                uint32_t raw = (dev->async_buf[0] << 12) | (dev->async_buf[1] << 4) | (dev->async_buf[2] >> 4);
-                // sign extend
-                current_raw = (int32_t)raw;
-                if(current_raw & 0x80000) {
-                    current_raw |= 0xFFF00000;
-                }
-                current_millis = millis();
-            } else if (dev->async_reg == INA228_REG_CHARGE && dev->async_bytes_expected == 5) {
-                // int64_t raw = ((int64_t)dev->async_buf[0] << 32) |
-                //               ((int64_t)dev->async_buf[1] << 24) |
-                //               ((int64_t)dev->async_buf[2] << 16) |
-                //               ((int64_t)dev->async_buf[3] << 8) |
-                //               (int64_t)dev->async_buf[4];
-                // Ignore the most significant byte
-                uint32_t raw =  (dev->async_buf[1] << 24) |
-                              (dev->async_buf[2] << 16) |
-                              (dev->async_buf[3] << 8) |
-                              (dev->async_buf[4]);
-                charge_millis = millis();
-
-                charge_raw += (int32_t)(raw - last_charge_raw);
-                last_charge_raw = raw;
-            }
-
-            if(dev->async_reg == INA228_REG_CURRENT) {
-                // Start next read for charge
-                ina228_start_async_read(dev, INA228_REG_CHARGE, 5);
-            } else {
-                // Done
-                dev->async_busy = false;
-            }
-        }
-    }
     
-    // Clear other interrupts if any (TX_ABRT etc)
-    if (intr_stat & I2C_IC_INTR_STAT_R_TX_ABRT_BITS) {
-        hw->clr_tx_abrt;
-        dev->async_busy = false; // Abort
-    }
-}
-
-static void ina228_start_async_read(ina228_t *dev, uint8_t reg, uint8_t len) {
-    dev->async_reg = reg;
-    dev->async_bytes_expected = len;
-    dev->async_bytes_received = 0;
-    dev->async_busy = true;
-
-    i2c_inst_t *i2c = dev->i2c;
-    i2c_hw_t *hw = i2c_get_hw(i2c);
-
-    // Enable RX interrupt
-    hw->intr_mask |= I2C_IC_INTR_MASK_M_RX_FULL_BITS;
-
-    // Write Register Address (Write mode, Start)
-    // Bit 8: CMD (0=Write, 1=Read)
-    // Bit 9: STOP
-    // Bit 10: RESTART
-    
-    // 1. Send Register Address
-    bool restart = true; // Always restart if we are chaining or just starting
-    hw->data_cmd = (bool_to_bit(restart) << 10) | (0 << 9) | (0 << 8) | reg;
-
-    // 2. Send Read Commands
-    for (int i = 0; i < len; i++) {
-        bool is_last = (i == len - 1);
-        // Restart on first read byte to switch direction
-        bool do_restart = (i == 0); 
-        bool do_stop = is_last;
-        
-        hw->data_cmd = (bool_to_bit(do_restart) << 10) | (bool_to_bit(do_stop) << 9) | (1 << 8);
-    }
-}
-
-bool ina228_init(ina228_t *dev, uint8_t addr, float shunt_resistor_ohms, float max_current_a) {
-    dev->i2c = INA228_I2C;
-    dev->addr = addr;
-    dev->shunt_resistor_ohms = shunt_resistor_ohms;
-    dev->async_busy = false;
-
-    i2c_init(dev->i2c, 100 * 1000);
-    gpio_set_function(PIN_INA228_I2C_SDA, GPIO_FUNC_I2C);
-    gpio_set_function(PIN_INA228_I2C_SCL, GPIO_FUNC_I2C);
-
-    // Calculate Current_LSB
-    // Current_LSB = Max_Current / 2^19
-    // Example: 10A / 524288 = 19uA. 
-    // Let's pick a nice round number close to that if possible, or just use the calculated one.
-    dev->current_lsb = max_current_a / 524288.0f;
-
-    // Calculate SHUNT_CAL
-    // SHUNT_CAL = 13107.2 * 10^6 * Current_LSB * R_SHUNT
-    // The constant 13107.2e6 is for the INA228 specifically.
-    //float shunt_cal_val = 13107.2e6f * dev->current_lsb * dev->shunt_resistor_ohms;
-    //float shunt_cal_val = 1;//0x1000;
-    uint16_t shunt_cal_val = 200;
-
-    // try to reset device
-    if(!write_reg16(dev, INA228_REG_CONFIG, 0x8000)) {
-        // Didn't acknowledge, probably not connected
+    // Write register address
+    int result = i2c_write_timeout_us(dev->i2c, dev->addr, &reg, 1, true, INA228_I2C_TIMEOUT_US);
+    if (result != 1) {
         return false;
     }
-    sleep_ms(10);
-
-
-    // // Write SHUNT_CAL
-    // if(!write_reg16(dev, INA228_REG_SHUNT_CAL, shunt_cal_val)) { //(uint16_t)shunt_cal_val)) {
-    //     // Didn't acknowledge, probably not connected
-    //     return false;
-    // }
     
-    // Configure ADC
+    // Read 3 bytes
+    result = i2c_read_timeout_us(dev->i2c, dev->addr, buf, 3, false, INA228_I2C_TIMEOUT_US);
+    if (result != 3) {
+        return false;
+    }
+    
+    // Combine bytes - INA228 uses 20-bit signed values in MSB first format
+    int32_t raw = ((int32_t)buf[0] << 12) | ((int32_t)buf[1] << 4) | ((int32_t)buf[2] >> 4);
+    
+    // Sign extend from 20 bits to 32 bits
+    if (raw & 0x80000) {
+        raw |= 0xFFF00000;
+    }
+    
+    *value = raw;
+    return true;
+}
+
+// Helper function to read a 40-bit register (5 bytes)
+static bool ina228_read_reg40(ina228_t *dev, uint8_t reg, int64_t *value) {
+    uint8_t buf[5];
+    
+    // Write register address
+    int result = i2c_write_timeout_us(dev->i2c, dev->addr, &reg, 1, true, INA228_I2C_TIMEOUT_US);
+    if (result != 1) {
+        return false;
+    }
+    
+    // Read 5 bytes
+    result = i2c_read_timeout_us(dev->i2c, dev->addr, buf, 5, false, INA228_I2C_TIMEOUT_US);
+    if (result != 5) {
+        return false;
+    }
+    
+    // Combine bytes
+    int64_t raw = ((int64_t)buf[0] << 32) | ((int64_t)buf[1] << 24) | 
+                  ((int64_t)buf[2] << 16) | ((int64_t)buf[3] << 8) | (int64_t)buf[4];
+    
+    *value = raw;
+    return true;
+}
+
+// Helper function to read a 16-bit register
+static bool ina228_read_reg16(ina228_t *dev, uint8_t reg, uint16_t *value) {
+    uint8_t buf[2];
+    
+    // Write register address
+    int result = i2c_write_timeout_us(dev->i2c, dev->addr, &reg, 1, true, INA228_I2C_TIMEOUT_US);
+    if (result != 1) {
+        return false;
+    }
+    
+    // Read 2 bytes
+    result = i2c_read_timeout_us(dev->i2c, dev->addr, buf, 2, false, INA228_I2C_TIMEOUT_US);
+    if (result != 2) {
+        return false;
+    }
+    
+    *value = ((uint16_t)buf[0] << 8) | buf[1];
+    return true;
+}
+
+bool ina228_init(ina228_t *dev, uint8_t i2c_addr, float shunt_resistor_ohms, float max_current_a) {
+    dev->i2c = INA228_I2C;
+    dev->addr = i2c_addr;
+    dev->shunt_resistor_ohms = shunt_resistor_ohms;
+    dev->async_busy = false;
+    
+    // Initialize I2C if not already done
+    i2c_init(dev->i2c, 400 * 1000);  // 400 kHz
+    gpio_set_function(PIN_INA228_I2C_SDA, GPIO_FUNC_I2C);
+    gpio_set_function(PIN_INA228_I2C_SCL, GPIO_FUNC_I2C);
+    gpio_pull_up(PIN_INA228_I2C_SDA);
+    gpio_pull_up(PIN_INA228_I2C_SCL);
+    
+    // Read and verify manufacturer ID (should be 0x5449 = "TI")
+    uint16_t mfg_id;
+    if (!ina228_read_reg16(dev, INA228_REG_MANUFACTURER_ID, &mfg_id)) {
+        printf("INA228: Failed to read manufacturer ID\n");
+        return false;
+    }
+    
+    if (mfg_id != 0x5449) {
+        printf("INA228: Invalid manufacturer ID: 0x%04X (expected 0x5449)\n", mfg_id);
+        return false;
+    }
+    
+    // Read device ID (should be 0x228)
+    uint16_t dev_id;
+    if (!ina228_read_reg16(dev, INA228_REG_DEVICE_ID, &dev_id)) {
+        printf("INA228: Failed to read device ID\n");
+        return false;
+    }
+    
+    uint16_t expected_id = (0x228 << 4);  // Device ID is in upper 12 bits
+    if ((dev_id & 0xFFF0) != expected_id) {
+        printf("INA228: Invalid device ID: 0x%04X (expected 0x%04X)\n", dev_id, expected_id);
+        return false;
+    }
+    
+    printf("INA228: Detected (MFG=0x%04X, DEV=0x%04X)\n", mfg_id, dev_id);
+    
+    // Perform a software reset
+    if (!ina228_write_reg16(dev, INA228_REG_CONFIG, INA228_CONFIG_RST)) {
+        printf("INA228: Reset failed\n");
+        return false;
+    }
+    
+    // Wait for reset to complete
+    sleep_ms(2);
+    
+    // Configure the device
     ina228_configure(dev);
-
-    // Blank out IRQ mask
-    i2c_get_hw(dev->i2c)->intr_mask = 0;
-
-    // Setup IRQ
-    ina_irq_ctx = dev;
-    uint irq_num = (dev->i2c == i2c0) ? I2C0_IRQ : I2C1_IRQ;
-    irq_set_exclusive_handler(irq_num, ina228_internal_irq_handler);
-    irq_set_enabled(irq_num, true);
     
-    // Set interrupt threshold for RX FIFO (1 byte)
-    i2c_get_hw(dev->i2c)->rx_tl = 0; 
-
-    static struct repeating_timer timer;
-    add_repeating_timer_ms(100, ina228_periodic_timer_callback, dev, &timer);
-
     return true;
 }
 
 void ina228_configure(ina228_t *dev) {
-    // Reset
-    // write_reg16(dev, INA228_REG_CONFIG, 0x8000);
-    // sleep_ms(10);
-
-    // CONFIG register (0x00)
-    // Default is fine for now, or set ADCRANGE if needed.
-    // Bit 4: ADCRANGE (0 = +/- 163.84mV, 1 = +/- 40.96mV)
-    write_reg16(dev, INA228_REG_CONFIG, 0x0010);
-
-    // ADC_CONFIG register (0x01)
-    // MODE (bits 15-12): 1111 = Continuous Bus Voltage, Shunt Voltage, and Temperature
-    // VBUSCT (bits 11-9): Conversion time for VBUS
-    // VSHCT (bits 8-6): Conversion time for VSHUNT
-    // VTCT (bits 5-3): Conversion time for Temp
-    // AVG (bits 2-0): Averaging count
+    // Calculate SHUNT_CAL value
+    // Current_LSB = Max Current / 2^19
+    // For 100A max: Current_LSB ≈ 0.0001907 A = 190.7 µA
+    // SHUNT_CAL = 13107.2 × 10^6 × Current_LSB × R_shunt
     
-    // A = continuous, shunt only
-    // 
-
-    const uint32_t MODE = 0xF; // Continuous Shunt Voltage
-    const uint32_t VBUSCT = 0;
-    const uint32_t VSHCT = 0;   // 50us (fastest)
-    //4.1ms (slowest) shunt conv time
-    const uint32_t VTCT = 0;   // 1.1ms temp conv time
-    const uint32_t AVG = 0;  // no averaging
-      // 128 samples averaging
-
+    // Use a reasonable current LSB
+    // For max_current_a = 100A, we want good resolution
+    // Current_LSB = 100 / 524288 = 0.000190735 A/LSB
     
-    //write_reg16(dev, INA228_REG_ADC_CONFIG, 0xAFF4 | 5); 
-    write_reg16(dev, INA228_REG_ADC_CONFIG, (MODE << 12) | (VBUSCT << 9) | (VSHCT << 6) | (VTCT << 3) | (AVG << 0));
+    // Calculate current_lsb (in A/LSB) to use full 20-bit range efficiently
+    dev->current_lsb = 100.0f / 524288.0f;  // For 100A max current
+    dev->current_lsb = 0.001f;
+    
+    // SHUNT_CAL = 13107.2 × 10^6 × Current_LSB × R_shunt
+    float shunt_cal_float = 13107.2e6f * dev->current_lsb * dev->shunt_resistor_ohms;
+    uint16_t shunt_cal = (uint16_t)shunt_cal_float;
+    // 332 to read mA, *4 due to adcrange, /4 because we want in 0.25mA units instead
+    shunt_cal = 332*4/4;
+    
+    printf("INA228: Current LSB = %.6f A/LSB\n", dev->current_lsb);
+    printf("INA228: SHUNT_CAL = %u (0x%04X)\n", shunt_cal, shunt_cal);
+    
+    // Write SHUNT_CAL register
+    if (!ina228_write_reg16(dev, INA228_REG_SHUNT_CAL, shunt_cal)) {
+        printf("INA228: Failed to write SHUNT_CAL\n");
+        return;
+    }
+    
+    // Configure ADC: continuous mode, all measurements
+    // Use 540µs conversion time for balance between speed and noise
+    // Use 4x averaging for good noise rejection
+    uint16_t adc_config = (INA228_ADC_MODE_CONT_SHUNT << 12) |
+                          INA228_ADC_VBUSCT(INA228_CT_2074US) |
+                          INA228_ADC_VSHCT(INA228_CT_2074US) |
+                          INA228_ADC_VTCT(INA228_CT_2074US) |
+                          INA228_ADC_AVG(INA228_AVG_256);
+    
+    if (!ina228_write_reg16(dev, INA228_REG_ADC_CONFIG, adc_config)) {
+        printf("INA228: Failed to write ADC_CONFIG\n");
+        return;
+    }
+    
+    // Configure main CONFIG register
+    uint16_t config = 0x0010; 
+    
+    if (!ina228_write_reg16(dev, INA228_REG_CONFIG, config)) {
+        printf("INA228: Failed to write CONFIG\n");
+        return;
+    }
 
-    write_reg16(dev, INA228_REG_SHUNT_CAL, 10000);//206);
-
+    // Configure Diagnostic flags
+    // uint16_t diag_alrt = 0x0001; // No alerts for now
+    // if (!ina228_write_reg16(dev, INA228_REG_DIAG_ALRT, diag_alrt)) {
+    //     printf("INA228: Failed to write DIAG_ALRT\n");
+    //     return;
+    // }
+    
+    printf("INA228: Configuration complete\n");
 }
 
+// Read current from the INA228 (blocking)
+bool ina228_read_current(ina228_t *dev) {
+    int32_t current_raw;
+    
+    uint16_t diag_alert;
+    if (!ina228_read_reg16(dev, INA228_REG_DIAG_ALRT, &diag_alert)) {
+        printf("INA228: Failed to read DIAG_ALRT\n");
+        return false;
+    }
+
+    if (!ina228_read_reg20(dev, INA228_REG_CURRENT, &current_raw)) {
+        printf("INA228: Failed to read CURRENT\n");
+        return false;
+    }
+    
+    // board values: 15 with tesla shunt
+
+    current_raw += 7;
+    model.current_mA = current_raw / 4;
+
+    // Was a new conversion
+    if(diag_alert & 0x0002) {
+        model.current_millis = millis();
+
+        // Is a new conversion, update charge
+        model.charge_raw += (int64_t)current_raw;
+        model.charge_millis = model.current_millis;
+    }
+    
+    return true;
+}
+
+// Read charge accumulator from the INA228 (blocking)
+bool ina228_read_charge(ina228_t *dev) {
+    int64_t charge_raw;
+    
+    if (!ina228_read_reg40(dev, INA228_REG_CHARGE, &charge_raw)) {
+        return false;
+    }
+    
+    // Store in global variables
+    ina228_charge_raw = charge_raw;
+    ina228_charge_millis = millis();
+    
+    // Update model
+    model.charge_raw = charge_raw;
+    model.charge_millis = ina228_charge_millis;
+    
+    return true;
+}
+
+// Read shunt voltage (blocking)
+bool ina228_read_shunt_voltage(ina228_t *dev, float *voltage_mv) {
+    int32_t vshunt_raw;
+    
+    if (!ina228_read_reg20(dev, INA228_REG_VSHUNT, &vshunt_raw)) {
+        return false;
+    }
+    
+    // VSHUNT LSB = 312.5 nV for ±163.84 mV range
+    *voltage_mv = (float)vshunt_raw * 312.5e-6f;  // Convert to mV
+    
+    return true;
+}
+
+// Read bus voltage (blocking)
+bool ina228_read_bus_voltage(ina228_t *dev, float *voltage_mv) {
+    int32_t vbus_raw;
+    
+    if (!ina228_read_reg20(dev, INA228_REG_VBUS, &vbus_raw)) {
+        return false;
+    }
+    
+    // VBUS LSB = 195.3125 µV
+    *voltage_mv = (float)vbus_raw * 0.1953125f;  // Convert to mV
+    
+    return true;
+}
+
+// Getter functions
 int32_t ina228_get_current_raw() {
-    return current_raw;
+    return ina228_current_raw;
 }
 
 millis_t ina228_get_current_millis() {
-    return current_millis;
+    return ina228_current_millis;
 }
 
 int64_t ina228_get_charge_raw() {
-    return charge_raw;
+    return ina228_charge_raw;
 }
 
 millis_t ina228_get_charge_millis() {
-    return charge_millis;
-}
-
-static bool ina228_periodic_timer_callback(struct repeating_timer *t) {
-    ina228_t *dev = (ina228_t *)t->user_data;
-    
-    if (!dev->async_busy) {
-        ina228_start_async_read(dev, INA228_REG_CURRENT, 3);
-        //ina228_start_async_read(dev, INA228_REG_CHARGE, 5);
-    }
-
-    return true; // Keep repeating
+    return ina228_charge_millis;
 }

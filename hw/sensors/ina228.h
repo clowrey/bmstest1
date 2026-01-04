@@ -46,6 +46,14 @@ typedef struct {
 
 bool ina228_init(ina228_t *dev, uint8_t i2c_addr, float shunt_resistor_ohms, float max_current_a);
 void ina228_configure(ina228_t *dev);
+
+// Blocking read functions
+bool ina228_read_current(ina228_t *dev);
+bool ina228_read_charge(ina228_t *dev);
+bool ina228_read_shunt_voltage(ina228_t *dev, float *voltage_mv);
+bool ina228_read_bus_voltage(ina228_t *dev, float *voltage_mv);
+
+// Getter functions for last read values
 int32_t ina228_get_current_raw();
 millis_t ina228_get_current_millis();
 int64_t ina228_get_charge_raw();

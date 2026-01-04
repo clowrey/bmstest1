@@ -45,9 +45,8 @@ void core1_entry() {
 
 // should this go?
 void read_inputs(bms_model_t *model) {
-    // Read various inputs into the model. These are all gathered asynchronously 
+    // Read various inputs into the model. These are mostly gathered asynchronously 
     // so this is a quick process.
-
 
     // ADS1115 voltage readings
 
@@ -80,34 +79,22 @@ void read_inputs(bms_model_t *model) {
     model->pos_contactor_voltage_millis = raw_bat_plus_millis < raw_out_plus_millis ? raw_bat_plus_millis : raw_out_plus_millis; // Use older value
 
     // INA228 current and charge readings
-
-    int32_t current_raw = ina228_get_current_raw();
-    millis_t current_millis = ina228_get_current_millis();
-    model->current_mA = current_raw; // TODO - convert to mA properly
-    model->current_millis = current_millis;
     
-    uint32_t charge_raw = ina228_get_charge_raw();
-    millis_t charge_millis = ina228_get_charge_millis();
-    model->charge_raw = charge_raw;
-    model->charge_millis = charge_millis;
+    if((timestep() & 0x7) == 0) {
+        // Only query every 160ms or so (readings are available every 531ms but
+        // we want to be sure we don't miss any). This is currently blocking due
+        // to the I2C transaction but doesn't have to wait for the reading
+        // itself.
+
+        // This reads current, and also updates the charge accumulator if it is
+        // a new reading
+
+        extern ina228_t ina228_dev;
+        if(!ina228_read_current(&ina228_dev)) {
+            printf("INA228 current read failed\n");
+        }
+    }
 }
-
-uint8_t bitmap_on[16] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-                      0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-uint8_t bitmap_set[16] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-
-int16_t balance_counters[120] = {0};
-// mapping is a bit strange:
-// 0x01 in last byte is cell 0
-// 0x0f in last byte is cells 0,1,2,3
-// 0xf0 is cell 4,5,6,7
-// 0xf00 is cell 8,9,10,11
-// 0x7000 is cell 12,13,14
-// no idea how the next module maps...
-    
-uint8_t bitmap_off[16] = {0};
-int even_counter = 0;
 
 void tick() {
     // The main tick function
@@ -121,6 +108,14 @@ void tick() {
         gpio_put(PIN_LED, true);
     } else {
         gpio_put(PIN_LED, false);
+    }
+
+    // Read INA228 current occasionally
+    if((timestep() & 0x7) == 0) {
+        extern ina228_t ina228_dev;
+        if(!ina228_read_current(&ina228_dev)) {
+            printf("INA228 current read failed\n");
+        }
     }
 
     read_inputs(&model);
@@ -194,47 +189,7 @@ void tick() {
         //printf("Bal mask: %02X %02X\n", bitmap_set[14], bitmap_set[15]);
     }
 
-    // every 164 seconds
-    if((timestep() & 0x1fff) == 999930) {
-    //if(timestep() == 100) {
-        // start balancing
-        int16_t min_cell = 0x7FFF;
-        for(int i=0; i<15; i++) {
-            if(model.cell_voltages_mV[i] < min_cell) {
-                min_cell = model.cell_voltages_mV[i];
-            }
-        }
-
-        for(int i=0; i<15; i++) {
-            if(model.cell_voltages_mV[i] > min_cell) {
-                balance_counters[i] = model.cell_voltages_mV[i] - min_cell - 3;
-            }
-        }
-
-        printf("Min cell voltage: %d mV\n", min_cell);
-    }
-
-    // every 20 seconds
-    if((timestep() & 0x3ff) == 99930) {
-        // update balancing bitmap
-        bitmap_set[14] = 0;
-        bitmap_set[15] = 0;
-        for(int i=0; i<15; i++) {
-            if(balance_counters[i] > 0) {
-                bitmap_set[15 - (i / 8)] |= (1 << (i % 8));
-                balance_counters[i] -= 1;
-            }
-        }
-    }
-
-    // if((timestep() & 31) == 0) {
-    //     bmb3y_set_balancing(bitmap_set, true);
-    // } else if((timestep() & 31) == 16) {
-    //     bmb3y_set_balancing(bitmap_set, false);
-    // }
-
-
-    if((timestep() & 63) == 0) {
+    if((timestep() & 31) == 0) {
         // every 64 ticks, output stuff
         //isosnoop_print_buffer();
         print_bms_events();
