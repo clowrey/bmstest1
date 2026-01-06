@@ -99,16 +99,17 @@ void read_inputs(bms_model_t *model) {
 void tick() {
     // The main tick function
 
-    watchdog_update();
+    // Phase 0: Preamble
 
-    model.contactor_req = CONTACTORS_REQUEST_CLOSE;
-    contactor_sm_tick(&model);
+    watchdog_update();
 
     if(timestep() & 32) {
         gpio_put(PIN_LED, true);
     } else {
         gpio_put(PIN_LED, false);
     }
+
+    // Phase 1: Read sensors
 
     // Read INA228 current occasionally
     if((timestep() & 0x7) == 0) {
@@ -119,17 +120,21 @@ void tick() {
     }
 
     read_inputs(&model);
+
+    // Phase 2: Update model
+
     model_tick(&model);
+    confirm_battery_safety(&model);
+
+    // Phase 3: Outputs and communications
+
+    model.contactor_req = CONTACTORS_REQUEST_CLOSE;
+    contactor_sm_tick(&model);
+
     inverter_tick(&model);
     internal_serial_tick();
-
-    if(timestep() == 31) {
-        //bmb3y_wakeup_blocking();
-        // uint32_t start = time_us_32();
-        // isospi_send_command_blocking(BMB3Y_CMD_SNAPSHOT, true);
-        // uint32_t end = time_us_32();
-        // printf("BMB3Y snapshot took %d us\n", end - start);
-    }
+    hmi_serial_tick(&model);
+    
 
     // We talk to the BMB3Y every 64 ticks (about once per second)
     if((timestep() & 0x3f) == 999931) {

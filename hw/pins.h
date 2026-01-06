@@ -22,6 +22,9 @@
 #define PIN_INTERNAL_SERIAL_RX 1
 #define PIN_INTERNAL_SERIAL_TX 2
 
+#define PIN_HMI_SERIAL_RX 39  // was 38
+#define PIN_HMI_SERIAL_TX 38  // was 39
+
 #define PIN_ISOSPI_TX_EN 26
 #define PIN_ISOSPI_TX_DATA 27
 #define PIN_ISOSPI_RX_HIGH 28

@@ -16,16 +16,16 @@ typedef struct bms_model {
     int64_t charge_raw;
     millis_t charge_millis;
 
-    int32_t temperature_min_dC;
-    int32_t temperature_max_dC;
+    int16_t temperature_min_dC;
+    int16_t temperature_max_dC;
     millis_t temperature_millis;
 
     int32_t battery_voltage_mV;
     millis_t battery_voltage_millis;
     int32_t output_voltage_mV;
     millis_t output_voltage_millis;
-    uint32_t cell_voltage_min_mV;
-    uint32_t cell_voltage_max_mV;
+    int16_t cell_voltage_min_mV;
+    int16_t cell_voltage_max_mV;
     millis_t cell_voltage_millis;
 
     int16_t pos_contactor_voltage_mV;

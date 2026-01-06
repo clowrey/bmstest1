@@ -7,3 +7,6 @@
 
 #define ISOSPI_MASTER_PIO pio1
 #define ISOSNOOP_PIO pio2
+
+#define INTERNAL_SERIAL_DUART duart0
+#define HMI_SERIAL_DUART duart1

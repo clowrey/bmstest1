@@ -37,7 +37,7 @@ void log_bms_event(bms_event_type_t type, bms_event_level_t level, uint64_t data
     }
 }
 
-void clear_bms_event(uint16_t type) {
+void clear_bms_event(bms_event_type_t type) {
     if (type >= ERR_HIGHEST) return;
 
     bms_event_slot_t *slot = &bms_event_slots[type];

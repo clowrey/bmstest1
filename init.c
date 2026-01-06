@@ -58,6 +58,7 @@ void init_hw() {
 
 void init_comms() {
     init_internal_serial();
+    init_hmi_serial();
 
     init_inverter();
 }

@@ -1,4 +1,5 @@
 #include "contactors.h"
+#include "../limits.h"
 #include "../model.h"
 #include "../debug/events.h"
 #include "../hw/actuators/contactors.h"
@@ -7,9 +8,6 @@
 #include <stdio.h>
 
 // TODO - as well as staleness, check for noisy readings (or use max value sometimes?)
-
-// How recent a reading must be to be considered valid. The slowest sensors are 10Hz so this should be fine.
-#define STALENESS_THRESHOLD_MS 200
 
 // Contactor testing constants
 
@@ -53,33 +51,6 @@ static inline int32_t clamp(int32_t v, int32_t min, int32_t max) {
     return v;
 }
 
-static inline bool confirm(bool success, bms_event_type_t event_type, bms_event_level_t level, uint64_t data) {
-    if(!success) {
-        log_bms_event(
-            event_type,
-            level,
-            data
-        );
-    } else {
-        clear_bms_event(event_type);
-    }
-
-    return success;
-}
-
-static inline bool check_or_confirm(bool success, bool do_confirm, bms_event_type_t event_type, bms_event_level_t level, uint64_t data) {
-    if(!success && do_confirm) {
-        log_bms_event(
-            event_type,
-            level,
-            data
-        );
-    } else if(success && do_confirm) {
-        clear_bms_event(event_type);
-    }
-
-    return success;
-}
 
 bool check_current_is_below(bms_model_t *model, int32_t threshold_ma) {
     if(!millis_recent_enough(model->current_millis, STALENESS_THRESHOLD_MS)) {

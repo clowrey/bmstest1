@@ -32,6 +32,7 @@ add_executable(bms
     hw/sensors/ina228.c
     hw/sensors/ads1115.c
     hw/comms/duart.c
+    hw/comms/hmi_serial.c
     hw/comms/internal_serial.c
     hw/chip/nvm.c
     hw/chip/pwm.c
@@ -40,6 +41,7 @@ add_executable(bms
     bmb3y/bmb3y.c
     bmb3y/crc.c
     battery/balancing.c
+    battery/safety_checks.c
     debug/counters.c
     debug/events.c
     inverter/byd_can.c

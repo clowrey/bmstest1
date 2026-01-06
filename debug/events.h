@@ -61,8 +61,46 @@ typedef enum {
     ERR_BATTERY_TEMPERATURE_STALE,
     ERR_BATTERY_TEMPERATURE_OUT_OF_RANGE,
     ERR_CURRENT_STALE,
+
+    ERR_BATTERY_VOLTAGE_HIGH,
+    ERR_BATTERY_VOLTAGE_VERY_HIGH,
+    ERR_BATTERY_VOLTAGE_LOW,
+    ERR_BATTERY_VOLTAGE_VERY_LOW,
+
+
     ERR_HIGHEST,
 } bms_event_type_t;
 
 void log_bms_event(bms_event_type_t event_type, bms_event_level_t level, uint64_t data);
+void clear_bms_event(bms_event_type_t type);
 void print_bms_events();
+
+
+
+static inline bool confirm(bool success, bms_event_type_t event_type, bms_event_level_t level, uint64_t data) {
+    if(!success) {
+        log_bms_event(
+            event_type,
+            level,
+            data
+        );
+    } else {
+        clear_bms_event(event_type);
+    }
+
+    return success;
+}
+
+static inline bool check_or_confirm(bool success, bool do_confirm, bms_event_type_t event_type, bms_event_level_t level, uint64_t data) {
+    if(!success && do_confirm) {
+        log_bms_event(
+            event_type,
+            level,
+            data
+        );
+    } else if(success && do_confirm) {
+        clear_bms_event(event_type);
+    }
+
+    return success;
+}
