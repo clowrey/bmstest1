@@ -1,4 +1,12 @@
-#define HMI_MSG_REGISTER_BROADCAST 0x01
+#define HMI_MSG_ANNOUNCE_DEVICE      0x81
+#define HMI_MSG_SET_DEVICE_ADDRESS   0x01
+
+#define HMI_MSG_WRITE_REGISTERS      0x03
+
+#define HMI_MSG_READ_REGISTERS       0x04
+#define HMI_MSG_READ_REGISTERS_RESPONSE 0x84
+
+#define HMI_ANNOUNCE_DEVICE_TYPE_BMS 0x01
 
 #define HMI_TYPE_UINT8  0x11
 #define HMI_TYPE_INT8   0x21
@@ -47,12 +55,36 @@ The payload of each packet consists of one or more HMI messages concatenated
 together. Each message starts with a message type byte, followed by message-specific
 data.
 
-2.1. Register broadcast message
+2.1. Amnounce device message (from BMS to HMI)
 
-The register broadcast message is used to send the values of one or more registers
-from the BMS to the HMI. The format is:
+The announce device message is used by a BMS to announce its presence to the HMI.
+The format is:
 
-<message type byte = HMI_MSG_REGISTER_BROADCAST (0x01)>
+<message type byte = HMI_MSG_ANNOUNCE_DEVICE (0x01)>
+<device type byte> (0x01 = BMS)
+<device address (1 byte)> (initially 0 for all devices, to be assigned by HMI later)
+<unique serial number (8 bytes)>
+
+2.2. Set device address (from HMI to BMS)
+
+The set device address message is used by the HMI to assign a unique address
+to each BMS on the network. The format is:
+
+<message type byte = HMI_MSG_SET_DEVICE_ADDRESS (0x01)>
+<current device address (1 byte)>
+<new device address (1 byte)>
+<unique serial number (8 bytes)>
+
+Following a successful address assignment, the device will respond with an
+ANNOUNCE_DEVICE.
+
+2.3. Write registers (from HMI to BMS)
+
+The write registers message is used by the HMI to write one or more registers
+on the BMS. The format is:
+
+<message type byte = HMI_MSG_WRITE_REGISTERS (0x03)>
+<device address (1 byte)>
 <register 1 id (2 bytes)>
 <register 1 type (1 byte)>
 <register 1 value (N bytes)>
@@ -61,6 +93,36 @@ from the BMS to the HMI. The format is:
 <register 2 value (N bytes)>
 ...
 
-where the value length N depends on the type.
+Following a successfully processed message, the BMS will respond with a
+READ_REGISTERS_RESPONSE containing the new values of the written registers.
+
+2.4. Read registers (from HMI to BMS)
+
+The read registers message is used by the HMI to request the values of one or more
+registers from the BMS. The format is:
+
+<message type byte = HMI_MSG_READ_REGISTERS (0x04)>
+<device address (1 byte)>
+<register 1 id (2 bytes)>
+<register 2 id (2 bytes)>
+...
+
+Following a successfully processed message, the BMS will respond with a
+READ_REGISTERS_RESPONSE containing the requested register values.
+
+2.5. Read register response (from BMS to HMI)
+
+The read register response message is used by the BMS to respond to a read registers
+request from the HMI. The format is:
+
+<message type byte = HMI_MSG_READ_REGISTERS_RESPONSE (0x84)>
+<device address (1 byte)>
+<register 1 id (2 bytes)>
+<register 1 type (1 byte)>
+<register 1 value (N bytes)>
+<register 2 id (2 bytes)>
+<register 2 type (1 byte)>
+<register 2 value (N bytes)>
+...
 
 */

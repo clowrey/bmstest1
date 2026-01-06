@@ -7,6 +7,8 @@
 
 #include "pico/unique_id.h"
 
+uint8_t device_address = 0;
+
 void init_hmi_serial() {
     // 937500 baud (close to 1Mbit)
     init_duart(&HMI_SERIAL_DUART, 460800, PIN_HMI_SERIAL_TX, PIN_HMI_SERIAL_RX, true); //9375000 works!
@@ -41,63 +43,221 @@ static inline uint8_t hmi_buf_append_uint16(uint8_t *buf, uint16_t value) {
     return idx;
 }
 
-void hmi_serial_tick(bms_model_t *model) {
-    uint8_t tx_buf[120];
+static inline uint16_t hmi_buf_get_uint16(const uint8_t *buf) {
+    return (uint16_t)buf[0] | ((uint16_t)buf[1] << 8);
+}
+
+static inline uint32_t hmi_buf_get_uint32(const uint8_t *buf) {
+    return (uint32_t)buf[0] | ((uint32_t)buf[1] << 8) | ((uint32_t)buf[2] << 16) | ((uint32_t)buf[3] << 24);
+}
+
+static inline uint64_t hmi_buf_get_uint64(const uint8_t *buf) {
+    return (uint64_t)buf[0] | ((uint64_t)buf[1] << 8) | ((uint64_t)buf[2] << 16) | ((uint64_t)buf[3] << 24) |
+           ((uint64_t)buf[4] << 32) | ((uint64_t)buf[5] << 40) | ((uint64_t)buf[6] << 48) | ((uint64_t)buf[7] << 56);
+}
+
+static uint8_t hmi_get_type_size(uint8_t type) {
+    return type & 0x0F;
+}
+
+static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_model_t *model) {
+    uint8_t idx = 0;
+    idx += hmi_buf_append_uint16(&buf[idx], reg_id);
+
+    switch (reg_id) {
+        case HMI_REG_SERIAL:
+            buf[idx++] = HMI_TYPE_UINT64;
+            union {
+                pico_unique_board_id_t id;
+                uint64_t serial;
+            } u;
+            pico_get_unique_board_id(&u.id);
+            idx += hmi_buf_append_uint64(&buf[idx], u.serial);
+            break;
+        case HMI_REG_MILLIS:
+            buf[idx++] = HMI_TYPE_UINT64;
+            idx += hmi_buf_append_uint64(&buf[idx], millis());
+            break;
+        case HMI_REG_SOC:
+            buf[idx++] = HMI_TYPE_UINT32;
+            idx += hmi_buf_append_uint32(&buf[idx], model->soc);
+            break;
+        case HMI_REG_CURRENT:
+            buf[idx++] = HMI_TYPE_INT32;
+            idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)model->current_mA);
+            break;
+        case HMI_REG_CHARGE:
+            buf[idx++] = HMI_TYPE_INT64;
+            // TODO - confirm conversion
+            int64_t charge_mC = (model->charge_raw * 132736) / 1000000;
+            idx += hmi_buf_append_uint64(&buf[idx], (uint64_t)charge_mC);
+            break;
+        case HMI_REG_BATTERY_VOLTAGE:
+            buf[idx++] = HMI_TYPE_INT32;
+            idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)model->battery_voltage_mV);
+            break;
+        case HMI_REG_OUTPUT_VOLTAGE:
+            buf[idx++] = HMI_TYPE_INT32;
+            idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)model->output_voltage_mV);
+            break;
+        case HMI_REG_POS_CONTACTOR_VOLTAGE:
+            buf[idx++] = HMI_TYPE_INT32;
+            idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)model->pos_contactor_voltage_mV);
+            break;
+        case HMI_REG_NEG_CONTACTOR_VOLTAGE:
+            buf[idx++] = HMI_TYPE_INT32;
+            idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)model->neg_contactor_voltage_mV);
+            break;
+        case HMI_REG_TEMPERATURE_MIN:
+            buf[idx++] = HMI_TYPE_INT16;
+            idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->temperature_min_dC);
+            break;
+        case HMI_REG_TEMPERATURE_MAX:
+            buf[idx++] = HMI_TYPE_INT16;
+            idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->temperature_max_dC);
+            break;
+        case HMI_REG_CELL_VOLTAGE_MIN:
+            buf[idx++] = HMI_TYPE_INT16;
+            idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->cell_voltage_min_mV);
+            break;
+        case HMI_REG_CELL_VOLTAGE_MAX:
+            buf[idx++] = HMI_TYPE_INT16;
+            idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->cell_voltage_max_mV);
+            break;
+        default:
+            if (reg_id >= HMI_REG_CELL_VOLTAGES_START && reg_id <= HMI_REG_CELL_VOLTAGES_END) {
+                uint16_t cell_idx = reg_id - HMI_REG_CELL_VOLTAGES_START;
+                if (cell_idx < 120) {
+                    buf[idx++] = HMI_TYPE_INT16;
+                    idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->cell_voltages_mV[cell_idx]);
+                } else {
+                    // Unknown cell
+                    idx -= 2; // rollback reg_id
+                }
+            } else {
+                // Unknown register
+                idx -= 2; // rollback reg_id
+            }
+            break;
+    }
+    return idx;
+}
+
+// Send a regular announce device message including our current address and
+// unique ID. The HMI can use this to discover devices on the bus.
+void hmi_send_announce_device() {
+    uint8_t tx_buf[32];
     uint8_t idx=0;
 
-    if((timestep() & 63) == 10) {
-        tx_buf[idx++] = HMI_MSG_REGISTER_BROADCAST;
+    tx_buf[idx++] = HMI_MSG_ANNOUNCE_DEVICE;
 
-        idx += hmi_buf_append_uint16(&tx_buf[idx], HMI_REG_SERIAL);
-        tx_buf[idx++] = HMI_TYPE_UINT64;
-        pico_get_unique_board_id((pico_unique_board_id_t*)&tx_buf[idx]);
-        idx += 8;
+    tx_buf[idx++] = HMI_ANNOUNCE_DEVICE_TYPE_BMS;
+    tx_buf[idx++] = device_address;
 
-        idx += hmi_buf_append_uint16(&tx_buf[idx], HMI_REG_MILLIS);
-        tx_buf[idx++] = HMI_TYPE_UINT64;
-        idx += hmi_buf_append_uint64(&tx_buf[idx], millis());
+    pico_get_unique_board_id((pico_unique_board_id_t*)&tx_buf[idx]);
+    idx += 8;
 
-        idx += hmi_buf_append_uint16(&tx_buf[idx], HMI_REG_CURRENT);
-        tx_buf[idx++] = HMI_TYPE_INT32;
-        idx += hmi_buf_append_uint32(&tx_buf[idx], model->current_mA);
+    // Should we include more info here (eg, uptime?, version?)
 
-        idx += hmi_buf_append_uint16(&tx_buf[idx], HMI_REG_CHARGE);
-        tx_buf[idx++] = HMI_TYPE_INT64;
-        int64_t charge_mC = (model->charge_raw * 132736) / 1000000;
-        idx += hmi_buf_append_uint64(&tx_buf[idx], charge_mC);
+    duart_send_packet(&HMI_SERIAL_DUART, tx_buf, idx);
+}
 
-        idx += hmi_buf_append_uint16(&tx_buf[idx], HMI_REG_BATTERY_VOLTAGE);
-        tx_buf[idx++] = HMI_TYPE_INT32;
-        idx += hmi_buf_append_uint32(&tx_buf[idx], model->battery_voltage_mV);
+static void hmi_handle_set_device_address(const uint8_t *rx_buf, size_t len) {
+    if (len < 11) return;
+    uint8_t current_addr = rx_buf[1];
+    uint8_t new_addr = rx_buf[2];
+    uint64_t serial = hmi_buf_get_uint64(&rx_buf[3]);
 
-        idx += hmi_buf_append_uint16(&tx_buf[idx], HMI_REG_OUTPUT_VOLTAGE);
-        tx_buf[idx++] = HMI_TYPE_INT32;
-        idx += hmi_buf_append_uint32(&tx_buf[idx], model->output_voltage_mV);
+    union {
+        pico_unique_board_id_t id;
+        uint64_t serial;
+    } u;
+    pico_get_unique_board_id(&u.id);
 
-        idx += hmi_buf_append_uint16(&tx_buf[idx], HMI_REG_POS_CONTACTOR_VOLTAGE);
-        tx_buf[idx++] = HMI_TYPE_INT32;
-        idx += hmi_buf_append_uint32(&tx_buf[idx], model->pos_contactor_voltage_mV);
+    if (serial == u.serial && (current_addr == device_address)) {
+        device_address = new_addr;
+        // Respond with announce to confirm
+        hmi_send_announce_device();
+    }
+}
 
-        idx += hmi_buf_append_uint16(&tx_buf[idx], HMI_REG_NEG_CONTACTOR_VOLTAGE);
-        tx_buf[idx++] = HMI_TYPE_INT32;
-        idx += hmi_buf_append_uint32(&tx_buf[idx], model->neg_contactor_voltage_mV);
+static void hmi_handle_read_registers(const uint8_t *rx_buf, size_t len, bms_model_t *model) {
+    if (len < 2) return;
+    uint8_t addr = rx_buf[1];
+    if (addr != device_address) return;
 
-        idx += hmi_buf_append_uint16(&tx_buf[idx], HMI_REG_TEMPERATURE_MIN);
-        tx_buf[idx++] = HMI_TYPE_INT16;
-        idx += hmi_buf_append_uint16(&tx_buf[idx], model->temperature_min_dC);
+    uint8_t tx_buf[256];
+    uint16_t tx_idx = 0;
+    tx_buf[tx_idx++] = HMI_MSG_READ_REGISTERS_RESPONSE;
+    tx_buf[tx_idx++] = device_address;
 
-        idx += hmi_buf_append_uint16(&tx_buf[idx], HMI_REG_TEMPERATURE_MAX);
-        tx_buf[idx++] = HMI_TYPE_INT16;
-        idx += hmi_buf_append_uint16(&tx_buf[idx], model->temperature_max_dC);
+    for (size_t i = 2; i + 1 < len; i += 2) {
+        uint16_t reg_id = hmi_buf_get_uint16(&rx_buf[i]);
+        tx_idx += hmi_append_register_value(&tx_buf[tx_idx], reg_id, model);
+    }
 
-        idx += hmi_buf_append_uint16(&tx_buf[idx], HMI_REG_CELL_VOLTAGE_MIN);
-        tx_buf[idx++] = HMI_TYPE_INT16;
-        idx += hmi_buf_append_uint16(&tx_buf[idx], model->cell_voltage_min_mV);
+    duart_send_packet(&HMI_SERIAL_DUART, tx_buf, tx_idx);
+}
 
-        idx += hmi_buf_append_uint16(&tx_buf[idx], HMI_REG_CELL_VOLTAGE_MAX);
-        tx_buf[idx++] = HMI_TYPE_INT16;
-        idx += hmi_buf_append_uint16(&tx_buf[idx], model->cell_voltage_max_mV);
+static void hmi_handle_write_registers(const uint8_t *rx_buf, size_t len, bms_model_t *model) {
+    if (len < 2) return;
+    uint8_t addr = rx_buf[1];
+    if (addr != device_address) return;
 
-        duart_send_packet(&HMI_SERIAL_DUART, tx_buf, idx);
+    uint16_t rx_idx = 2;
+    uint8_t tx_buf[256];
+    uint16_t tx_idx = 0;
+    tx_buf[tx_idx++] = HMI_MSG_READ_REGISTERS_RESPONSE;
+    tx_buf[tx_idx++] = device_address;
+
+    while (rx_idx + 2 < len) {
+        uint16_t reg_id = hmi_buf_get_uint16(&rx_buf[rx_idx]);
+        rx_idx += 2;
+        if (rx_idx >= len) break;
+        uint8_t type = rx_buf[rx_idx++];
+        uint8_t size = hmi_get_type_size(type);
+        if (rx_idx + size > len) break;
+
+        // Perform write if applicable
+        if (reg_id == HMI_REG_SOC && type == HMI_TYPE_UINT32) {
+            model->soc = hmi_buf_get_uint32(&rx_buf[rx_idx]);
+        }
+        // Add more writable registers here as needed
+
+        rx_idx += size;
+        
+        // Always append the current (possibly new) value to the response
+        tx_idx += hmi_append_register_value(&tx_buf[tx_idx], reg_id, model);
+    }
+
+    duart_send_packet(&HMI_SERIAL_DUART, tx_buf, tx_idx);
+}
+
+void hmi_serial_tick(bms_model_t *model) {
+    uint8_t rx_buf[256];
+
+    // Periodically announce ourselves. 
+    // Randomize the offset slightly based on address to reduce collisions.
+    if((timestep() & 511) == (device_address * 17) % 512) {
+        hmi_send_announce_device();
+    }
+
+    size_t len = duart_read_packet(&HMI_SERIAL_DUART, rx_buf, sizeof(rx_buf));
+    if(len > 0) {
+        uint8_t msg_type = rx_buf[0];
+        switch (msg_type) {
+            case HMI_MSG_SET_DEVICE_ADDRESS:
+                hmi_handle_set_device_address(rx_buf, len);
+                break;
+            case HMI_MSG_READ_REGISTERS:
+                hmi_handle_read_registers(rx_buf, len, model);
+                break;
+            case HMI_MSG_WRITE_REGISTERS:
+                hmi_handle_write_registers(rx_buf, len, model);
+                break;
+            default:
+                // Ignore other messages (responses or unknown)
+                break;
+        }
     }
 }
