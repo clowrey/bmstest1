@@ -290,15 +290,15 @@ bool ina228_read_current(ina228_t *dev) {
 
 
         // TODO, do this elsewhere, track contactors, etc
-        if(dev->null_counter < 256) {
-            dev->null_accumulator += current_raw;
-            dev->null_counter++;
-            if(dev->null_counter == 256) {
-                dev->null_offset = div_round_closest(dev->null_accumulator, 256);
-                model.charge_raw = 0;
-                printf("INA228: Null offset established: %ld\n", dev->null_offset);
-            }
-        }
+        // if(dev->null_counter < 64) {
+        //     dev->null_accumulator += current_raw;
+        //     dev->null_counter++;
+        //     if(dev->null_counter == 64) {
+        //         dev->null_offset = div_round_closest(dev->null_accumulator, 256);
+        //         model.charge_raw = 0;
+        //         printf("INA228: Null offset established: %ld\n", dev->null_offset);
+        //     }
+        // }
 
 
         //     // Accumulate null offset

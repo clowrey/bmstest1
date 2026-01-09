@@ -59,14 +59,14 @@ static bool start_balancing(bms_model_t *model) {
     int16_t min_cell_voltage = 0x7FFF;
     for(int cell=0; cell<120; cell++) {
         // TODO - ignore unused cells
-        if(model->cell_voltages_mV[cell] > 2500 && model->cell_voltages_mV[cell] < min_cell_voltage) {
-            min_cell_voltage = model->cell_voltages_mV[cell];
+        if(model->cell_voltage_mV[cell] > 2500 && model->cell_voltage_mV[cell] < min_cell_voltage) {
+            min_cell_voltage = model->cell_voltage_mV[cell];
         }
     }
 
     // Set balance times based on how far above minimum voltage each cell is
     for(int cell=0; cell<120; cell++) {
-        int16_t voltage = model->cell_voltages_mV[cell];
+        int16_t voltage = model->cell_voltage_mV[cell];
         // 3mV hysteresis, negatives will be ignored
         model->balancing_sm.balance_time_remaining[cell] = calculate_balance_time(voltage, min_cell_voltage);
     }
@@ -164,7 +164,7 @@ void balancing_sm_tick(bms_model_t *model) {
 
 //         if(balancing_active) {
 //             // Decrement the balance charge based on cell voltage and elapsed time.
-//             model->balancing.balance_charge_mC[i] -= (model->cell_voltages_mV[i] * elapsed * BALANCE_RATE_NUMERATOR) / BALANCE_RATE_DENOMINATOR;
+//             model->balancing.balance_charge_mC[i] -= (model->cell_voltage_mV[i] * elapsed * BALANCE_RATE_NUMERATOR) / BALANCE_RATE_DENOMINATOR;
 
 //             if(model->balancing.balance_charge_mC[i] <= 0) {
 //                 // Stop balancing this cell

@@ -54,17 +54,21 @@ void read_inputs(bms_model_t *model) {
     const int32_t full_scale_mv = 436000;
 
     model->battery_voltage_millis = ads1115_get_sample_millis(0);
-    model->battery_voltage_mV = ads1115_scaled_sample(0, full_scale_mv);
+    model->battery_voltage_mV = ads1115_scaled_sample(0, (int32_t)((float)full_scale_mv * 1.0011809966896306f));
     model->battery_voltage_range_mV = ads1115_scaled_sample_range(0, full_scale_mv);
 
     millis_t output_voltage_millis = ads1115_get_sample_millis(1);
-    int32_t output_voltage_mV = ads1115_scaled_sample(1, full_scale_mv);
+    int32_t output_voltage_mV = ads1115_scaled_sample(1, (int32_t)((float)full_scale_mv  * 0.99217974180734856007f));
+
+    // arbitrary scaling to remove error 
+    //output_voltage_mV = (output_voltage_mV * 58721) / 59496;
+
     model->output_voltage_millis = output_voltage_millis;
     model->output_voltage_mV = output_voltage_mV;
     model->output_voltage_range_mV = ads1115_scaled_sample_range(1, full_scale_mv);
 
     model->neg_contactor_voltage_millis = ads1115_get_sample_millis(2);
-    model->neg_contactor_voltage_mV = ads1115_scaled_sample(2, full_scale_mv);
+    model->neg_contactor_voltage_mV = ads1115_scaled_sample(2, full_scale_mv) - 1250;
     model->neg_contactor_voltage_range_mV = ads1115_scaled_sample_range(2, full_scale_mv);
 
     // Positive contactor voltage has to be derived from the difference between (battery+
@@ -73,7 +77,7 @@ void read_inputs(bms_model_t *model) {
     millis_t raw_bat_pos_to_out_neg_millis = ads1115_get_sample_millis(3);
     int32_t raw_bat_plus_to_out_neg_mV = ads1115_scaled_sample(3, full_scale_mv);
     model->pos_contactor_voltage_millis = raw_bat_pos_to_out_neg_millis < output_voltage_millis ? raw_bat_pos_to_out_neg_millis : output_voltage_millis;
-    model->pos_contactor_voltage_mV = raw_bat_plus_to_out_neg_mV - output_voltage_mV;
+    model->pos_contactor_voltage_mV = raw_bat_plus_to_out_neg_mV - output_voltage_mV - 1900;
     model->pos_contactor_voltage_range_mV = ads1115_scaled_sample_range(3, full_scale_mv)/2 + ads1115_scaled_sample_range(1, full_scale_mv)/2;
 
         
@@ -150,7 +154,8 @@ void tick() {
 
     // Phase 3: Outputs and communications
 
-    model.contactor_req = CONTACTORS_REQUEST_CLOSE;
+    system_sm_tick(&model);
+//    model.contactor_req = CONTACTORS_REQUEST_CLOSE;
     contactor_sm_tick(&model);
 
     inverter_tick(&model);
@@ -160,17 +165,23 @@ void tick() {
 
     if((timestep() & 0x3f) == 32) {
         //isosnoop_print_buffer();
+        uint32_t total = 0;
         for(int i=0; i<15; i++) {
-            printf("[c%3d]: %4d mV | ", i, model.cell_voltages_mV[i]);
+            printf("[c%3d]: %4d mV | ", i, model.cell_voltage_mV[i]);
+            total += model.cell_voltage_mV[i];
+            if((i % 5) == 4) {
+                printf("\n");
+            }
         }
-        printf("\n");
+        printf("Total: %lu mV\n\n", total);
+
         //printf("Bal mask: %02X %02X\n", bitmap_set[14], bitmap_set[15]);
     }
 
-    if((timestep() & 31) == 0) {
+    if((timestep() & 0x3f) == 32) {
         // every 64 ticks, output stuff
         //isosnoop_print_buffer();
-        //print_bms_events();
+        print_bms_events();
 
         printf("Temp: %3ld dC | 3V3: %4ld mV | 5V: %4ld mV | 12V: %5ld mV | CtrV: %5ld mV\n",
             get_temperature_c_times10(),
@@ -180,7 +191,7 @@ void tick() {
             internal_adc_read_contactor_mv()
         );
 
-        printf("Batt: %6ldmV (%3ldmV) | Out: %6ldmV (%3ldmV) | NegCtr: %6dmV (%3ldmV) | PosCtr: %6dmV (%3ldmV)\n",
+        printf("Batt: %6ldmV (%3ldmV) | Out: %6ldmV (%3ldmV) | NegCtr: %6ldmV (%3ldmV) | PosCtr: %6ldmV (%3ldmV)\n",
             model.battery_voltage_mV,
             model.battery_voltage_range_mV,
             model.output_voltage_mV,
@@ -218,15 +229,15 @@ void synchronize_time() {
 // TODO - where to put this?
 bool battery_ready(bms_model_t *model) {
     // Check if we have recent voltage and current readings
-    if(!millis_recent_enough(model->battery_voltage_millis, 5000)) {
-        return false;
-    }
-    if(!millis_recent_enough(model->current_millis, 5000)) {
-        return false;
-    }
-    if(!millis_recent_enough(model->temperature_millis, 5000)) {
-        return false;
-    }
+    // if(!millis_recent_enough(model->battery_voltage_millis, BATTERY_VOLTAGE_STALE_THRESHOLD_MS)) {
+    //     return false;
+    // }
+    // if(!millis_recent_enough(model->current_millis, 5000)) {
+    //     return false;
+    // }
+    // if(!millis_recent_enough(model->temperature_millis, 5000)) {
+    //     return false;
+    // }
 
     // TODO - other checks?
 

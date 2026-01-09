@@ -44,7 +44,8 @@ void isospi_master_flush() {
 bool isospi_write_read_blocking(uint8_t* tx_buf, uint8_t* rx_buf, size_t len, size_t skip) {
     isospi_master_cs(true);
 
-    sleep_us(2);
+    // 14 ok 15 always fails crc, 30 is better
+    sleep_us(1);
 
     //char log[1000];
 
@@ -110,7 +111,7 @@ void isospi_send_wakeup_cs_blocking() {
     // unclear whether it will be necessary to wait longer to avoid the other
     // BMBs missing the next command.
 
-    //sleep_us(0);
+    sleep_us(10);
 }
 
 

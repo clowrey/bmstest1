@@ -4,6 +4,7 @@
 #include "battery/balancing.h"
 #include "state_machines/charging.h"
 #include "state_machines/contactors.h"
+#include "state_machines/system.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -26,9 +27,6 @@ typedef struct bms_model {
     int32_t output_voltage_mV;
     millis_t output_voltage_millis;
     int32_t output_voltage_range_mV;
-    int16_t cell_voltage_min_mV;
-    int16_t cell_voltage_max_mV;
-    millis_t cell_voltage_millis;
 
     int32_t pos_contactor_voltage_mV;
     millis_t pos_contactor_voltage_millis;
@@ -40,6 +38,9 @@ typedef struct bms_model {
     uint32_t soc; // state of charge in 0.01% units (0=0%, 10000=100.00%)
     uint32_t soh; // state of health in 0.01% units (0=0%, 10000=100.00%)
 
+    system_sm_t system_sm;
+    system_requests_t system_req;
+
     contactors_sm_t contactor_sm;
     contactors_requests_t contactor_req;
 
@@ -47,11 +48,14 @@ typedef struct bms_model {
     
     balancing_sm_t balancing_sm;
 
+
     // Battery
     int16_t module_temperatures_dC[8];
     millis_t module_temperatures_millis;
-    int16_t cell_voltages_mV[120];
-    millis_t cell_voltages_millis;
+    int16_t cell_voltage_min_mV;
+    int16_t cell_voltage_max_mV;
+    int16_t cell_voltage_mV[120];
+    millis_t cell_voltage_millis;
 
     // The calculated pack voltage limits
     uint16_t max_voltage_limit_dV;

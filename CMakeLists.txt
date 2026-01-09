@@ -50,6 +50,7 @@ add_executable(bms
     isospi/isosnoop.c
     state_machines/base.c
     state_machines/contactors.c
+    state_machines/system.c
     util/sampler.c
     vendor/can2040/src/can2040.c
     vendor/littlefs/lfs.c

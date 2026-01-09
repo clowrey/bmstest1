@@ -247,12 +247,31 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
         uint16_t module_crc = (uint16_t)(rx_buf[module * 9 + 6] << 8) | (uint16_t)(rx_buf[module * 9 + 7]);
         uint16_t calc_crc = crc14(&rx_buf[module * 9], 6, 0x1000);
 
-        if(module_crc != calc_crc) {
+        //if(module_crc != calc_crc) {
             //printf("Bad CRC on module %d: msg 0x%04X calc 0x%04X\n", module, module_crc, calc_crc);
-            ret = false;
+        //    ret = false;
             //crc_ok = false;
             //continue;
             //return false;
+        if(module==0 && module_crc != calc_crc) {
+            printf("CRC: %s %d %02X %02X %02X %02X %02X %02X %02X %02X %02X calc %04X\n",
+                module_crc == calc_crc ? "OK" : "FAIL",
+                bank_index,
+                rx_buf[module * 9 + 0],
+                rx_buf[module * 9 + 1],
+                rx_buf[module * 9 + 2],
+                rx_buf[module * 9 + 3],
+                rx_buf[module * 9 + 4],
+                rx_buf[module * 9 + 5],
+                rx_buf[module * 9 + 6],
+                rx_buf[module * 9 + 7],
+                rx_buf[module * 9 + 8],
+                calc_crc
+            );
+        }
+
+        if(module==0 && module_crc != calc_crc) {
+            ret = false;
         }
 
         // If some modules have fewer than 3 cells per bank, we will need to:
@@ -269,134 +288,192 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
 
             if(voltage == 0xFFFF) {
                 // A non-existent cell
-                model->cell_voltages_mV[cell_index] = -1;
+                model->cell_voltage_mV[cell_index] = -1;
             } else if(voltage == 0) {
                 // Record as 1mV to distinguish from unmeasured
-                model->cell_voltages_mV[cell_index] = 1;
+                model->cell_voltage_mV[cell_index] = 1;
             } else {
-                model->cell_voltages_mV[cell_index] = (voltage * 2) / 25;
+                model->cell_voltage_mV[cell_index] = (voltage * 2) / 25;
             }
         }
     }
     return ret;
 }
 
-bool bmb3y_read_cell_voltages_blocking(bms_model_t *model) {
-    uint8_t rx_buf[72];
+// bool bmb3y_read_cell_voltages_blocking(bms_model_t *model) {
+//     uint8_t rx_buf[72];
 
-    //bmb3y_request_snapshot_blocking();
+//     //bmb3y_request_snapshot_blocking();
 
-    // wait for the snapshot to be ready?
+//     // wait for the snapshot to be ready?
 
-    uint8_t cell_offset = 0;
+//     uint8_t cell_offset = 0;
     
     
 
-    bool success = true;
-    bool crc_ok = true;
+//     bool success = true;
+//     bool crc_ok = true;
 
-    for(uint8_t i=0; i<5; i++) {
-        uint32_t cmd = READ_COMMANDS[i];
-        if (!bmb3y_get_data_blocking(cmd, rx_buf, 72)) {
-            printf("BMB3Y read failed for cmd 0x%02lX\n", cmd);
-            success = false;
-            continue;
-        }
+//     for(uint8_t i=0; i<5; i++) {
+//         uint32_t cmd = READ_COMMANDS[i];
+//         if (!bmb3y_get_data_blocking(cmd, rx_buf, 72)) {
+//             printf("BMB3Y read failed for cmd 0x%02lX\n", cmd);
+//             success = false;
+//             continue;
+//         }
 
-        // for(int j=0; j<10; j++) {
-        //     printf("%02X ", rx_buf[j]);
-        // }
-        // printf("\n");
+//         // for(int j=0; j<10; j++) {
+//         //     printf("%02X ", rx_buf[j]);
+//         // }
+//         // printf("\n");
 
-        // Each bank has data for all 8 modules, with 3 cells, a 2-byte CRC and a padding byte per module
+//         // Each bank has data for all 8 modules, with 3 cells, a 2-byte CRC and a padding byte per module
 
-        // static uint16_t initial = -1;
-        // initial++;
-        // printf("Trying initial %04X\n", initial);
+//         // static uint16_t initial = -1;
+//         // initial++;
+//         // printf("Trying initial %04X\n", initial);
 
 
-        // Go through each module (0-7, 8 total)
-        for(int module=0; module<8; module++) {
+//         // Go through each module (0-7, 8 total)
+//         for(int module=0; module<8; module++) {
 
-            // Weird, playing with balancing stopped the CRC working. It also resulted in 16-bit CRC values?
+//             // Weird, playing with balancing stopped the CRC working. It also resulted in 16-bit CRC values?
 
-            uint16_t module_crc = (uint16_t)(rx_buf[module * 9 + 6] << 8) | (uint16_t)(rx_buf[module * 9 + 7]);
-            uint16_t calc_crc = crc14(&rx_buf[module * 9], 6, 0x1000);
+//             uint16_t module_crc = (uint16_t)(rx_buf[module * 9 + 6] << 8) | (uint16_t)(rx_buf[module * 9 + 7]);
+//             uint16_t calc_crc = crc14(&rx_buf[module * 9], 6, 0x1000);
 
-            if(module_crc != calc_crc) {
-                //printf("Bad CRC on module %d: msg 0x%04X calc 0x%04X\n", module, module_crc, calc_crc);
-                success = false;
-                crc_ok = false;
-                //continue;
-                //return false;
-            }
+//             if(module_crc != calc_crc) {
+//                 //printf("Bad CRC on module %d: msg 0x%04X calc 0x%04X\n", module, module_crc, calc_crc);
+//                 success = false;
+//                 crc_ok = false;
+//                 //continue;
+//                 //return false;
+//             }
 
-            // If some modules have fewer than 3 cells per bank, we will need to:
-            //   detect/skip them (we probably still need to read them even if unset?)
-            //   calculate the stride (currently module*15) taking into account missing cells
+//             // If some modules have fewer than 3 cells per bank, we will need to:
+//             //   detect/skip them (we probably still need to read them even if unset?)
+//             //   calculate the stride (currently module*15) taking into account missing cells
 
-            // Go through each cell (three per bank)
-            for(int cell=0; cell<3; cell++) {
-                int cell_index = (module * 15) + cell_offset + cell;
+//             // Go through each cell (three per bank)
+//             for(int cell=0; cell<3; cell++) {
+//                 int cell_index = (module * 15) + cell_offset + cell;
 
-                uint16_t voltage = 
-                    (uint16_t)(rx_buf[module * 9 + cell * 2]) |
-                    (uint16_t)(rx_buf[module * 9 + cell * 2 + 1] << 8);
+//                 uint16_t voltage = 
+//                     (uint16_t)(rx_buf[module * 9 + cell * 2]) |
+//                     (uint16_t)(rx_buf[module * 9 + cell * 2 + 1] << 8);
 
-                if(voltage == 0xFFFF) {
-                    // A non-existent cell
-                    model->cell_voltages_mV[cell_index] = -1;
-                } else if(voltage == 0) {
-                    // Record as 1mV to distinguish from unmeasured
-                    model->cell_voltages_mV[cell_index] = 1;
-                } else {
-                    model->cell_voltages_mV[cell_index] = (voltage * 2) / 25;
-                }
-            }
-        }
+//                 if(voltage == 0xFFFF) {
+//                     // A non-existent cell
+//                     model->cell_voltages_mV[cell_index] = -1;
+//                 } else if(voltage == 0) {
+//                     // Record as 1mV to distinguish from unmeasured
+//                     model->cell_voltages_mV[cell_index] = 1;
+//                 } else {
+//                     model->cell_voltages_mV[cell_index] = (voltage * 2) / 25;
+//                 }
+//             }
+//         }
 
-        cell_offset += 3;
-    }
-    printf("CRC: %s\n", crc_ok ? "OK" : "FAIL");
+//         cell_offset += 3;
+//     }
+//     printf("CRC: %s\n", crc_ok ? "OK" : "FAIL");
 
-    if(success) {
-        model->cell_voltages_millis = millis();
-    }
+//     if(success) {
+//         model->cell_voltages_millis = millis();
+//     }
 
-    return success;
-}
+//     return success;
+// }
 
+bool last_read_crc_ok = false;
 
 void bmb3y_tick(bms_model_t *model) {
-    int step = (timestep() & 0x3f) - 5;
+    // TODO - maybe split this in half, into separate 'read' and 'write' phases?
+    // Otherwise we're writing out balancing during the read phase, (even though
+    // it'll be related to data discovered on previous cycles anyway)
+
+    // We do a full communication cycle every 64 ticks (1.28s).
+    // We offset the steps by 5 to interleave with other BMS tasks.
+
+    int step = (timestep() & 0x3f) - 5; // was 3f
 
     //uint32_t start = time_us_32();
 
     if(step==0) {
+        // Wake up and request snapshot
         bmb3y_send_wakeup_cs_blocking();
-        bmb3y_send_command_blocking(BMB3Y_CMD_IDLE_WAKE);
+
+        // The data read packets include CRC14s, although sometimes they
+        // misbehave and consistently fail, even though the data seems fine.
+        // It is possible to 'fix' this by sending extra IDLE_WAKE commands before
+        // the SNAPSHOT command, for some reason.
+
+        // However this depends on whether the balancing registers are being
+        // written - if they are, then two IDLE_WAKEs usually works. If however
+        // it gets 'out of sync', sending one IDLE_WAKE seems to fix it.
+
+        // So current best strategy:
+        // - always write balancing config after reading
+        // - if any last read failed, do one IDLE_WAKE next time
+        // - otherwise do two IDLE_WAKEs
+
+        // Also seems to depend on how long we wait between cycles - 1.28s works
+        // with this strategy, 5.12s doesn't...
+        
+        // read config
+        //uint8_t rx_buf[72];
+        //bmb3y_get_data_blocking(BMB3Y_CMD_READ_CONFIG, rx_buf, 72);
+        // for(int i=0; i<72; i++) {
+        //     printf("%02X ", rx_buf[i]);
+        // }
+        // printf("\n");
+
+        if(last_read_crc_ok) {
+            // Normal case - two IDLE_WAKEs keep the CRCs happy
+            bmb3y_send_command_blocking(BMB3Y_CMD_IDLE_WAKE);
+            bmb3y_send_command_blocking(BMB3Y_CMD_IDLE_WAKE);
+        } else {
+            // Last read failed - try a single IDLE_WAKE to re-sync
+            bmb3y_send_command_blocking(BMB3Y_CMD_IDLE_WAKE);
+        }
+
+
+        last_read_crc_ok = true;
         bmb3y_send_command_blocking(BMB3Y_CMD_SNAPSHOT);
 
-        // If we wait any longer than 5ms before the next command, the BMB will
-        // go to sleep and need a wakeup. A single CS wakeup seems to work fine,
-        // no need for extra IDLE_WAKEs.
+        // As we wait longer than 5ms before the next command, the BMB will go
+        // to sleep and need a wakeup. A single CS wakeup seems to work fine, no
+        // need for extra IDLE_WAKEs.
 
         // uint32_t end = time_us_32();
         // printf("BMB3Y snapshot took %ld us\n", end - start);
     } else if(step>=1 && step <= 5) {
-        // Read one of the five banks
+        // Read one of the five banks depending on the step number
         bmb3y_send_wakeup_cs_blocking();
-        bmb3y_read_cell_voltage_bank_blocking(model, step - 1);
+
+        if(!bmb3y_read_cell_voltage_bank_blocking(model, step - 1)) {
+            // Read failed
+            last_read_crc_ok = false;
+            //bmb3y_send_command_blocking(BMB3Y_CMD_IDLE_WAKE);
+            // bmb3y_send_command_blocking(BMB3Y_CMD_IDLE_WAKE);
+            //bmb3y_read_cell_voltage_bank_blocking(model, step - 1);
+        } else if(step==5 && last_read_crc_ok) {
+            // All banks read successfully
+            model->cell_voltage_millis = millis();
+        }
+
         
         // uint32_t end = time_us_32();
         // printf("BMB3Y bank %d read took %ld us\n", step - 1, end - start);
     } else if(step==6) {
-        // Enable/disable per-cell balancing as needed
+        // Enable/disable per-cell balancing as needed.
 
-        if(false) {
+
+        if(true) {
             bmb3y_send_wakeup_cs_blocking();
             balancing_sm_tick(model);
             bmb3y_send_balancing(model);
         }
+        //bmb3y_read_cell_voltage_bank_blocking(model, 4);
     }
 }

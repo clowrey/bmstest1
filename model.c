@@ -21,10 +21,10 @@ static void model_process_temperatures(bms_model_t *model) {
 }
 
 static void model_process_cell_voltages(bms_model_t *model) {
-    model->cell_voltage_min_mV = model->cell_voltages_mV[0];
-    model->cell_voltage_max_mV = model->cell_voltages_mV[0];
+    model->cell_voltage_min_mV = model->cell_voltage_mV[0];
+    model->cell_voltage_max_mV = model->cell_voltage_mV[0];
     for(int i=1; i<NUM_CELLS; i++) {
-        int32_t volt = model->cell_voltages_mV[i];
+        int32_t volt = model->cell_voltage_mV[i];
 
         // TODO - decide on how to handle missing cells
         if(volt < 0) {

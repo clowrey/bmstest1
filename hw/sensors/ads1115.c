@@ -21,6 +21,7 @@ static const int ADS1115_CONVERSION_TIME_MS = 4;
 // How long extra to wait to be safe before reading conversion resultc
 static const int ADS1115_CONVERSION_TIME_EXTRA_MS = 1;
 
+// We are oversampling by 8, we effectively sample every 200ms +/- some jitter
 
 // Global pointer for ISR context
 static ads1115_t *ads_irq_ctx = NULL;
@@ -222,7 +223,7 @@ void ads1115_irq_handler(ads1115_t *dev) {
             if (dev->state == ADS1115_STATE_READ_CONVERSION_DATA) {
                 const int16_t sample = (int16_t)((dev->async_buf[0] << 8) | dev->async_buf[1]);
                 if(sample==0) {
-                    printf("ADS1115 read zero sample!\n");
+                    printf("ADS1115 %d read zero sample!\n", dev->current_channel);
                 }
                 sampler_add(&samples[dev->current_channel], (int32_t)sample, ADS1115_OVERSAMPLING, 0);
                 

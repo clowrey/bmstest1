@@ -8,7 +8,8 @@
 #include "pico/stdlib.h"
 #include "pico/unique_id.h"
 
-uint8_t device_address = 0;
+// BMS defaults to address 1
+uint8_t device_address = 1;
 uint32_t next_announce_timestep = 0;
 uint32_t announce_period = 64;
 
@@ -137,7 +138,7 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
                 uint16_t cell_idx = reg_id - HMI_REG_CELL_VOLTAGES_START;
                 if (cell_idx < 120) {
                     buf[idx++] = HMI_TYPE_INT16;
-                    idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->cell_voltages_mV[cell_idx]);
+                    idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->cell_voltage_mV[cell_idx]);
                 } else {
                     // Unknown cell
                     idx -= 2; // rollback reg_id
@@ -260,7 +261,7 @@ static void hmi_handle_read_cell_voltages(const uint8_t *rx_buf, size_t len, bms
 
     int16_t last_cell_voltage = 0;
     for(int cell_idx = 0; cell_idx < 120; cell_idx++) {
-        const int16_t cell_voltage = model->cell_voltages_mV[cell_idx];
+        const int16_t cell_voltage = model->cell_voltage_mV[cell_idx];
         const int16_t delta = cell_voltage - last_cell_voltage;
         if(delta >= -64 && delta <= 63) {
             // can encode as delta

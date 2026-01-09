@@ -72,6 +72,9 @@ void init() {
     init_comms();
     init_model();
 
+    // start up by default
+    model.system_req = SYSTEM_REQUEST_RUN;
+
     // This will advance the time to a non-zero value
     update_millis();
 
