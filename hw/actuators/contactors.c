@@ -31,6 +31,9 @@ static void set_with_pwm(unsigned int pin, bool enabled, uint32_t *level) {
         }
         //if(*level<PWM_MIN_LEVEL) *level = PWM_MIN_LEVEL;
     }
+    // if(pin==PIN_CONTACTOR_NEG) {
+    //     printf("Contactor NEG PWM level: %d\n", *level);
+    // }
     pwm_set(pin, *level);
 }
 

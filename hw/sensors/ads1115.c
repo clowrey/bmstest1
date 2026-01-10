@@ -226,6 +226,19 @@ void ads1115_irq_handler(ads1115_t *dev) {
                     printf("ADS1115 %d read zero sample!\n", dev->current_channel);
                 }
                 sampler_add(&samples[dev->current_channel], (int32_t)sample, ADS1115_OVERSAMPLING, 0);
+
+                if (dev->cal_samples_left[dev->current_channel] > 0) {
+                    dev->cal_accumulator[dev->current_channel] += sample;
+                    dev->cal_samples_left[dev->current_channel]--;
+                }
+                // if(dev->current_channel==2) {
+                //     if(samples[2].sample_count==0) {
+                //         // Negative contactor voltage updated
+                //         printf("ADS1115 new neg sample: %d out: %d\n", sample, samples[2].value/ADS1115_OVERSAMPLING);
+                //     } else {
+                //         printf("ADS1115 add sample: %d\n", sample);
+                //     }
+                // }
                 
                 dev->current_channel++;
                 if (dev->current_channel < 4) {
@@ -257,6 +270,27 @@ static bool ads1115_periodic_timer_callback(struct repeating_timer *t) {
     ads1115_start_sampling(dev);
     return true;
 }
+
+void ads1115_start_calibration(ads1115_t *dev, uint16_t num_samples) {
+    for (int ch = 0; ch < 4; ch++) {
+        dev->cal_accumulator[ch] = 0;
+        dev->cal_samples_left[ch] = num_samples;
+    }
+}
+
+bool ads1115_calibration_finished(ads1115_t *dev) {
+    for (int ch = 0; ch < 4; ch++) {
+        if (dev->cal_samples_left[ch] > 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+int32_t ads1115_get_calibration(ads1115_t *dev, int channel) {
+    return dev->cal_accumulator[channel];
+}
+
 
 int16_t ads1115_get_sample_range(int channel) {
     return (int16_t)(samples[channel].max_value - samples[channel].min_value);

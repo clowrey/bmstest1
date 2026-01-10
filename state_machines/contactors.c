@@ -8,17 +8,18 @@
 #include <stdio.h>
 
 // TODO - as well as staleness, check for noisy readings (or use max value sometimes?)
+// TODO - give up after so many failed precharges
 
 // Contactor testing constants
 
 // How long to wait for voltage to settle during contactor tests
-#define CONTACTORS_TEST_WAIT_MS 3000
+#define CONTACTORS_TEST_WAIT_MS 1000
 // How long to wait after a failed precharge (for the PTCs to cool down)
 #define CONTACTORS_FAILED_PRECHARGE_TIMEOUT_MS 20000
 // How long to wait after a failed contactor test (to avoid rapid cycling)
 #define CONTACTORS_FAILED_TEST_TIMEOUT_MS 20000
 // Max voltage across a contactor to consider it closed
-#define CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV 2000
+#define CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV 1500
 // Min voltage across a contactor to consider it open
 #define CONTACTORS_OPEN_VOLTAGE_THRESHOLD_MV 3000 // was 5000
 
@@ -308,6 +309,9 @@ void contactor_sm_tick(bms_model_t *model) {
             } else if(model->contactor_req == CONTACTORS_REQUEST_OPEN || model->contactor_req == CONTACTORS_REQUEST_FORCE_OPEN) {
                 // already open, just clear the request
                 model->contactor_req = CONTACTORS_REQUEST_NULL;
+            } else if(model->contactor_req == CONTACTORS_REQUEST_CALIBRATE) {
+                model->contactor_req = CONTACTORS_REQUEST_NULL;
+                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_CALIBRATING);
             }
             break;
         case CONTACTORS_STATE_PRECHARGING_NEG:
@@ -420,6 +424,53 @@ void contactor_sm_tick(bms_model_t *model) {
                 state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
             }
             break;
+
+        /* Calibration (requires contactors to be closed) */
+        
+        case CONTACTORS_STATE_CALIBRATING:
+            contactors_set_pos_pre_neg(false, false, false);
+
+            if(state_timeout((sm_t*)contactor_sm, 500)) {
+                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_CALIBRATING_CLOSE_NEG);
+            }
+            break;
+        case CONTACTORS_STATE_CALIBRATING_CLOSE_NEG:
+            // Close negative contactor first
+            contactors_set_pos_pre_neg(false, false, true);
+            if(state_timeout((sm_t*)contactor_sm, 500)) {
+                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_CALIBRATING_PRECHARGE);
+            }
+            break;
+        case CONTACTORS_STATE_CALIBRATING_PRECHARGE:
+            // Now precharge
+            contactors_set_pos_pre_neg(false, true, true);
+            if(state_timeout((sm_t*)contactor_sm, 500)) {
+                // There should be no real precharging as nothing should be
+                // attached. We need a margin to accommodate for uncalibrated
+                // values however.
+                if(check_current_is_below(model, 200)) {
+                    state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_CALIBRATING_CLOSED);
+                } else {
+                    // Error properly?
+                    state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
+                }
+            }
+            break;
+        case CONTACTORS_STATE_CALIBRATING_CLOSED:
+            contactors_set_pos_pre_neg(true, false, true);
+
+            if(model->contactor_req == CONTACTORS_REQUEST_OPEN) {
+                model->contactor_req = CONTACTORS_REQUEST_NULL;
+                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
+            } else if(!check_current_is_below(model, 200)) {
+                // Current too high (output is meant to be open circuit!)
+                // TODO - Error properly?
+                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
+            }
+
+            break;
+
+            
         default:
             // panic instead?
             printf("Invalid contactor state!");

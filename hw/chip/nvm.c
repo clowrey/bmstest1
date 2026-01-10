@@ -1,9 +1,12 @@
 #include "nvm.h"
+
 #include "hardware/flash.h"
 #include "pico/flash.h"
 #include "../vendor/littlefs/lfs.h"
 #include <string.h>
 #include <stdio.h>
+
+#include "../../model.h"
 
 // Use the last part of the flash. Assuming 2MB flash, 1.5MB offset is safe.
 #define NVM_FLASH_OFFSET (1536 * 1024)
@@ -107,4 +110,70 @@ int update_boot_count(void) {
 
     lfs_unmount(&lfs);
     return (int)boot_count;
+}
+
+typedef struct __attribute__((packed)) {
+    uint32_t version;
+
+    // ADS1115 voltage calibration
+    int32_t battery_voltage_mul;
+    int32_t output_voltage_mul;
+    int32_t neg_contactor_mul;
+    int32_t neg_contactor_offset_mV;
+    int32_t pos_contactor_mul;
+
+    // Current calibration
+    int32_t current_offset;
+} calibration_data_t;
+
+bool nvm_save_calibration(bms_model_t *model) {
+    int err = lfs_mount(&lfs, &cfg);
+    if (err) return false;
+
+    lfs_file_t file;
+    err = lfs_file_open(&lfs, &file, "calibration", LFS_O_WRONLY | LFS_O_CREAT);
+    if (err) return false;
+
+    calibration_data_t data = {
+        .version = 1,
+        .battery_voltage_mul = model->battery_voltage_mul,
+        .output_voltage_mul = model->output_voltage_mul,
+        .neg_contactor_mul = model->neg_contactor_mul,
+        .neg_contactor_offset_mV = model->neg_contactor_offset_mV,
+        .pos_contactor_mul = model->pos_contactor_mul,
+        .current_offset = model->current_offset,
+    };
+    lfs_file_write(&lfs, &file, &data, sizeof(data));
+    lfs_file_close(&lfs, &file);
+
+    lfs_unmount(&lfs);
+    return true;
+}
+
+bool nvm_load_calibration(bms_model_t *model) {
+    int err = lfs_mount(&lfs, &cfg);
+    if (err) return false;
+
+    lfs_file_t file;
+    err = lfs_file_open(&lfs, &file, "calibration", LFS_O_RDONLY);
+    if (err) return false;
+
+    calibration_data_t data = {0};
+    lfs_file_read(&lfs, &file, &data, sizeof(data));
+    lfs_file_close(&lfs, &file);
+
+    lfs_unmount(&lfs);
+
+    if (data.version != 1) {
+        return false;
+    }
+
+    model->battery_voltage_mul = data.battery_voltage_mul;
+    model->output_voltage_mul = data.output_voltage_mul;
+    model->neg_contactor_mul = data.neg_contactor_mul;
+    model->neg_contactor_offset_mV = data.neg_contactor_offset_mV;
+    model->pos_contactor_mul = data.pos_contactor_mul;
+    model->current_offset = data.current_offset;
+
+    return true;
 }

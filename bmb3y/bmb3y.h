@@ -49,6 +49,7 @@ print(list((hex(crc8_2f(bytes([n, 0]))) for n in range(0x47, 0x4C+10))))
 #define BMB3Y_CMD_READ_CONFIG  0x50009400    // Config register
 #define BMB3Y_CMD_WRITE_CONFIG 0x112F        // Write config
 #define BMB3Y_CMD_READ_TEMPS   0x0E1B
+//#define BMB3Y_CMD_READ_TEMPS   0x0E1B0000
 
 
 void bmb3y_tick(bms_model_t *model);

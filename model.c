@@ -8,7 +8,7 @@ bms_model_t model = {0};
 static void model_process_temperatures(bms_model_t *model) {
     model->temperature_min_dC = model->module_temperatures_dC[0];
     model->temperature_max_dC = model->module_temperatures_dC[0];
-    for(int i=1; i<8; i++) {
+    for(int i=1; i<NUM_MODULE_TEMPS; i++) {
         int16_t temp = model->module_temperatures_dC[i];
         if(temp < model->temperature_min_dC) {
             model->temperature_min_dC = temp;
@@ -23,6 +23,7 @@ static void model_process_temperatures(bms_model_t *model) {
 static void model_process_cell_voltages(bms_model_t *model) {
     model->cell_voltage_min_mV = model->cell_voltage_mV[0];
     model->cell_voltage_max_mV = model->cell_voltage_mV[0];
+    model->cell_voltage_total_mV = model->cell_voltage_mV[0];
     for(int i=1; i<NUM_CELLS; i++) {
         int32_t volt = model->cell_voltage_mV[i];
 
@@ -30,6 +31,8 @@ static void model_process_cell_voltages(bms_model_t *model) {
         if(volt < 0) {
             continue;
         }
+
+        model->cell_voltage_total_mV += volt;
 
         if(volt < model->cell_voltage_min_mV) {
             model->cell_voltage_min_mV = volt;

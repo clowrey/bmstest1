@@ -258,7 +258,7 @@ static int32_t div_round_closest(const int32_t n, const int32_t d)
 }
 
 // Read current from the INA228 (blocking)
-bool ina228_read_current(ina228_t *dev) {
+bool ina228_read_current_blocking(ina228_t *dev) {
     int32_t current_raw;
     int32_t current_corrected;
     
@@ -275,7 +275,8 @@ bool ina228_read_current(ina228_t *dev) {
     
     // board values: 15 with tesla shunt
 
-    current_corrected = current_raw - dev->null_offset;
+    current_corrected = current_raw - model.current_offset;
+    //dev->null_offset;
     model.current_mA = current_corrected / 4;
 
     // Was a new conversion
@@ -288,6 +289,8 @@ bool ina228_read_current(ina228_t *dev) {
 
         // charge_raw is in units equivalent to 0.132736mC (0.25mA LSB, 530.944ms per sample)
 
+        dev->null_accumulator += current_raw;
+        dev->null_counter++;
 
         // TODO, do this elsewhere, track contactors, etc
         // if(dev->null_counter < 64) {

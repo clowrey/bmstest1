@@ -7,6 +7,7 @@
 #include "hw/sensors/internal_adc.h"
 #include "hw/sensors/ads1115.h"
 #include "hw/pins.h"
+#include "calibration/offline.h"
 #include "state_machines/contactors.h"
 #include "battery/balancing.h"
 #include "inverter/inverter.h"
@@ -53,12 +54,14 @@ void read_inputs(bms_model_t *model) {
     // For differential readings, full scale should be 436V
     const int32_t full_scale_mv = 436000;
 
+    int32_t battery_voltage_mul = model->battery_voltage_mul ? model->battery_voltage_mul : 54500;
     model->battery_voltage_millis = ads1115_get_sample_millis(0);
-    model->battery_voltage_mV = ads1115_scaled_sample(0, (int32_t)((float)full_scale_mv * 1.0011809966896306f));
+    model->battery_voltage_mV = ads1115_scaled_sample(0, battery_voltage_mul);//(int32_t)((float)full_scale_mv * 1.0011809966896306f));
     model->battery_voltage_range_mV = ads1115_scaled_sample_range(0, full_scale_mv);
 
+    int32_t output_voltage_mul = model->output_voltage_mul ? model->output_voltage_mul : 54500;
     millis_t output_voltage_millis = ads1115_get_sample_millis(1);
-    int32_t output_voltage_mV = ads1115_scaled_sample(1, (int32_t)((float)full_scale_mv  * 0.99217974180734856007f));
+    int32_t output_voltage_mV = ads1115_scaled_sample(1, output_voltage_mul);//(int32_t)((float)full_scale_mv  * 0.99217974180734856007f));
 
     // arbitrary scaling to remove error 
     //output_voltage_mV = (output_voltage_mV * 58721) / 59496;
@@ -67,17 +70,19 @@ void read_inputs(bms_model_t *model) {
     model->output_voltage_mV = output_voltage_mV;
     model->output_voltage_range_mV = ads1115_scaled_sample_range(1, full_scale_mv);
 
+    int32_t neg_contactor_mul = model->neg_contactor_mul ? model->neg_contactor_mul : 54500;
     model->neg_contactor_voltage_millis = ads1115_get_sample_millis(2);
-    model->neg_contactor_voltage_mV = ads1115_scaled_sample(2, full_scale_mv) - 1250;
+    model->neg_contactor_voltage_mV = ads1115_scaled_sample(2, neg_contactor_mul) + model->neg_contactor_offset_mV;
     model->neg_contactor_voltage_range_mV = ads1115_scaled_sample_range(2, full_scale_mv);
 
     // Positive contactor voltage has to be derived from the difference between (battery+
     // to output-) and (output+ to output-), since we can't sample relative to battery+.
 
+    int32_t pos_contactor_mul = model->pos_contactor_mul ? model->pos_contactor_mul : 54500;
     millis_t raw_bat_pos_to_out_neg_millis = ads1115_get_sample_millis(3);
-    int32_t raw_bat_plus_to_out_neg_mV = ads1115_scaled_sample(3, full_scale_mv);
+    int32_t raw_bat_plus_to_out_neg_mV = ads1115_scaled_sample(3, pos_contactor_mul);
     model->pos_contactor_voltage_millis = raw_bat_pos_to_out_neg_millis < output_voltage_millis ? raw_bat_pos_to_out_neg_millis : output_voltage_millis;
-    model->pos_contactor_voltage_mV = raw_bat_plus_to_out_neg_mV - output_voltage_mV - 1900;
+    model->pos_contactor_voltage_mV = raw_bat_plus_to_out_neg_mV - output_voltage_mV;
     model->pos_contactor_voltage_range_mV = ads1115_scaled_sample_range(3, full_scale_mv)/2 + ads1115_scaled_sample_range(1, full_scale_mv)/2;
 
         
@@ -107,7 +112,7 @@ void read_inputs(bms_model_t *model) {
         // a new reading
 
         extern ina228_t ina228_dev;
-        if(!ina228_read_current(&ina228_dev)) {
+        if(!ina228_read_current_blocking(&ina228_dev)) {
             printf("INA228 current read failed\n");
         }
     }
@@ -128,13 +133,13 @@ void tick() {
 
     // Phase 1: Read sensors
 
-    // Read INA228 current occasionally
-    if((timestep() & 0x7) == 0) {
-        extern ina228_t ina228_dev;
-        if(!ina228_read_current(&ina228_dev)) {
-            printf("INA228 current read failed\n");
-        }
-    }
+    // // Read INA228 current occasionally
+    // if((timestep() & 0x7) == 0) {
+    //     extern ina228_t ina228_dev;
+    //     if(!ina228_read_current_blocking(&ina228_dev)) {
+    //         printf("INA228 current read failed\n");
+    //     }
+    // }
 
     read_inputs(&model);
     bmb3y_tick(&model);
@@ -157,6 +162,7 @@ void tick() {
     system_sm_tick(&model);
 //    model.contactor_req = CONTACTORS_REQUEST_CLOSE;
     contactor_sm_tick(&model);
+    offline_calibration_sm_tick(&model);
 
     inverter_tick(&model);
     internal_serial_tick();
@@ -173,7 +179,7 @@ void tick() {
                 printf("\n");
             }
         }
-        printf("Total: %lu mV\n\n", total);
+        printf("Total: %lu mV | Temps: %ddC - %ddC\n\n", total, model.temperature_min_dC, model.temperature_max_dC);
 
         //printf("Bal mask: %02X %02X\n", bitmap_set[14], bitmap_set[15]);
     }

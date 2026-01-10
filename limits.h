@@ -10,6 +10,10 @@
 #define CELL_PRESENCE_MASK {0, 0, 0, 0x7FFF}
 // Number of 1s in the above bitmask
 #define NUM_CELLS 15
+// Number of modules of voltages to read
+#define NUM_MODULE_VOLTAGES 1
+// How many modules of temps to read
+#define NUM_MODULE_TEMPS 1
 
 // Options: 
 // - we could load in the cellvoltages as they come in, and use the presence mask for decoding

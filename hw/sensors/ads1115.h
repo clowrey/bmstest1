@@ -41,6 +41,9 @@ typedef struct {
     uint8_t addr;
     int current_channel;
     bool busy;
+
+    int32_t cal_accumulator[4];
+    uint16_t cal_samples_left[4];
     
     // Async state
     enum {
@@ -61,11 +64,37 @@ void ads1115_start_sampling(ads1115_t *dev);
 void ads1115_irq_handler(ads1115_t *dev);
 int16_t ads1115_get_sample_range(int channel);
 millis_t ads1115_get_sample_millis(int channel);
+void ads1115_start_calibration(ads1115_t *dev, uint16_t num_samples);
+bool ads1115_calibration_finished(ads1115_t *dev);
+int32_t ads1115_get_calibration(ads1115_t *dev, int channel);
 
-static inline int32_t ads1115_scaled_sample(int channel, int32_t full_scale_mv) {
-    return (int32_t)(
-        (int64_t)samples[channel].value * full_scale_mv / (32768 * ADS1115_OVERSAMPLING)    
+static inline int64_t div_round_closest(const int64_t n, const int64_t d)
+{
+  return ((n < 0) == (d < 0)) ? ((n + d/2)/d) : ((n - d/2)/d);
+}
+
+static inline int32_t ads1115_scaled_sample(int channel, int32_t multiplier) {//full_scale_mv) {
+    // Add biases to stop the integer division from flooring the result
+    int32_t ret = (int32_t)div_round_closest(
+        (int64_t)samples[channel].value * div_round_closest(multiplier, ADS1115_OVERSAMPLING),
+        4096
     );
+
+    // int64_t numerator = ((int64_t)samples[channel].value * (multiplier/ADS1115_OVERSAMPLING + (ADS1115_OVERSAMPLING/2)));
+    // int32_t ret = (numerator + (4096/2)) / 4096;
+
+    // int32_t ret = (int32_t)(
+    //     (samples[channel].value * (multiplier/ADS1115_OVERSAMPLING)) / 4096 // / (32768 * ADS1115_OVERSAMPLING)
+    //     //(int64_t)samples[channel].value * full_scale_mv / (32768 * ADS1115_OVERSAMPLING)
+    // );
+    // if(channel==0) {
+    //     printf("ADS1115 scaled sample ch0: raw=%d mul=%d out=%d\n",
+    //         samples[0].value,
+    //         multiplier,
+    //         ret
+    //     );
+    // }
+    return ret;
 }
 static inline int32_t ads1115_scaled_sample_range(int channel, int32_t full_scale_mv) {
     return (int32_t)(

@@ -43,6 +43,7 @@ add_executable(bms
     bmb3y/crc.c
     battery/balancing.c
     battery/safety_checks.c
+    calibration/offline.c
     debug/counters.c
     debug/events.c
     inverter/byd_can.c

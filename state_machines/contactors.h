@@ -20,6 +20,11 @@ enum contactors_states {
     CONTACTORS_STATE_TESTING_NEG_OPEN = 7,
     CONTACTORS_STATE_TESTING_NEG_CLOSED = 8,
     CONTACTORS_STATE_TESTING_FAILED = 9,
+
+    CONTACTORS_STATE_CALIBRATING = 10,
+    CONTACTORS_STATE_CALIBRATING_CLOSE_NEG = 11,
+    CONTACTORS_STATE_CALIBRATING_PRECHARGE = 12,
+    CONTACTORS_STATE_CALIBRATING_CLOSED = 13,
 };
 
 typedef enum contactors_requests {
@@ -27,6 +32,7 @@ typedef enum contactors_requests {
     CONTACTORS_REQUEST_CLOSE = 1,
     CONTACTORS_REQUEST_OPEN = 2,
     CONTACTORS_REQUEST_FORCE_OPEN = 3,
+    CONTACTORS_REQUEST_CALIBRATE = 4,
 } contactors_requests_t;
 
 void contactor_sm_tick(bms_model_t *model);

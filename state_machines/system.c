@@ -4,6 +4,7 @@
 #include "../limits.h"
 #include "../model.h"
 
+
 bool successfully_initialized(bms_model_t *model) {
     // check we're getting readings from everything we need
 
@@ -34,6 +35,8 @@ bool successfully_initialized(bms_model_t *model) {
     return true;
 }
 
+#define VOLTAGE_CALIBRATION_SAMPLES 1024
+
 
 void system_sm_tick(bms_model_t *model) {
     system_sm_t *system_sm = &(model->system_sm);
@@ -42,16 +45,39 @@ void system_sm_tick(bms_model_t *model) {
             state_transition((sm_t*)system_sm, SYSTEM_STATE_INITIALIZING);
             break;
         case SYSTEM_STATE_INITIALIZING:
-            //extern ina228_t ina228_dev;
-            bool calibrated = true;//ina228_dev.null_counter == 64;
-
-            if(calibrated && successfully_initialized(model)) {
-                state_transition((sm_t*)system_sm, SYSTEM_STATE_INACTIVE);
+            if(successfully_initialized(model)) {
+                // wait a few seconds for supervisor
+                if(state_timeout((sm_t*)system_sm, 5000)) {
+                    // TODO - have a better check for calibration status?
+                    if(model->neg_contactor_offset_mV) {
+                        // already calibrated
+                        state_transition((sm_t*)system_sm, SYSTEM_STATE_INACTIVE);
+                    } else {
+                        // need to calibrate
+                        model->contactor_req = CONTACTORS_REQUEST_CALIBRATE;
+                        model->offline_calibration_req = OFFLINE_CALIBRATION_REQUEST_START;
+                        state_transition((sm_t*)system_sm, SYSTEM_STATE_CALIBRATING);
+                    }
+                }
             }
             // assert some events after a timeout?
             break;
+        case SYSTEM_STATE_CALIBRATING:
+            // TODO - use explicit set/clear flags rather than checking state?
+            if(model->offline_calibration_sm.state == OFFLINE_CALIBRATION_STATE_IDLE) {
+                // Calibration complete
+                model->contactor_req = CONTACTORS_REQUEST_OPEN;
+                state_transition((sm_t*)system_sm, SYSTEM_STATE_INACTIVE);
+            } else if(state_timeout((sm_t*)system_sm, 120000)) {
+                // Calibration timeout
+                printf("System calibration timeout!\n");
+                state_transition((sm_t*)system_sm, SYSTEM_STATE_FAULT);
+            }
+            break;
         case SYSTEM_STATE_INACTIVE:
-            if(model->system_req == SYSTEM_REQUEST_RUN) {
+            // Currently, the supervisor takes a few seconds to start up, so we
+            // need a 2s delay before trying to close contactors.
+            if(model->system_req == SYSTEM_REQUEST_RUN && state_timeout((sm_t*)system_sm, 2000)) {
                 // leave request asserted?
                 //model->system_req = SYSTEM_REQUEST_NULL;
                 state_transition((sm_t*)system_sm, SYSTEM_STATE_OPERATING);

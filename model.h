@@ -1,6 +1,7 @@
 #pragma once
 
 #include "hw/chip/time.h"
+#include "calibration/offline.h"
 #include "battery/balancing.h"
 #include "state_machines/charging.h"
 #include "state_machines/contactors.h"
@@ -48,6 +49,8 @@ typedef struct bms_model {
     
     balancing_sm_t balancing_sm;
 
+    offline_calibration_sm_t offline_calibration_sm;
+    offline_calibration_requests_t offline_calibration_req;
 
     // Battery
     int16_t module_temperatures_dC[8];
@@ -55,6 +58,7 @@ typedef struct bms_model {
     int16_t cell_voltage_min_mV;
     int16_t cell_voltage_max_mV;
     int16_t cell_voltage_mV[120];
+    int32_t cell_voltage_total_mV;
     millis_t cell_voltage_millis;
 
     // The calculated pack voltage limits
@@ -85,6 +89,17 @@ typedef struct bms_model {
     // current limits.
     int32_t excess_charge_buffer_dC; // in 0.1C units
     int32_t excess_discharge_buffer_dC; // in 0.1C units
+
+
+    // Calibration constants
+    int32_t battery_voltage_mul; // convert raw ADC to mV (/4096)
+    int32_t output_voltage_mul; // convert raw ADC to mV (/4096)
+    int32_t neg_contactor_mul;
+    int32_t neg_contactor_offset_mV;
+    int32_t pos_contactor_mul; // actually only the bat+ to out- part
+    int32_t current_offset;
+
+    bool balancing_enabled;
   
 } bms_model_t;
 

@@ -8,7 +8,17 @@
 
 static bool good_conditions_for_balancing(bms_model_t *model) {
     // Check if conditions are suitable for balancing
-    return true;
+
+    // check for target balance point (mV or SoC?)
+
+    // check for min cellvoltage above some threshold
+
+    // check for non-stale values
+
+    // check for low current variance?
+
+    return model->balancing_enabled;
+    //return true;
 }
 
 // Update the balance request mask based on the remaining balance times and
@@ -21,12 +31,13 @@ static void update_balance_requests(balancing_sm_t *balancing_sm, int16_t decrem
 
         if(balancing_sm->balance_time_remaining[cell] > 0 && (balancing_sm->even_cells == ((cell % 2) == 0))) {
             balancing_sm->balance_time_remaining[cell] -= decrement;
+            printf("Cell %d balance time remaining now: %d\n", cell, balancing_sm->balance_time_remaining[cell]);
             balancing_sm->balance_request_mask[mask_index] |= (1 << bit_index);
         } else {
             balancing_sm->balance_request_mask[mask_index] &= ~(1 << bit_index);
         }
     }
-    printf("Balance mask now: %08X %08X %08X %08X\n",
+    printf("Balance mask now: %08lX %08lX %08lX %08lX\n",
         balancing_sm->balance_request_mask[3],
         balancing_sm->balance_request_mask[2],
         balancing_sm->balance_request_mask[1],
@@ -69,6 +80,10 @@ static bool start_balancing(bms_model_t *model) {
         int16_t voltage = model->cell_voltage_mV[cell];
         // 3mV hysteresis, negatives will be ignored
         model->balancing_sm.balance_time_remaining[cell] = calculate_balance_time(voltage, min_cell_voltage);
+        if(model->balancing_sm.balance_time_remaining[cell] > 0) {
+            printf("Cell %d voltage %d mV, balancing for %d periods\n",
+                cell, voltage, model->balancing_sm.balance_time_remaining[cell]);
+        }
     }
 
     update_balance_requests(balancing_sm, 0);
@@ -83,13 +98,24 @@ static void decrement_balance_times_and_update(balancing_sm_t *balancing_sm) {
     update_balance_requests(balancing_sm, 1);
 }
 
-// Check if the balance mask is all zero, indicating balancing is finished.
+// Check if the there is any balancing still to be done.
 static bool finished_balancing(balancing_sm_t *balancing_sm) {
+    // Check if any cells still have balance time remaining
+    for(int cell=0; cell<120; cell++) {
+        if(balancing_sm->balance_time_remaining[cell] > 0) {
+            return false;
+        }
+    }
+
+    // We might be in the last period where we have already decremented the
+    // times, but the mask is still set, in which case we would not have
+    // finished yet.
     for(int i=0; i<4; i++) {
         if(balancing_sm->balance_request_mask[i] != 0) {
             return false;
         }
     }
+
     return true;
 }
 

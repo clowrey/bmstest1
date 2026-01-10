@@ -12,8 +12,8 @@
 #include "state_machines/contactors.h"
 #include "model.h"
 
-ina228_t ina228_dev;
-ads1115_t ads1115_dev;
+ina228_t ina228_dev = {0};
+ads1115_t ads1115_dev = {0};
 
 void init_hw() {
     init_watchdog();
@@ -64,7 +64,18 @@ void init_comms() {
 }
 
 void init_model() {
+    sm_init((sm_t*)&model.system_sm, "system");
     sm_init((sm_t*)&model.contactor_sm, "contactors");
+    sm_init((sm_t*)&model.charging_sm, "charging");
+    sm_init((sm_t*)&model.balancing_sm, "balancing");
+    sm_init((sm_t*)&model.offline_calibration_sm, "offline_calibration");
+
+    // load calibration data from NVM
+    if(nvm_load_calibration(&model)) {
+        printf("Calibration data loaded from NVM\n");
+    } else {
+        printf("No calibration data in NVM\n");
+    }
 }
 
 void init() {

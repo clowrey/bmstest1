@@ -12,9 +12,10 @@ typedef struct {
 enum system_states {
     SYSTEM_STATE_UNINITIALIZED = 0,
     SYSTEM_STATE_INITIALIZING = 1,
-    SYSTEM_STATE_INACTIVE = 2,
-    SYSTEM_STATE_OPERATING = 3,
-    SYSTEM_STATE_FAULT = 4,
+    SYSTEM_STATE_CALIBRATING = 2,
+    SYSTEM_STATE_INACTIVE = 3,
+    SYSTEM_STATE_OPERATING = 4,
+    SYSTEM_STATE_FAULT = 5,
 };
 
 typedef enum system_requests {
