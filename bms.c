@@ -1,4 +1,3 @@
-#include "debug/events.h"
 #include "hw/chip/pwm.h"
 #include "hw/chip/time.h"
 #include "hw/chip/watchdog.h"
@@ -11,6 +10,7 @@
 #include "state_machines/contactors.h"
 #include "battery/balancing.h"
 #include "inverter/inverter.h"
+#include "monitoring/events.h"
 #include "model.h"
 
 #include "bmb3y/bmb3y.h"
@@ -159,6 +159,7 @@ void tick() {
 
     // Phase 3: Outputs and communications
 
+    events_tick();
     system_sm_tick(&model);
 //    model.contactor_req = CONTACTORS_REQUEST_CLOSE;
     contactor_sm_tick(&model);

@@ -1,7 +1,7 @@
 #include "contactors.h"
 #include "../limits.h"
 #include "../model.h"
-#include "../debug/events.h"
+#include "../monitoring/events.h"
 #include "../hw/actuators/contactors.h"
 #include "../hw/chip/time.h"
 
@@ -38,6 +38,8 @@
 #define CONTACTORS_DELAYED_OPEN_MA 5000
 // How long we wait for the current to fall before potentially failing to open contactors
 #define CONTACTORS_OPEN_TIMEOUT_MS 2000
+// How long we wait when force-opening contactors
+#define CONTACTORS_FORCE_OPEN_TIMEOUT_MS 2000
 
 static inline int32_t abs_int32(int32_t v) {
     return (v < 0) ? -v : v;
@@ -78,7 +80,6 @@ bool check_precharge_successful(bms_model_t *model, bool log_errors) {
         millis_recent_enough(model->battery_voltage_millis, BATTERY_VOLTAGE_STALE_THRESHOLD_MS),
         log_errors,
         ERR_CONTACTOR_PRECHARGE_VOLTAGE_TOO_HIGH,
-        LEVEL_CRITICAL,
         0x1000000000000000
     )) {
         return false;
@@ -88,7 +89,6 @@ bool check_precharge_successful(bms_model_t *model, bool log_errors) {
         millis_recent_enough(model->output_voltage_millis, OUTPUT_VOLTAGE_STALE_THRESHOLD_MS),
         log_errors,
         ERR_CONTACTOR_PRECHARGE_VOLTAGE_TOO_HIGH,
-        LEVEL_CRITICAL,
         0x2000000000000000
     )) {
         return false;
@@ -97,8 +97,7 @@ bool check_precharge_successful(bms_model_t *model, bool log_errors) {
     if(!check_or_confirm(
         millis_recent_enough(model->neg_contactor_voltage_millis, CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS),
         log_errors,
-        ERR_CONTACTOR_PRECHARGE_NEG_OPEN,
-        LEVEL_CRITICAL,
+        ERR_CONTACTOR_NEG_UNEXPECTED_OPEN,
         0x3000000000000000
     )) {
         return false;
@@ -108,7 +107,6 @@ bool check_precharge_successful(bms_model_t *model, bool log_errors) {
         millis_recent_enough(model->current_millis, CURRENT_STALE_THRESHOLD_MS),
         log_errors,
         ERR_CONTACTOR_PRECHARGE_CURRENT_TOO_HIGH,
-        LEVEL_CRITICAL,
         0x4000000000000000
     )) {
         return false;
@@ -117,8 +115,7 @@ bool check_precharge_successful(bms_model_t *model, bool log_errors) {
     if(!check_or_confirm(
         abs_int32(model->neg_contactor_voltage_mV) <= CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV,
         log_errors,
-        ERR_CONTACTOR_PRECHARGE_NEG_OPEN,
-        LEVEL_CRITICAL,
+        ERR_CONTACTOR_NEG_UNEXPECTED_OPEN,
         model->neg_contactor_voltage_mV
     )) {
         return false;
@@ -129,7 +126,6 @@ bool check_precharge_successful(bms_model_t *model, bool log_errors) {
         abs_int32(model->current_mA) <= PRECHARGE_SUCCESS_MAX_MA,
         log_errors,
         ERR_CONTACTOR_PRECHARGE_CURRENT_TOO_HIGH,
-        LEVEL_CRITICAL,
         model->current_mA
     )) {
         return false;
@@ -140,7 +136,6 @@ bool check_precharge_successful(bms_model_t *model, bool log_errors) {
         abs_int32(model->battery_voltage_mV - model->output_voltage_mV) <= PRECHARGE_SUCCESS_MIN_MV,
         log_errors,
         ERR_CONTACTOR_PRECHARGE_VOLTAGE_TOO_HIGH,
-        LEVEL_CRITICAL,
         ((uint64_t)model->battery_voltage_mV << 32) | (uint32_t)model->output_voltage_mV
     );
 }
@@ -172,7 +167,6 @@ bool confirm_contactor_neg_seems_closed(bms_model_t *model) {
     if(!confirm(
         millis_recent_enough(model->neg_contactor_voltage_millis, CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS),
         ERR_CONTACTOR_NEG_STUCK_OPEN,
-        LEVEL_CRITICAL,
         0x1000000000000000
     )) {
         return false;
@@ -181,7 +175,6 @@ bool confirm_contactor_neg_seems_closed(bms_model_t *model) {
     return confirm(
         abs_int32(model->neg_contactor_voltage_mV) <= CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV,
         ERR_CONTACTOR_NEG_STUCK_OPEN,
-        LEVEL_CRITICAL,
         model->neg_contactor_voltage_mV
     );
 }
@@ -190,7 +183,6 @@ bool confirm_contactor_neg_seems_open(bms_model_t *model) {
     if(!confirm(
         millis_recent_enough(model->neg_contactor_voltage_millis, CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS),
         ERR_CONTACTOR_NEG_STUCK_CLOSED,
-        LEVEL_CRITICAL,
         0x1000000000000000
     )) {
         return false;
@@ -203,7 +195,6 @@ bool confirm_contactor_neg_seems_open(bms_model_t *model) {
     return confirm(
         voltage >= CONTACTORS_OPEN_VOLTAGE_THRESHOLD_MV,
         ERR_CONTACTOR_NEG_STUCK_CLOSED,
-        LEVEL_CRITICAL,
         voltage
     );
 
@@ -214,7 +205,6 @@ bool confirm_contactor_pos_seems_closed(bms_model_t *model) {
     if(!confirm(
         millis_recent_enough(model->pos_contactor_voltage_millis, CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS),
         ERR_CONTACTOR_POS_STUCK_OPEN,
-        LEVEL_CRITICAL,
         0x1000000000000000
     )) {
         return false;
@@ -224,7 +214,6 @@ bool confirm_contactor_pos_seems_closed(bms_model_t *model) {
     return confirm(
         voltage <= CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV,
         ERR_CONTACTOR_POS_STUCK_OPEN,
-        LEVEL_CRITICAL,
         voltage
     );
 }
@@ -233,7 +222,6 @@ bool confirm_contactor_pos_seems_open(bms_model_t *model) {
     if(!confirm(
         millis_recent_enough(model->pos_contactor_voltage_millis, CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS),
         ERR_CONTACTOR_POS_STUCK_CLOSED,
-        LEVEL_CRITICAL,
         0x1000000000000000
     )) {
         return false;
@@ -246,7 +234,6 @@ bool confirm_contactor_pos_seems_open(bms_model_t *model) {
     return confirm(
         voltage >= CONTACTORS_OPEN_VOLTAGE_THRESHOLD_MV,
         ERR_CONTACTOR_POS_STUCK_CLOSED,
-        LEVEL_CRITICAL,
         voltage
     );
 
@@ -258,14 +245,12 @@ bool confirm_contactors_staying_closed(bms_model_t *model) {
     if(confirm(
         millis_recent_enough(model->pos_contactor_voltage_millis, CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS),
         ERR_CONTACTOR_POS_UNEXPECTED_OPEN,
-        LEVEL_CRITICAL,
         0x1000000000000000
     )) {
         int32_t pos_voltage = abs_int32(model->pos_contactor_voltage_mV);
         ret = confirm(
             pos_voltage <= CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV,
             ERR_CONTACTOR_POS_UNEXPECTED_OPEN,
-            LEVEL_CRITICAL,
             pos_voltage
         ) && ret;
     } else {
@@ -275,14 +260,12 @@ bool confirm_contactors_staying_closed(bms_model_t *model) {
     if(confirm(
         millis_recent_enough(model->neg_contactor_voltage_millis, CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS),
         ERR_CONTACTOR_NEG_UNEXPECTED_OPEN,
-        LEVEL_CRITICAL,
         0x2000000000000000
     )) {
         int32_t neg_voltage = abs_int32(model->neg_contactor_voltage_mV);
         ret = confirm(
             neg_voltage <= CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV,
             ERR_CONTACTOR_NEG_UNEXPECTED_OPEN,
-            LEVEL_CRITICAL,
             neg_voltage
         ) && ret;
     } else {
@@ -348,7 +331,12 @@ void contactor_sm_tick(bms_model_t *model) {
                 should_gracefully_open && (
                     check_current_is_below(model, CONTACTORS_INSTANT_OPEN_MA)
                     || (check_current_is_below(model, CONTACTORS_DELAYED_OPEN_MA) && state_timeout((sm_t*)contactor_sm, CONTACTORS_OPEN_TIMEOUT_MS)))
-            ) || model->contactor_req == CONTACTORS_REQUEST_FORCE_OPEN) {
+            ) || (
+                model->contactor_req == CONTACTORS_REQUEST_FORCE_OPEN && (
+                    check_current_is_below(model, CONTACTORS_INSTANT_OPEN_MA)
+                    || state_timeout((sm_t*)contactor_sm, CONTACTORS_FORCE_OPEN_TIMEOUT_MS)
+                )
+            )) {
                  model->contactor_req = CONTACTORS_REQUEST_NULL;
                  state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
             } else if(model->contactor_req == CONTACTORS_REQUEST_CLOSE) {

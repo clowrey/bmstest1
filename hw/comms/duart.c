@@ -1,5 +1,5 @@
 #include "duart.h"
-#include "../debug/counters.h"
+#include "../monitoring/counters.h"
 
 #include "hardware/gpio.h"
 #include "pico/time.h"

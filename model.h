@@ -100,6 +100,7 @@ typedef struct bms_model {
     int32_t current_offset;
 
     bool balancing_enabled;
+    int16_t balancing_voltage_threshold_mV; // Only balance cells above this voltage
   
 } bms_model_t;
 

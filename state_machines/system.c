@@ -1,6 +1,7 @@
 #include "system.h"
 
 #include "../hw/sensors/ina228.h"
+#include "../monitoring/events.h"
 #include "../limits.h"
 #include "../model.h"
 
@@ -31,6 +32,8 @@ bool successfully_initialized(bms_model_t *model) {
     if(!millis_recent_enough(model->cell_voltage_millis, CELL_VOLTAGE_STALE_THRESHOLD_MS)) {
         return false;
     }
+
+    // temp too?
 
     return true;
 }
@@ -87,8 +90,20 @@ void system_sm_tick(bms_model_t *model) {
             // Keep trying to close? (TODO: check failure count?)
             model->contactor_req = CONTACTORS_REQUEST_CLOSE;
 
+            if(get_highest_event_level() == LEVEL_FATAL) {
+                // go to fault state
+                model->contactor_req = CONTACTORS_REQUEST_FORCE_OPEN;
+                state_transition((sm_t*)system_sm, SYSTEM_STATE_FAULT);
+            }
+            if(model->system_req == SYSTEM_REQUEST_STOP) {
+                model->system_req = SYSTEM_REQUEST_NULL;
+                // do we need a wait-for-open state?
+                model->contactor_req = CONTACTORS_REQUEST_OPEN;
+                state_transition((sm_t*)system_sm, SYSTEM_STATE_INACTIVE);
+            }
             break;
         case SYSTEM_STATE_FAULT:
+            model->contactor_req = CONTACTORS_REQUEST_FORCE_OPEN;
             break;
     }
 }

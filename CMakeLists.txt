@@ -44,8 +44,8 @@ add_executable(bms
     battery/balancing.c
     battery/safety_checks.c
     calibration/offline.c
-    debug/counters.c
-    debug/events.c
+    monitoring/counters.c
+    monitoring/events.c
     inverter/byd_can.c
     isospi/isospi_master.c
     isospi/isosnoop.c

@@ -67,7 +67,11 @@
 // Discharge current-per-temp derating rate
 #define DISCHARGE_TEMPERATURE_DERATE_dA_PER_dC 2 // in 0.1A per 0.1C units
 
+#define TEMPERATURE_HARD_MAX_dC 550
+#define TEMPERATURE_HARD_MIN_dC -200
 
+#define TEMPERATURE_SOFT_MAX_dC 450
+#define TEMPERATURE_SOFT_MIN_dC -100
 
 
 
@@ -90,3 +94,5 @@
 
 // Current samples every ~530ms?
 #define CURRENT_STALE_THRESHOLD_MS 1000
+
+#define TEMPERATURE_STALE_THRESHOLD_MS 10000
