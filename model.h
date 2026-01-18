@@ -3,7 +3,6 @@
 #include "hw/chip/time.h"
 #include "calibration/offline.h"
 #include "battery/balancing.h"
-#include "state_machines/charging.h"
 #include "state_machines/contactors.h"
 #include "state_machines/system.h"
 
@@ -37,8 +36,10 @@ typedef struct bms_model {
     int32_t neg_contactor_voltage_range_mV;
 
     uint16_t soc; // state of charge in 0.01% units (0=0%, 10000=100.00%)
+    millis_t soc_millis;
     uint16_t soh; // state of health in 0.01% units (0=0%, 10000=100.00%)
 
+    uint16_t soc_ekf;
     uint16_t soc_voltage_based;
     uint16_t soc_basic_count;
     uint16_t soc_fancy_count;
@@ -49,8 +50,6 @@ typedef struct bms_model {
     contactors_sm_t contactor_sm;
     contactors_requests_t contactor_req;
 
-    charging_sm_t charging_sm;
-    
     balancing_sm_t balancing_sm;
 
     offline_calibration_sm_t offline_calibration_sm;
@@ -61,9 +60,10 @@ typedef struct bms_model {
     millis_t module_temperatures_millis;
     int16_t cell_voltage_min_mV;
     int16_t cell_voltage_max_mV;
-    int16_t cell_voltage_mV[120];
     int32_t cell_voltage_total_mV;
-    millis_t cell_voltage_millis;
+    millis_t cell_voltage_millis; // aggregated cell voltages
+    int16_t cell_voltages_mV[120];
+    millis_t cell_voltages_millis; // individial cell voltages
     bool cell_voltage_slow_mode; // only request BMB data infrequently
 
     // The calculated pack voltage limits
@@ -95,6 +95,14 @@ typedef struct bms_model {
     int32_t excess_charge_buffer_dC; // in 0.1C units
     int32_t excess_discharge_buffer_dC; // in 0.1C units
 
+    int32_t supply_voltage_3V3_mV;
+    millis_t supply_voltage_3V3_millis;
+    int32_t supply_voltage_5V_mV;
+    millis_t supply_voltage_5V_millis;
+    int32_t supply_voltage_12V_mV;
+    millis_t supply_voltage_12V_millis;
+    int32_t supply_voltage_contactor_mV;
+    millis_t supply_voltage_contactor_millis;
 
     // Calibration constants
     int32_t battery_voltage_mul; // convert raw ADC to mV (/4096)

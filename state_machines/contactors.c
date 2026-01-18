@@ -286,6 +286,36 @@ bool confirm_contactors_staying_closed(bms_model_t *model) {
 
 void contactor_sm_tick(bms_model_t *model) {
     contactors_sm_t *contactor_sm = &(model->contactor_sm);
+
+    // By default, disallow current flow
+    contactor_sm->enable_current = false;
+
+    // React to open requests immediately
+    if(model->contactor_req == CONTACTORS_REQUEST_OPEN || model->contactor_req == CONTACTORS_REQUEST_FORCE_OPEN) {
+        switch(contactor_sm->state) {
+            case CONTACTORS_STATE_PRECHARGING_NEG:
+            case CONTACTORS_STATE_PRECHARGING:
+            case CONTACTORS_STATE_TESTING_NEG_OPEN:
+            case CONTACTORS_STATE_TESTING_NEG_CLOSED:
+            case CONTACTORS_STATE_TESTING_POS_OPEN:
+            case CONTACTORS_STATE_TESTING_POS_CLOSED:
+            case CONTACTORS_STATE_CALIBRATING:
+            case CONTACTORS_STATE_CALIBRATING_CLOSE_NEG:
+            case CONTACTORS_STATE_CALIBRATING_PRECHARGE:
+            case CONTACTORS_STATE_CALIBRATING_CLOSED:
+                // Open contactors immediately
+                model->contactor_req = CONTACTORS_REQUEST_NULL;
+                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
+                break;
+            case CONTACTORS_STATE_OPEN:
+            case CONTACTORS_STATE_CLOSED:
+            case CONTACTORS_STATE_PRECHARGE_FAILED:
+            case CONTACTORS_STATE_TESTING_FAILED:
+                // let normal processing handle it
+                break;
+        }
+    }
+
     switch(contactor_sm->state) {
         case CONTACTORS_STATE_OPEN:
             contactors_set_pos_pre_neg(false, false, false);
@@ -313,9 +343,14 @@ void contactor_sm_tick(bms_model_t *model) {
             break;
         case CONTACTORS_STATE_PRECHARGING:
             // Now close precharge contactor (actually just the Bat+ one)
+            contactor_sm->enable_current = true;
             contactors_set_pos_pre_neg(false, true, true);
 
-            if(state_timeout((sm_t*)contactor_sm, 1000) && check_precharge_successful(model, false)) {
+            if(model->contactor_req == CONTACTORS_REQUEST_OPEN || model->contactor_req == CONTACTORS_REQUEST_FORCE_OPEN) {
+                // Abort precharge
+                model->contactor_req = CONTACTORS_REQUEST_NULL;
+                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
+            } else if(state_timeout((sm_t*)contactor_sm, 1000) && check_precharge_successful(model, false)) {
                 // successful precharge
                 state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_CLOSED);
             } else if(state_timeout((sm_t*)contactor_sm, 10000)) {
@@ -327,15 +362,18 @@ void contactor_sm_tick(bms_model_t *model) {
         case CONTACTORS_STATE_CLOSED:
             contactors_set_pos_pre_neg(true, false, true);
 
-            bool should_gracefully_open = (
+            bool try_to_open = (
                 // Requesting to open
-                model->contactor_req == CONTACTORS_REQUEST_OPEN ||
+                model->contactor_req == CONTACTORS_REQUEST_OPEN || 
+                model->contactor_req == CONTACTORS_REQUEST_FORCE_OPEN ||
                 // or settled but contactors seem to have opened unexpectedly
                 (state_timeout((sm_t*)contactor_sm, 2000) && !confirm_contactors_staying_closed(model))
             );
 
+            contactor_sm->enable_current = !try_to_open;
+
             if((
-                should_gracefully_open && (
+                try_to_open && (
                     check_current_is_below(model, CONTACTORS_INSTANT_OPEN_MA)
                     || (check_current_is_below(model, CONTACTORS_DELAYED_OPEN_MA) && state_timeout((sm_t*)contactor_sm, CONTACTORS_OPEN_TIMEOUT_MS)))
             ) || (
@@ -454,17 +492,12 @@ void contactor_sm_tick(bms_model_t *model) {
         case CONTACTORS_STATE_CALIBRATING_CLOSED:
             contactors_set_pos_pre_neg(true, false, true);
 
-            if(model->contactor_req == CONTACTORS_REQUEST_OPEN) {
-                model->contactor_req = CONTACTORS_REQUEST_NULL;
-                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
-            } else if(!check_current_is_below(model, 200)) {
+            if(!check_current_is_below(model, 200)) {
                 // Current too high (output is meant to be open circuit!)
                 // TODO - Error properly?
                 state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
             }
-
             break;
-
             
         default:
             // panic instead?

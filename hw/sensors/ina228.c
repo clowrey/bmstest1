@@ -260,7 +260,7 @@ static int32_t div_round_closest(const int32_t n, const int32_t d)
 //#define SAMPLING_PERIOD_SMOOTHING 2048
 uint32_t last_sample_us = 0;
 //uint32_t average_sampling_period_us = 530000; //530944; // Initial estimate based on INA228 datasheet
-float average_sampling_period_us = 530944.0f; // Initial estimate based on INA228 datasheet
+float average_sampling_period_us = 530307.0f; // Initial estimate based on INA228 datasheet
 
 // Read current from the INA228 (blocking)
 bool ina228_read_current_blocking(ina228_t *dev) {

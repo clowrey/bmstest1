@@ -2,13 +2,19 @@
 #include "hw/chip/time.h"
 #include "hw/chip/watchdog.h"
 #include "hw/comms/duart.h"
+#include "hw/comms/hmi_serial.h"
+#include "hw/comms/internal_serial.h"
 #include "hw/sensors/ina228.h"
 #include "hw/sensors/internal_adc.h"
 #include "hw/sensors/ads1115.h"
+#include "hw/checks.h"
 #include "hw/pins.h"
+#include "estimators/ekf.h"
+#include "estimators/estimators.h"
 #include "calibration/offline.h"
 #include "state_machines/contactors.h"
 #include "battery/balancing.h"
+#include "battery/safety_checks.h"
 #include "inverter/inverter.h"
 #include "monitoring/events.h"
 #include "limits.h"
@@ -26,7 +32,6 @@
 
 #define CRC16_INIT                  ((uint16_t)-1l)
 void memcpy_with_crc16(uint8_t *dest, const uint8_t *src, size_t len, uint16_t *crc16);
-uint32_t kalman_update(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV);
 
 extern uint16_t adc_samples_raw[8];
 extern uint32_t adc_samples_smooth_accum[8];
@@ -117,6 +122,17 @@ void read_inputs(bms_model_t *model) {
             printf("INA228 current read failed\n");
         }
     }
+
+    /* Read supply voltages */
+
+    model->supply_voltage_3V3_mV = internal_adc_read_3v3_mv();
+    model->supply_voltage_3V3_millis = internal_adc_read_3v3_millis();
+    model->supply_voltage_5V_mV = internal_adc_read_5v_mv();
+    model->supply_voltage_5V_millis = internal_adc_read_5v_millis();
+    model->supply_voltage_12V_mV = internal_adc_read_12v_mv();
+    model->supply_voltage_12V_millis = internal_adc_read_12v_millis();
+    model->supply_voltage_contactor_mV = internal_adc_read_contactor_mv();
+    model->supply_voltage_contactor_millis = internal_adc_read_contactor_millis();
 }
 
 void tick() {
@@ -134,28 +150,46 @@ void tick() {
 
     // Phase 1: Read sensors
 
-    // // Read INA228 current occasionally
-    // if((timestep() & 0x7) == 0) {
-    //     extern ina228_t ina228_dev;
-    //     if(!ina228_read_current_blocking(&ina228_dev)) {
-    //         printf("INA228 current read failed\n");
-    //     }
-    // }
-
     read_inputs(&model);
     model.cell_voltage_slow_mode = true;
     bmb3y_tick(&model);
 
+    // For debugging, prepare for restart (zero current) if 'R' received on USB stdio
+    if(stdio_getchar_timeout_us(0) == 'R') {
+        printf("Preparing to restart due to 'R' on USB stdio\n");
+        log_bms_event(ERR_RESTARTING, 1);
+    }
+
     // Phase 2: Update model
 
     static int32_t last_charge_raw = 0;
-    model.soc = kalman_update(
-        ((model.charge_raw - last_charge_raw) * 132736) / 1000000,
+    uint32_t soc = kalman_update(
+        raw_charge_to_mC(model.charge_raw - last_charge_raw),
         model.current_mA,
         //model.battery_voltage_mV
         model.cell_voltage_total_mV / NUM_CELLS
     );
+    if(soc != 0xFFFFFFFF) {
+        model.soc = (uint16_t)soc;
+        model.soc_millis = millis();
+    }
     last_charge_raw = model.charge_raw;
+
+    static int32_t last_charge_raw2 = 0;
+    static millis_t last_ekf_update_millis = 0;
+    millis_t now = millis();
+    if(now - last_ekf_update_millis >= 1000) {
+        uint32_t soc2 = ekf_tick(
+            raw_charge_to_mC(model.charge_raw - last_charge_raw2),
+            model.current_mA,
+            model.cell_voltage_total_mV / NUM_CELLS
+        );
+        if(soc2 != 0xFFFFFFFF) {
+            model.soc_ekf = (uint16_t)soc2;
+        }
+        last_charge_raw2 = model.charge_raw;
+        last_ekf_update_millis = now;
+    }
 
     model.soc_voltage_based = voltage_based_soc_estimate(&model);
     model.soc_basic_count = basic_count_soc_estimate(&model);
@@ -164,12 +198,12 @@ void tick() {
 
     model_tick(&model);
     confirm_battery_safety(&model);
+    confirm_hardware_integrity(&model);
 
     // Phase 3: Outputs and communications
 
     events_tick();
     system_sm_tick(&model);
-//    model.contactor_req = CONTACTORS_REQUEST_CLOSE;
     contactor_sm_tick(&model);
     offline_calibration_sm_tick(&model);
 
@@ -182,8 +216,8 @@ void tick() {
         //isosnoop_print_buffer();
         uint32_t total = 0;
         for(int i=0; i<15; i++) {
-            printf("[c%3d]: %4d mV | ", i, model.cell_voltage_mV[i]);
-            total += model.cell_voltage_mV[i];
+            printf("[c%3d]: %4d mV | ", i, model.cell_voltages_mV[i]);
+            total += model.cell_voltages_mV[i];
             if((i % 5) == 4) {
                 printf("\n");
             }
@@ -200,10 +234,10 @@ void tick() {
 
         printf("Temp: %3ld dC | 3V3: %4ld mV | 5V: %4ld mV | 12V: %5ld mV | CtrV: %5ld mV\n",
             get_temperature_c_times10(),
-            internal_adc_read_3v3_mv(),
-            internal_adc_read_5v_mv(),
-            internal_adc_read_12v_mv(),
-            internal_adc_read_contactor_mv()
+            model.supply_voltage_3V3_mV,
+            model.supply_voltage_5V_mV,
+            model.supply_voltage_12V_mV,
+            model.supply_voltage_contactor_mV
         );
 
         printf("Batt: %6ldmV (%3ldmV) | Out: %6ldmV (%3ldmV) | NegCtr: %6ldmV (%3ldmV) | PosCtr: %6ldmV (%3ldmV)\n",
@@ -216,14 +250,15 @@ void tick() {
             model.pos_contactor_voltage_mV,
             model.pos_contactor_voltage_range_mV
         );
-        int64_t charge_mC = (model.charge_raw * 132736) / 1000000;
-        printf("Current: %6ld mA | Charge: %lld mC | SoC: %2.2f %% | SoC(VB): %2.2f %% | SoC(BC): %2.2f %% | SoC(FC): %2.2f %%\n\n",
+        int64_t charge_mC = raw_charge_to_mC(model.charge_raw);
+        printf("Current: %6ld mA | Charge: %lld mC | SoC: %2.2f %% | SoC(VB): %2.2f %% | SoC(BC): %2.2f %% | SoC(FC): %2.2f %% | SoC(EKF): %2.2f %%\n\n",
             model.current_mA,
             charge_mC,
             model.soc / 100.0f,
             model.soc_voltage_based / 100.0f,
             model.soc_basic_count / 100.0f,
-            model.soc_fancy_count / 100.0f
+            model.soc_fancy_count / 100.0f,
+            model.soc_ekf / 100.0f
         );
     }
 }
@@ -241,24 +276,6 @@ void synchronize_time() {
     }
     update_millis();
     update_timestep();
-}
-
-// TODO - where to put this?
-bool battery_ready(bms_model_t *model) {
-    // Check if we have recent voltage and current readings
-    // if(!millis_recent_enough(model->battery_voltage_millis, BATTERY_VOLTAGE_STALE_THRESHOLD_MS)) {
-    //     return false;
-    // }
-    // if(!millis_recent_enough(model->current_millis, 5000)) {
-    //     return false;
-    // }
-    // if(!millis_recent_enough(model->temperature_millis, 5000)) {
-    //     return false;
-    // }
-
-    // TODO - other checks?
-
-    return true;
 }
 
 int main() {

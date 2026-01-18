@@ -1,5 +1,4 @@
-#ifndef HW_INA228_H
-#define HW_INA228_H
+#pragma once
 
 #include "../chip/time.h"
 
@@ -63,4 +62,8 @@ millis_t ina228_get_current_millis();
 int64_t ina228_get_charge_raw();
 millis_t ina228_get_charge_millis();
 
-#endif // HW_INA228_H
+static inline int64_t raw_charge_to_mC(int64_t charge_raw) {
+    // Each LSB of charge_raw represents 0.132736 mC
+    // (0.25mA * 530.944ms)
+    return (charge_raw * 132736) / 1000000;
+}

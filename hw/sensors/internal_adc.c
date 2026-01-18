@@ -108,6 +108,10 @@ int32_t internal_adc_read(uint8_t channel) {
     return samples[channel].value;
 }
 
+// TODO - figure out why the ADCs are all off a bit
+
+static const float fudge_factor = 0.935465f;
+
 int32_t internal_adc_read_3v3_mv() {
     return samples[INTERNAL_ADC_3V3_INDEX].value / (int32_t)(
         1.0 / ((1.0/256.0)*(3300.0/4096.0)*(1/0.5))
@@ -116,18 +120,35 @@ int32_t internal_adc_read_3v3_mv() {
 
 int32_t internal_adc_read_5v_mv() {
     return samples[INTERNAL_ADC_5V_INDEX].value / (int32_t)(
-        1.0 / ((1.0/256.0)*(3300.0/4096.0)*(1.0/0.294118))
+        1.0 / ((1.0/256.0)*(3300.0/4096.0)*(1.0/0.294118)*fudge_factor)
     );
 }
 
 int32_t internal_adc_read_12v_mv() {
     return samples[INTERNAL_ADC_12V_INDEX].value / (int32_t)(
-        1.0 / ((1.0/256.0)*(3300.0/4096.0)*(1.0/0.083326))
+        1.0 / ((1.0/256.0)*(3300.0/4096.0)*(1.0/0.083326)*fudge_factor)
     );
 }
 
 int32_t internal_adc_read_contactor_mv() {
     return samples[INTERNAL_ADC_CONTACTOR_INDEX].value / (int32_t)(
-        1.0 / ((1.0/256.0)*(3300.0/4096.0)*(1.0/0.083326))
+        1.0 / ((1.0/256.0)*(3300.0/4096.0)*(1.0/0.083326)*fudge_factor)
     );
+}
+
+
+millis_t internal_adc_read_3v3_millis() {
+    return samples[INTERNAL_ADC_3V3_INDEX].timestamp;
+}
+
+millis_t internal_adc_read_5v_millis() {
+    return samples[INTERNAL_ADC_5V_INDEX].timestamp;
+}
+
+millis_t internal_adc_read_12v_millis() {
+    return samples[INTERNAL_ADC_12V_INDEX].timestamp;
+}
+
+millis_t internal_adc_read_contactor_millis() {
+    return samples[INTERNAL_ADC_CONTACTOR_INDEX].timestamp;
 }

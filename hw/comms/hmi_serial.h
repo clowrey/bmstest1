@@ -36,6 +36,9 @@
 #define HMI_REG_TEMPERATURE_MAX        11 // int16 (0.1C)
 #define HMI_REG_CELL_VOLTAGE_MIN       12 // int16 (mV)
 #define HMI_REG_CELL_VOLTAGE_MAX       13 // int16 (mV)
+#define HMI_REG_SYSTEM_REQUEST         14 // uint8
+#define HMI_REG_SYSTEM_STATE           15 // uint8
+#define HMI_REG_CONTACTORS_STATE       16 // uint8
 #define HMI_REG_CELL_VOLTAGES_START 0x100
 #define HMI_REG_CELL_VOLTAGES_END   0x1FF
 
@@ -129,3 +132,7 @@ request from the HMI. The format is:
 ...
 
 */
+
+typedef struct bms_model bms_model_t;
+
+void hmi_serial_tick(bms_model_t *model);

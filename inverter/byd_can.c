@@ -6,8 +6,6 @@
 
 #include <pico/stdlib.h>
 
-extern bool battery_ready(bms_model_t *model);
-
 static const int battery_capacity_Wh = 60000;
 static const int FW_MAJOR_VERSION = 0x03;
 static const int FW_MINOR_VERSION = 0x29;
@@ -214,6 +212,11 @@ static int send_110(bms_model_t *model) {
 }
 
 static int send_150(bms_model_t *model) {
+    if(model->soc_millis==0) {
+        // no valid data yet, don't send anything
+        return -1;
+    }
+
     struct can2040_msg msg;
     msg.id = 0x150;
     msg.dlc = 8;
@@ -223,8 +226,9 @@ static int send_150(bms_model_t *model) {
     msg.data[1] = model->soc & 0xFF;
     // TODO: workaround for Deye?
     //const uint16_t soh = 10000; // 100.00%
-    msg.data[2] = (model->soh >> 8) & 0xFF;
-    msg.data[3] = model->soh & 0xFF;
+    const uint16_t soh = 9900; // 99.00%
+    msg.data[2] = (soh >> 8) & 0xFF;
+    msg.data[3] = soh & 0xFF;
     const uint16_t remaining_capacity_Ah = 120; // 12.0Ah
     msg.data[4] = (remaining_capacity_Ah >> 8) & 0xFF;
     msg.data[5] = remaining_capacity_Ah & 0xFF;
@@ -235,10 +239,16 @@ static int send_150(bms_model_t *model) {
 }
 
 static int send_1d0(bms_model_t *model) {
+    if(model->battery_voltage_millis==0 || model->current_millis==0 || model->temperature_millis==0) {
+        // no valid data yet, don't send anything
+        return -1;
+    }
+
     struct can2040_msg msg;
     msg.id = 0x1D0;
     msg.dlc = 8;
 
+    // TODO: battery voltage or cell voltage total?
     const uint16_t pack_voltage_dV = model->battery_voltage_mV / 100; // in 0.1V units
     msg.data[0] = (pack_voltage_dV >> 8) & 0xFF;
     msg.data[1] = pack_voltage_dV & 0xFF;
@@ -255,7 +265,12 @@ static int send_1d0(bms_model_t *model) {
 }
 
 static int send_210(bms_model_t *model) {
-    // TODO - check values are recent
+    if(model->temperature_millis==0) {
+        // no valid temperature data, don't send anything
+        return -1;
+    }
+
+    // TODO: Do we need to check staleness? the events system should already deal with that
 
     struct can2040_msg msg;
     msg.id = 0x210;
@@ -297,16 +312,14 @@ static uint8_t transmit_cycle = 0;
 void inverter_tick(bms_model_t *model) {
     // This should get called every 100ms
 
-    inverter_present = true; // FIXME: testing
-
     if(!inverter_present) {
         // We haven't received any CAN messages from the inverter yet
         return;
     }
 
     if(!inverter_initialized) {
-        if(!battery_ready(model)) {
-            // Battery not ready yet
+        if(!model->contactor_sm.enable_current) {
+            // Don't initialize until first contactor close
             return;
         }
         

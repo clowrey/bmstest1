@@ -72,9 +72,7 @@ void confirm_battery_safety(bms_model_t *model) {
 
     if(check_or_confirm(
         millis_recent_enough(model->temperature_millis, 
-            model->cell_voltage_slow_mode ?
-                CELL_TEMPERATURE_STALE_THRESHOLD_SLOW_MS
-                : CELL_TEMPERATURE_STALE_THRESHOLD_MS
+            TEMPERATURE_STALE_THRESHOLD_MS(model)
         ),
         // Don't raise faults if we're still initializing
         !not_fully_initialized,

@@ -1,8 +1,8 @@
-#include <stdint.h>
+#include "estimators.h"
 #include "../model.h"
 #include "../limits.h"
 
-float nmc_ocv_to_soc(float ocv);
+#include <stdint.h>
 
 static float internal_resistance = 0.02f; // ohms
 

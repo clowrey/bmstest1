@@ -15,8 +15,9 @@ const bms_event_level_t EVENT_TYPE_LEVELS[] = {
 #undef X
 };
 
+// Leeway times in deciseconds (tenths of a second)
 const uint16_t EVENT_TYPE_LEEWAY[] = {
-#define X(_1, _2, leeway) leeway,
+#define X(_1, _2, leeway) leeway/100,
     EVENT_TYPES(X)
 #undef X
 };
@@ -28,7 +29,6 @@ const char* EVENT_LEVELS[] = {
     "CRITICAL",
     "FATAL"
 };
-
 
 bms_event_slot_t bms_event_slots[ERR_HIGHEST] = {0};
 uint16_t bms_event_log_next_index = 0;
@@ -96,8 +96,11 @@ void print_bms_events() {
 
 millis_t last_tick_at;
 void events_tick() {
-    uint16_t elapsed = millis() - last_tick_at;
-    last_tick_at = millis();
+    millis_t now = millis();
+    // Get elapsed time in deciseconds
+    uint16_t elapsed_ds = (now - last_tick_at)/100;
+    // Update last tick time by the truncated elapsed time (to avoid drift)
+    last_tick_at += elapsed_ds * 100;
 
     bool escalated = false;
     for(int i = 0; i < ERR_HIGHEST; i++) {
@@ -105,18 +108,18 @@ void events_tick() {
         uint16_t max_accumulator = EVENT_TYPE_LEEWAY[i];
         if(slot->level == LEVEL_CRITICAL) {
             // event currently critical, increment the accumulator
-            if(slot->accumulator + elapsed >= max_accumulator) {
+            if(slot->accumulator + elapsed_ds >= max_accumulator) {
                 // we've hit the leeway limit, escalate
                 slot->accumulator = max_accumulator;
                 slot->level = LEVEL_FATAL;
                 escalated = true;
             } else {
                 // just increment
-                slot->accumulator += elapsed;
+                slot->accumulator += elapsed_ds;
             }
         } else {
             // event noncritical, or already fatal, decrement accumulator
-            slot->accumulator = ssub_u16(slot->accumulator, elapsed);
+            slot->accumulator = ssub_u16(slot->accumulator, elapsed_ds);
         }
     }
 

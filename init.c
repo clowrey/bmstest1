@@ -66,7 +66,6 @@ void init_comms() {
 void init_model() {
     sm_init((sm_t*)&model.system_sm, "system");
     sm_init((sm_t*)&model.contactor_sm, "contactors");
-    sm_init((sm_t*)&model.charging_sm, "charging");
     sm_init((sm_t*)&model.balancing_sm, "balancing");
     sm_init((sm_t*)&model.offline_calibration_sm, "offline_calibration");
 

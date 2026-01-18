@@ -1,4 +1,4 @@
-#include <stdint.h>
+#include "../chip/time.h"
 
 #define INTERNAL_ADC_3V3_INDEX 0
 #define INTERNAL_ADC_5V_INDEX 1
@@ -15,3 +15,8 @@ int32_t internal_adc_read_3v3_mv();
 int32_t internal_adc_read_5v_mv();
 int32_t internal_adc_read_12v_mv();
 int32_t internal_adc_read_contactor_mv();
+
+millis_t internal_adc_read_3v3_millis();
+millis_t internal_adc_read_5v_millis();
+millis_t internal_adc_read_12v_millis();
+millis_t internal_adc_read_contactor_millis();

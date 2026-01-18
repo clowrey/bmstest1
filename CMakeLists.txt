@@ -38,6 +38,7 @@ add_executable(bms
     hw/chip/pwm.c
     hw/chip/time.c
     hw/chip/watchdog.c
+    hw/checks.c
     bmb3y/bmb3y.c
     bmb3y/crc.c
     battery/balancing.c
@@ -45,6 +46,7 @@ add_executable(bms
     battery/safety_checks.c
     calibration/offline.c
     estimators/basic_count.c
+    estimators/ekf.c
     estimators/fancy_count.c
     estimators/kalman.c
     estimators/voltage_based.c

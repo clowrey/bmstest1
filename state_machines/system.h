@@ -22,6 +22,7 @@ typedef enum system_requests {
     SYSTEM_REQUEST_NULL = 0,
     SYSTEM_REQUEST_RUN = 1,
     SYSTEM_REQUEST_STOP = 2,
+    SYSTEM_REQUEST_CALIBRATE = 3,
 } system_requests_t;
 
 void system_sm_tick(bms_model_t *model);

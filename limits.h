@@ -41,7 +41,7 @@
     #define CELL_VOLTAGE_HARD_MIN_mV 2800
     #define CELL_VOLTAGE_HARD_MAX_mV 4250
     // Soft voltage limits, beyond which the battery will only allow a low-current
-    // restoration charge/discharge
+    // restoration charge/discharge.
     #define CELL_VOLTAGE_SOFT_MIN_mV 3200
     #define CELL_VOLTAGE_SOFT_MAX_mV 4100
 
@@ -140,14 +140,30 @@
 #define OUTPUT_VOLTAGE_STALE_THRESHOLD_MS 300
 #define CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS 300
 
-// We only sample every 1.28s, and could have isospi/CRC issues, so be generous
-#define CELL_VOLTAGE_STALE_THRESHOLD_MS 5000
-
-// In slow mode we only sample every 81.92s, allow two bad reads
-#define CELL_VOLTAGE_STALE_THRESHOLD_SLOW_MS 270000
-
-// Current samples every ~530ms?
+// The current samples every ~530ms, so this should be sufficient
 #define CURRENT_STALE_THRESHOLD_MS 1000
 
+#define TEMPERATURE_STALE_THRESHOLD_MS(model) (  \
+    model->cell_voltage_slow_mode ?              \
+        CELL_TEMPERATURE_STALE_THRESHOLD_SLOW_MS  \
+        : CELL_TEMPERATURE_STALE_THRESHOLD_MS )
+
+// We only sample every 1.28s, and could have isospi/CRC issues, so be generous
+#define CELL_VOLTAGE_STALE_THRESHOLD_MS 5000
+// In slow mode we only sample every 81.92s, allow two bad reads
+#define CELL_VOLTAGE_STALE_THRESHOLD_SLOW_MS 270000
 #define CELL_TEMPERATURE_STALE_THRESHOLD_MS 5000
 #define CELL_TEMPERATURE_STALE_THRESHOLD_SLOW_MS 270000
+
+
+// The 3V3 measurement is really just measuring the divider resistor tolerances...
+#define SUPPLY_VOLTAGE_3V3_MIN_MV 3200
+#define SUPPLY_VOLTAGE_3V3_MAX_MV 3600
+#define SUPPLY_VOLTAGE_5V_MIN_MV 4400
+#define SUPPLY_VOLTAGE_5V_MAX_MV 5600
+#define SUPPLY_VOLTAGE_12V_MIN_MV 11000
+#define SUPPLY_VOLTAGE_12V_MAX_MV 16000
+#define SUPPLY_VOLTAGE_CONTACTOR_HARD_MIN_MV 10000 // Shut down if below this (risk of contactors opening)
+#define SUPPLY_VOLTAGE_CONTACTOR_SOFT_MIN_MV 12000
+#define SUPPLY_VOLTAGE_CONTACTOR_MAX_MV 16000
+#define SUPPLY_VOLTAGE_STALE_THRESHOLD_MS 2000

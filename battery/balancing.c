@@ -70,14 +70,14 @@ static bool start_balancing(bms_model_t *model) {
     int16_t min_cell_voltage = 0x7FFF;
     for(int cell=0; cell<120; cell++) {
         // TODO - ignore unused cells
-        if(model->cell_voltage_mV[cell] > 2500 && model->cell_voltage_mV[cell] < min_cell_voltage) {
-            min_cell_voltage = model->cell_voltage_mV[cell];
+        if(model->cell_voltages_mV[cell] > 2500 && model->cell_voltages_mV[cell] < min_cell_voltage) {
+            min_cell_voltage = model->cell_voltages_mV[cell];
         }
     }
 
     // Set balance times based on how far above minimum voltage each cell is
     for(int cell=0; cell<120; cell++) {
-        int16_t voltage = model->cell_voltage_mV[cell];
+        int16_t voltage = model->cell_voltages_mV[cell];
         // 3mV hysteresis, negatives will be ignored
         model->balancing_sm.balance_time_remaining[cell] = calculate_balance_time(voltage, min_cell_voltage);
         if(model->balancing_sm.balance_time_remaining[cell] > 0) {

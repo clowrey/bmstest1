@@ -3,6 +3,7 @@
 #include "../allocations.h"
 #include "../pins.h"
 #include "../chip/time.h"
+#include "../sensors/ina228.h"
 #include "../../model.h"
 
 #include "pico/stdlib.h"
@@ -69,6 +70,36 @@ static uint8_t hmi_get_type_size(uint8_t type) {
     return type & 0x0F;
 }
 
+static bool hmi_register_is_available(uint16_t reg_id, bms_model_t *model) {
+    // Currently only checks for initial data availability on power-on, not
+    // staleness
+
+    millis_t now = millis();
+    switch (reg_id) {
+        case HMI_REG_SOC:
+            return model->soc_millis > 0;
+        case HMI_REG_CURRENT:
+            return model->current_millis > 0;
+        case HMI_REG_CHARGE:
+            return model->charge_millis > 0;
+        case HMI_REG_BATTERY_VOLTAGE:
+            return model->battery_voltage_millis > 0;
+        case HMI_REG_OUTPUT_VOLTAGE:
+            return model->output_voltage_millis > 0;
+        case HMI_REG_POS_CONTACTOR_VOLTAGE:
+            return model->pos_contactor_voltage_millis > 0;
+        case HMI_REG_NEG_CONTACTOR_VOLTAGE:
+            return model->neg_contactor_voltage_millis > 0;
+        case HMI_REG_TEMPERATURE_MIN:
+        case HMI_REG_TEMPERATURE_MAX:
+            return model->temperature_millis > 0;
+        case HMI_REG_CELL_VOLTAGE_MIN:
+        case HMI_REG_CELL_VOLTAGE_MAX:
+            return model->cell_voltage_millis > 0;
+    }
+    return true;
+}
+
 static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_model_t *model) {
     uint8_t idx = 0;
     idx += hmi_buf_append_uint16(&buf[idx], reg_id);
@@ -97,9 +128,7 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
             break;
         case HMI_REG_CHARGE:
             buf[idx++] = HMI_TYPE_INT64;
-            // TODO - confirm conversion
-            int64_t charge_mC = (model->charge_raw * 132736) / 1000000;
-            idx += hmi_buf_append_uint64(&buf[idx], (uint64_t)charge_mC);
+            idx += hmi_buf_append_uint64(&buf[idx], (uint64_t)raw_charge_to_mC(model->charge_raw));
             break;
         case HMI_REG_BATTERY_VOLTAGE:
             buf[idx++] = HMI_TYPE_INT32;
@@ -133,12 +162,20 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
             buf[idx++] = HMI_TYPE_INT16;
             idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->cell_voltage_max_mV);
             break;
+        case HMI_REG_SYSTEM_STATE:
+            buf[idx++] = HMI_TYPE_UINT8;
+            buf[idx++] = (uint8_t)model->system_sm.state;
+            break;
+        case HMI_REG_CONTACTORS_STATE:
+            buf[idx++] = HMI_TYPE_UINT8;
+            buf[idx++] = (uint8_t)model->contactor_sm.state;
+            break;
         default:
             if (reg_id >= HMI_REG_CELL_VOLTAGES_START && reg_id <= HMI_REG_CELL_VOLTAGES_END) {
                 uint16_t cell_idx = reg_id - HMI_REG_CELL_VOLTAGES_START;
                 if (cell_idx < 120) {
                     buf[idx++] = HMI_TYPE_INT16;
-                    idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->cell_voltage_mV[cell_idx]);
+                    idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->cell_voltages_mV[cell_idx]);
                 } else {
                     // Unknown cell
                     idx -= 2; // rollback reg_id
@@ -202,6 +239,10 @@ static void hmi_handle_read_registers(const uint8_t *rx_buf, size_t len, bms_mod
 
     for (size_t i = 2; i + 1 < len; i += 2) {
         uint16_t reg_id = hmi_buf_get_uint16(&rx_buf[i]);
+        if (!hmi_register_is_available(reg_id, model)) {
+            // Skip unavailable registers
+            continue;
+        }
         tx_idx += hmi_append_register_value(&tx_buf[tx_idx], reg_id, model);
     }
 
@@ -219,7 +260,7 @@ static void hmi_handle_write_registers(const uint8_t *rx_buf, size_t len, bms_mo
     tx_buf[tx_idx++] = HMI_MSG_READ_REGISTERS_RESPONSE;
     tx_buf[tx_idx++] = device_address;
 
-    while (rx_idx + 2 < len) {
+    while (((unsigned)rx_idx + 2) < len) {
         uint16_t reg_id = hmi_buf_get_uint16(&rx_buf[rx_idx]);
         rx_idx += 2;
         if (rx_idx >= len) break;
@@ -230,6 +271,8 @@ static void hmi_handle_write_registers(const uint8_t *rx_buf, size_t len, bms_mo
         // Perform write if applicable
         if (reg_id == HMI_REG_SOC && type == HMI_TYPE_UINT32) {
             model->soc = hmi_buf_get_uint32(&rx_buf[rx_idx]);
+        } else if (reg_id == HMI_REG_SYSTEM_REQUEST && type == HMI_TYPE_UINT8) {
+            model->system_req = (system_requests_t)rx_buf[rx_idx];
         }
         // Add more writable registers here as needed
 
@@ -243,9 +286,14 @@ static void hmi_handle_write_registers(const uint8_t *rx_buf, size_t len, bms_mo
 }
 
 static void hmi_handle_read_cell_voltages(const uint8_t *rx_buf, size_t len, bms_model_t *model) {
-    // if (len < 2) return;
-    // uint8_t addr = rx_buf[1];
-    // if (addr != device_address) return;
+    if (len < 2) return;
+    uint8_t addr = rx_buf[1];
+    if (addr != device_address) return;
+
+    if(model->cell_voltages_millis == 0) {
+        // No valid data yet, don't reply
+        return;
+    }
 
     uint8_t tx_buf[243];
     uint16_t tx_idx = 0;
@@ -261,7 +309,7 @@ static void hmi_handle_read_cell_voltages(const uint8_t *rx_buf, size_t len, bms
 
     int16_t last_cell_voltage = 0;
     for(int cell_idx = 0; cell_idx < 120; cell_idx++) {
-        const int16_t cell_voltage = model->cell_voltage_mV[cell_idx];
+        const int16_t cell_voltage = model->cell_voltages_mV[cell_idx];
         const int16_t delta = cell_voltage - last_cell_voltage;
         if(delta >= -64 && delta <= 63) {
             // can encode as delta

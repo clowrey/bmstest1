@@ -65,38 +65,51 @@ typedef enum {
 //  - name is the event name (ERR_ is prepended to the enum value)
 //  - default_level is the default level for the event (although can be
 //    overridden)
-//  - critical_to_fault_ms is how long after a critical level the event
+//  - critical_to_fault_ds is how long after a critical level the event
 //    automatically escalates to a fatal level (0 means instant). If
 //    the event clears the counter decrements (rather than resetting) to stop
-//    serious but noisy events never escalating.
+//    serious but noisy events never escalating. Should be a multiple of 100ms. Maximum 6553s.
 
 // Todo - also have a max-warnings-before-critical counter?
 
-#define EVENT_TYPES(X)                                         \
-    X(CONTACTOR_POS_STUCK_OPEN, LEVEL_CRITICAL, 0)             \
-    X(CONTACTOR_POS_STUCK_CLOSED, LEVEL_CRITICAL, 0)           \
-    X(CONTACTOR_NEG_STUCK_OPEN, LEVEL_CRITICAL, 0)             \
-    X(CONTACTOR_NEG_STUCK_CLOSED, LEVEL_CRITICAL, 0)           \
-    X(CONTACTOR_PRECHARGE_VOLTAGE_TOO_HIGH, LEVEL_CRITICAL, 0) \
-    X(CONTACTOR_PRECHARGE_CURRENT_TOO_HIGH, LEVEL_CRITICAL, 0) \
-    X(CONTACTOR_POS_UNEXPECTED_OPEN, LEVEL_WARNING, 0)        \
-    X(CONTACTOR_NEG_UNEXPECTED_OPEN, LEVEL_WARNING, 0)        \
-    X(BATTERY_VOLTAGE_STALE, LEVEL_CRITICAL, 2000)                \
-    X(BATTERY_TEMPERATURE_STALE, LEVEL_CRITICAL, 20000)            \
-    X(CURRENT_STALE, LEVEL_CRITICAL, 2000)                        \
-    X(CELL_VOLTAGES_STALE, LEVEL_CRITICAL, 1000)                  \
-    X(BATTERY_VOLTAGE_HIGH, LEVEL_WARNING, 0)                  \
-    X(BATTERY_VOLTAGE_VERY_HIGH, LEVEL_CRITICAL, 1000)            \
-    X(BATTERY_VOLTAGE_LOW, LEVEL_WARNING, 0)                   \
-    X(BATTERY_VOLTAGE_VERY_LOW, LEVEL_CRITICAL, 1000)             \
-    X(CELL_VOLTAGE_HIGH, LEVEL_WARNING, 0)                     \
-    X(CELL_VOLTAGE_VERY_HIGH, LEVEL_CRITICAL, 1000)               \
-    X(CELL_VOLTAGE_LOW, LEVEL_WARNING, 0)                      \
-    X(CELL_VOLTAGE_VERY_LOW, LEVEL_CRITICAL, 1000)             \
-    X(BATTERY_TEMPERATURE_HIGH, LEVEL_WARNING, 0)              \
-    X(BATTERY_TEMPERATURE_VERY_HIGH, LEVEL_CRITICAL, 1000)          \
-    X(BATTERY_TEMPERATURE_LOW, LEVEL_WARNING, 0)                   \
-    X(BATTERY_TEMPERATURE_VERY_LOW, LEVEL_CRITICAL, 1000)             
+#define EVENT_TYPES(X)                                          \
+    X(CONTACTOR_POS_STUCK_OPEN, LEVEL_CRITICAL, 0)              \
+    X(CONTACTOR_POS_STUCK_CLOSED, LEVEL_CRITICAL, 0)            \
+    X(CONTACTOR_NEG_STUCK_OPEN, LEVEL_CRITICAL, 0)              \
+    X(CONTACTOR_NEG_STUCK_CLOSED, LEVEL_CRITICAL, 0)            \
+    X(CONTACTOR_PRECHARGE_VOLTAGE_TOO_HIGH, LEVEL_CRITICAL, 0)  \
+    X(CONTACTOR_PRECHARGE_CURRENT_TOO_HIGH, LEVEL_CRITICAL, 0)  \
+    X(CONTACTOR_POS_UNEXPECTED_OPEN, LEVEL_WARNING, 0)          \
+    X(CONTACTOR_NEG_UNEXPECTED_OPEN, LEVEL_WARNING, 0)          \
+    X(SUPPLY_VOLTAGE_STALE, LEVEL_CRITICAL, 2000)               \
+    X(BATTERY_VOLTAGE_STALE, LEVEL_CRITICAL, 2000)              \
+    X(BATTERY_TEMPERATURE_STALE, LEVEL_CRITICAL, 20000)         \
+    X(CURRENT_STALE, LEVEL_CRITICAL, 2000)                      \
+    X(CELL_VOLTAGES_STALE, LEVEL_CRITICAL, 1000)                \
+    X(SUPPLY_VOLTAGE_3V3_LOW, LEVEL_WARNING, 0)                 \
+    X(SUPPLY_VOLTAGE_3V3_HIGH, LEVEL_WARNING, 0)                \
+    X(SUPPLY_VOLTAGE_5V_LOW, LEVEL_WARNING, 0)                  \
+    X(SUPPLY_VOLTAGE_5V_HIGH, LEVEL_WARNING, 0)                 \
+    X(SUPPLY_VOLTAGE_12V_LOW, LEVEL_WARNING, 0)                 \
+    X(SUPPLY_VOLTAGE_12V_HIGH, LEVEL_WARNING, 0)                \
+    X(SUPPLY_VOLTAGE_CONTACTOR_LOW, LEVEL_WARNING, 0)           \
+    X(SUPPLY_VOLTAGE_CONTACTOR_VERY_LOW, LEVEL_CRITICAL, 5000)  \
+    X(SUPPLY_VOLTAGE_CONTACTOR_HIGH, LEVEL_WARNING, 0)          \
+    X(BATTERY_VOLTAGE_HIGH, LEVEL_WARNING, 0)                   \
+    X(BATTERY_VOLTAGE_VERY_HIGH, LEVEL_CRITICAL, 1000)          \
+    /* Low voltage escalates after an hour, to stop a tiny  */  \
+    /* discharge eventually depleting the pack.             */  \
+    X(BATTERY_VOLTAGE_LOW, LEVEL_CRITICAL, 3600000)             \
+    X(BATTERY_VOLTAGE_VERY_LOW, LEVEL_CRITICAL, 1000)           \
+    X(CELL_VOLTAGE_HIGH, LEVEL_WARNING, 0)                      \
+    X(CELL_VOLTAGE_VERY_HIGH, LEVEL_CRITICAL, 1000)             \
+    X(CELL_VOLTAGE_LOW, LEVEL_WARNING, 0)                       \
+    X(CELL_VOLTAGE_VERY_LOW, LEVEL_CRITICAL, 1000)              \
+    X(BATTERY_TEMPERATURE_HIGH, LEVEL_WARNING, 0)               \
+    X(BATTERY_TEMPERATURE_VERY_HIGH, LEVEL_CRITICAL, 1000)      \
+    X(BATTERY_TEMPERATURE_LOW, LEVEL_WARNING, 0)                \
+    X(BATTERY_TEMPERATURE_VERY_LOW, LEVEL_CRITICAL, 1000)       \
+    X(RESTARTING, LEVEL_FATAL, 0)
 
 typedef enum {
 #define X(name, _1, _2) ERR_##name,
@@ -110,6 +123,7 @@ void log_bms_event(bms_event_type_t event_type, uint64_t data);
 void clear_bms_event(bms_event_type_t type);
 void print_bms_events();
 uint16_t get_highest_event_level();
+void events_tick();
 
 static inline int16_t event_count(bms_event_type_t type) {
     extern bms_event_slot_t bms_event_slots[];

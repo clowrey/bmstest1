@@ -246,12 +246,12 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
 
             if(voltage == 0xFFFF) {
                 // A non-existent cell
-                model->cell_voltage_mV[cell_index] = -1;
+                model->cell_voltages_mV[cell_index] = -1;
             } else if(voltage == 0) {
                 // Record as 1mV to distinguish from unmeasured
-                model->cell_voltage_mV[cell_index] = 1;
+                model->cell_voltages_mV[cell_index] = 1;
             } else {
-                model->cell_voltage_mV[cell_index] = (voltage * 2) / 25;
+                model->cell_voltages_mV[cell_index] = (voltage * 2) / 25;
             }
         }
     }
@@ -345,7 +345,7 @@ void bmb3y_tick(bms_model_t *model) {
     // Slow mode samples less frequently to reduce battery self-drain in low
     // voltage situations. It only takes effect once we have a valid reading,
     // and aren't having CRC issues.
-    bool use_slow_mode = model->cell_voltage_slow_mode && model->cell_voltage_millis > 0 &&
+    bool use_slow_mode = model->cell_voltage_slow_mode && model->cell_voltages_millis > 0 &&
         !last_read_crc_failed;
 
     // 81.92s in slow mode, 1.28s in normal mode
@@ -426,7 +426,7 @@ void bmb3y_tick(bms_model_t *model) {
         } else if(step==5 && !last_read_crc_failed) {
             // All banks read successfully
             printf("CRC: GOOD!!!\n");
-            model->cell_voltage_millis = millis();
+            model->cell_voltages_millis = millis();
         }
         
         // uint32_t end = time_us_32();

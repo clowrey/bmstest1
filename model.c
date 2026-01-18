@@ -22,11 +22,15 @@ static void model_process_temperatures(bms_model_t *model) {
 }
 
 static void model_process_cell_voltages(bms_model_t *model) {
-    model->cell_voltage_min_mV = model->cell_voltage_mV[0];
-    model->cell_voltage_max_mV = model->cell_voltage_mV[0];
-    model->cell_voltage_total_mV = model->cell_voltage_mV[0];
+    if(model->cell_voltages_millis == 0) {
+        // No valid data yet
+        return;
+    }
+    model->cell_voltage_min_mV = model->cell_voltages_mV[0];
+    model->cell_voltage_max_mV = model->cell_voltages_mV[0];
+    model->cell_voltage_total_mV = model->cell_voltages_mV[0];
     for(int i=1; i<NUM_CELLS; i++) {
-        int32_t volt = model->cell_voltage_mV[i];
+        int32_t volt = model->cell_voltages_mV[i];
 
         // TODO - decide on how to handle missing cells
         if(volt < 0) {
@@ -42,6 +46,7 @@ static void model_process_cell_voltages(bms_model_t *model) {
             model->cell_voltage_max_mV = volt;
         }
     }
+    model->cell_voltage_millis = model->cell_voltages_millis;
 }
 
 static void model_calculate_cell_current_limits(bms_model_t *model) {
@@ -58,6 +63,12 @@ static void model_calculate_cell_current_limits(bms_model_t *model) {
 static void model_apply_current_limits(bms_model_t *model) {
     uint16_t charge_limit = CHARGE_MAX_CURRENT_dA;
     uint16_t discharge_limit = DISCHARGE_MAX_CURRENT_dA;
+
+    if(!model->contactor_sm.enable_current) {
+        // Contactor state machine disallows current flow
+        charge_limit = 0;
+        discharge_limit = 0;
+    }
 
     // Temperature limits
     if(charge_limit > model->temp_charge_current_limit_dA) {
