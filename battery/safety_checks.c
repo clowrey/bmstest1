@@ -100,4 +100,19 @@ void confirm_battery_safety(bms_model_t *model) {
             model->temperature_min_dC
         );
     }
+
+    // TODO: Is this the right place for this?
+
+    if(model->battery_voltage_millis > 0 && model->cell_voltage_millis > 0 && (model->battery_voltage_millis - model->cell_voltage_millis) < 1000) {
+        // If we have a recent cell voltage reading, compare total to battery
+        // voltage. We may be sampling the cell voltages very infrequently, so
+        // only do this check if the voltage readings are close in time.
+        int32_t expected_total = model->battery_voltage_mV;
+        int32_t voltage_diff = model->cell_voltage_total_mV - expected_total;
+        confirm(
+            voltage_diff > -VOLTAGE_MISMATCH_THRESHOLD_mV && voltage_diff < VOLTAGE_MISMATCH_THRESHOLD_mV,
+            ERR_VOLTAGE_MISMATCH,
+            ((uint64_t)model->cell_voltage_total_mV << 32) | (uint32_t)expected_total
+        );
+    }
 }

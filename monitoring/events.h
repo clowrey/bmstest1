@@ -112,6 +112,7 @@ typedef enum {
     X(BATTERY_TEMPERATURE_VERY_HIGH, LEVEL_CRITICAL, 1000)      \
     X(BATTERY_TEMPERATURE_LOW, LEVEL_WARNING, 0)                \
     X(BATTERY_TEMPERATURE_VERY_LOW, LEVEL_CRITICAL, 1000)       \
+    X(VOLTAGE_MISMATCH, LEVEL_CRITICAL, 1000)                   \
                                                                 \
     X(BMB_READ_ERROR, LEVEL_WARNING, 0)                         \
     X(BMB_CRC_MISMATCH, LEVEL_WARNING, 0)                       \

@@ -289,13 +289,14 @@ bool ina228_read_current_blocking(ina228_t *dev) {
         uint32_t now_us = time_us_32();
         uint32_t elapsed_us = now_us - last_sample_us;
 
+        // TODO: do we care about this?
         if(last_sample_us != 0) {
             average_sampling_period_us = (average_sampling_period_us * 0.99999f) + ((float)elapsed_us * 0.00001f);
         }
 
         // average_sampling_period_us = (average_sampling_period_us * (SAMPLING_PERIOD_SMOOTHING - 1) + elapsed_us) / SAMPLING_PERIOD_SMOOTHING;
         last_sample_us = now_us;
-        printf("avg: %.2f us\n", average_sampling_period_us);
+        //printf("avg: %.2f us\n", average_sampling_period_us);
 
         // Is a new conversion, update charge
         model.charge_raw -= (int64_t)current_corrected;

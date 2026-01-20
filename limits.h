@@ -96,6 +96,12 @@
 #define BATTERY_VOLTAGE_SOFT_MAX_mV (NUM_CELLS * CELL_VOLTAGE_SOFT_MAX_mV)
 #define BATTERY_VOLTAGE_SOFT_MIN_mV (NUM_CELLS * CELL_VOLTAGE_SOFT_MIN_mV)
 
+// Max discrepancy between BMB cell voltages and measured terminal voltage
+// (which should be calibrated away at zero current).
+#define VOLTAGE_MISMATCH_THRESHOLD_mV 5000
+
+
+
 // Is voltage derating of current limits feasible, given the steepness of the
 // voltage curves at top of charge? Probably not?
 
