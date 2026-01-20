@@ -135,6 +135,8 @@ void read_inputs(bms_model_t *model) {
     model->supply_voltage_contactor_millis = internal_adc_read_contactor_millis();
 
     model->estop_pressed = gpio_get(PIN_ESTOP);
+    model->precharge_closed = gpio_get(PIN_AUX_CONTACTOR_PRE);
+    //printf("Pre: %d\n", model->precharge_closed);
 }
 
 void tick() {
@@ -153,7 +155,6 @@ void tick() {
     // Phase 1: Read sensors
 
     read_inputs(&model);
-    model.cell_voltage_slow_mode = true;
     bmb3y_tick(&model);
 
     // For debugging, prepare for restart (zero current) if 'R' received on USB stdio

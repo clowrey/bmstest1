@@ -262,7 +262,7 @@ static int send_1d0(bms_model_t *model) {
     const int16_t pack_current_dA = model->current_mA / 100; // in 0.1A units
     msg.data[2] = (pack_current_dA >> 8) & 0xFF;
     msg.data[3] = pack_current_dA & 0xFF;
-    const int16_t temperature_midpoint_dC = 250; // 25.0C
+    const int16_t temperature_midpoint_dC = (model->temperature_min_dC + model->temperature_max_dC) / 2; // in 0.1C units
     msg.data[4] = (temperature_midpoint_dC >> 8) & 0xFF;
     msg.data[5] = temperature_midpoint_dC & 0xFF;
     msg.data[6] = 0x03;
@@ -320,7 +320,7 @@ void inverter_tick(bms_model_t *model) {
 
     if(!inverter_present) {
         // We haven't received any CAN messages from the inverter yet
-        return;
+        //return;
     }
 
     if(!inverter_initialized) {

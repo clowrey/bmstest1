@@ -8,6 +8,8 @@
 #define PIN_CONTACTOR_PRE 16
 #define PIN_CONTACTOR_FC_NEG 15  // not used
 
+#define PIN_AUX_CONTACTOR_PRE 9
+
 #define PIN_INA228_I2C_SDA 24
 #define PIN_INA228_I2C_SCL 21
 

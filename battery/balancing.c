@@ -1,5 +1,6 @@
 #include "balancing.h"
 
+#include "../limits.h"
 #include "../model.h"
 
 #define AUTO_BALANCING_PERIOD_MS 30000 // how long to wait between auto-balancing sessions
@@ -67,7 +68,14 @@ static bool start_balancing(bms_model_t *model) {
     // TODO - check staleness of cell voltages
 
     // Determine which cells need balancing
+
     int16_t min_cell_voltage = 0x7FFF;
+  
+    int16_t threshold = model->balancing_voltage_threshold_mV;
+    if(threshold < MINIMUM_BALANCE_VOLTAGE_mV) {
+        threshold = MINIMUM_BALANCE_VOLTAGE_mV;
+    }
+
     for(int cell=0; cell<120; cell++) {
         // TODO - ignore unused cells
         if(model->cell_voltages_mV[cell] > 2500 && model->cell_voltages_mV[cell] < min_cell_voltage) {
@@ -76,6 +84,7 @@ static bool start_balancing(bms_model_t *model) {
     }
 
     // Set balance times based on how far above minimum voltage each cell is
+    
     for(int cell=0; cell<120; cell++) {
         int16_t voltage = model->cell_voltages_mV[cell];
         // 3mV hysteresis, negatives will be ignored

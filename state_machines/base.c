@@ -14,7 +14,7 @@ void sm_init(sm_t* sm, const char* name) {
 void state_transition(sm_t* sm, uint16_t new_state) {
     printf("%llums [%s] state %d->%d\n", millis64(), sm->name, sm->state, new_state);
     sm->state = new_state;
-    sm->last_transition_time = millis();
+    sm->last_transition_time = millis64();
 
 }
 
@@ -23,5 +23,5 @@ void state_reset(sm_t* sm) {
 }
 
 bool state_timeout(sm_t* sm, uint32_t timeout) {
-    return (millis()-sm->last_transition_time) >= timeout;
+    return (millis64()-sm->last_transition_time) >= (uint64_t)timeout;
 }

@@ -177,3 +177,15 @@ bool nvm_load_calibration(bms_model_t *model) {
 
     return true;
 }
+
+struct __attribute__((packed)) {
+    uint32_t version;
+
+    float ekf_x[3];
+    float ekf_P[3][3];
+
+    // TODO - should we just use float for this?
+    int32_t basic_count_charge_raw;
+    
+    // store events here? or separately?
+} runtime_state_t;

@@ -41,6 +41,10 @@ void init_hw() {
     gpio_set_dir(PIN_ESTOP, GPIO_IN);
     gpio_pull_down(PIN_ESTOP);
 
+    gpio_init(PIN_AUX_CONTACTOR_PRE);
+    gpio_set_dir(PIN_AUX_CONTACTOR_PRE, GPIO_IN);
+    gpio_pull_down(PIN_AUX_CONTACTOR_PRE);
+
     if(!ina228_init(&ina228_dev, 0x40, 0.001, 100.0f)) {
         printf("INA228 init failed!\n");
     }

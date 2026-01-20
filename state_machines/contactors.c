@@ -247,6 +247,24 @@ bool confirm_contactor_pos_and_neg_seems_open(bms_model_t *model) {
     return ret;
 }
 
+bool confirm_contactor_pre_seems_closed(bms_model_t *model) {
+    // Use the aux contact reading
+    return confirm(
+        model->precharge_closed,
+        ERR_CONTACTOR_PRE_STUCK_OPEN,
+        0
+    );
+}
+
+bool confirm_contactor_pre_seems_open(bms_model_t *model) {
+    // Use the aux contact reading
+    return confirm(
+        !model->precharge_closed,
+        ERR_CONTACTOR_PRE_STUCK_CLOSED,
+        0
+    );
+}
+
 bool confirm_contactors_staying_closed(bms_model_t *model) {
     bool ret = true;
     if(confirm(
@@ -324,7 +342,7 @@ void contactor_sm_tick(bms_model_t *model) {
 
                 if(confirm_battery_is_healthy(model)) {
                     // Start a self-test of the contactors before precharging
-                    state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_TESTING_NEG_OPEN);
+                    state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_TESTING_PRE_CLOSED);
                 }
             } else if(model->contactor_req == CONTACTORS_REQUEST_OPEN || model->contactor_req == CONTACTORS_REQUEST_FORCE_OPEN) {
                 // already open, just clear the request
@@ -332,36 +350,6 @@ void contactor_sm_tick(bms_model_t *model) {
             } else if(model->contactor_req == CONTACTORS_REQUEST_CALIBRATE) {
                 model->contactor_req = CONTACTORS_REQUEST_NULL;
                 state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_CALIBRATING);
-            }
-            break;
-        case CONTACTORS_STATE_PRECHARGING_NEG:
-            // Close negative contactor first
-            contactors_set_pos_pre_neg(false, false, true);
-            if(state_timeout((sm_t*)contactor_sm, 500)) {
-                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_PRECHARGING);
-            }
-            break;
-        case CONTACTORS_STATE_PRECHARGING:
-            // Now close precharge contactor (actually just the Bat+ one)
-            contactor_sm->enable_current = true;
-            contactors_set_pos_pre_neg(false, true, true);
-
-            if(model->contactor_req == CONTACTORS_REQUEST_OPEN || model->contactor_req == CONTACTORS_REQUEST_FORCE_OPEN) {
-                // Abort precharge
-                model->contactor_req = CONTACTORS_REQUEST_NULL;
-                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
-            } else if(state_timeout((sm_t*)contactor_sm, 1000) && check_precharge_successful(model, false)) {
-                // Successful precharge
-                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_CLOSED);
-            } else if(state_timeout((sm_t*)contactor_sm, 10000)) {
-                // Failed to precharge!
-                // Log the reason
-                check_precharge_successful(model, true);
-                count_bms_event(
-                    ERR_CONTACTOR_CLOSING_FAILED,
-                    0x1000000000000000
-                );
-                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_PRECHARGE_FAILED);
             }
             break;
         case CONTACTORS_STATE_CLOSED:
@@ -375,7 +363,10 @@ void contactor_sm_tick(bms_model_t *model) {
                 (state_timeout((sm_t*)contactor_sm, 2000) && !confirm_contactors_staying_closed(model))
             );
 
-            contactor_sm->enable_current = !try_to_open;
+            if(state_timeout((sm_t*)contactor_sm, 500) && !try_to_open) {
+                // Enable current flow after a short delay
+                contactor_sm->enable_current = true;
+            }
 
             if((
                 try_to_open && (
@@ -395,12 +386,17 @@ void contactor_sm_tick(bms_model_t *model) {
             }
              
             break;
-        case CONTACTORS_STATE_PRECHARGE_FAILED:
-            contactors_set_pos_pre_neg(false, false, false);
-            // wait for the precharge to cool down
-            if(state_timeout((sm_t*)contactor_sm, CONTACTORS_FAILED_PRECHARGE_TIMEOUT_MS)) {
-                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
-            }            
+        case CONTACTORS_STATE_TESTING_PRE_CLOSED:
+            contactors_test_pre(true);
+            if(state_timeout((sm_t*)contactor_sm, CONTACTORS_TEST_WAIT_MS)) {
+                if(confirm_contactor_pre_seems_closed(model)) {
+                    // passed
+                    state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_TESTING_NEG_OPEN);
+                } else {
+                    // fault detected
+                    state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_TESTING_FAILED);
+                }
+            }
             break;
         case CONTACTORS_STATE_TESTING_NEG_OPEN:
             contactors_set_pos_pre_neg(false, false, false);
@@ -478,6 +474,47 @@ void contactor_sm_tick(bms_model_t *model) {
                 state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
             }
             break;
+
+        case CONTACTORS_STATE_PRECHARGING_NEG:
+            // Close negative contactor first
+            contactors_set_pos_pre_neg(false, false, true);
+            if(!confirm_contactor_pre_seems_open(model)) {
+                // precharge contactor is stuck closed
+                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_PRECHARGE_FAILED);
+            } else if(state_timeout((sm_t*)contactor_sm, 500)) {
+                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_PRECHARGING);
+            }
+            break;
+        case CONTACTORS_STATE_PRECHARGING:
+            // Now close precharge contactor (actually just the Bat+ one)
+            contactors_set_pos_pre_neg(false, true, true);
+
+            if(model->contactor_req == CONTACTORS_REQUEST_OPEN || model->contactor_req == CONTACTORS_REQUEST_FORCE_OPEN) {
+                // Abort precharge
+                model->contactor_req = CONTACTORS_REQUEST_NULL;
+                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
+            } else if(state_timeout((sm_t*)contactor_sm, 1000) && check_precharge_successful(model, false)) {
+                // Successful precharge
+                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_CLOSED);
+            } else if(state_timeout((sm_t*)contactor_sm, 10000)) {
+                // Failed to precharge!
+                // Log the reason
+                check_precharge_successful(model, true);
+                count_bms_event(
+                    ERR_CONTACTOR_CLOSING_FAILED,
+                    0x1000000000000000
+                );
+                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_PRECHARGE_FAILED);
+            }
+            break;
+
+        case CONTACTORS_STATE_PRECHARGE_FAILED:
+            contactors_set_pos_pre_neg(false, false, false);
+            // wait for the precharge to cool down
+            if(state_timeout((sm_t*)contactor_sm, CONTACTORS_FAILED_PRECHARGE_TIMEOUT_MS)) {
+                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
+            }            
+            break;            
 
         /* Calibration (requires contactors to be closed) */
         

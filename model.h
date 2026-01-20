@@ -118,9 +118,10 @@ typedef struct bms_model {
     int16_t balancing_voltage_threshold_mV; // Only balance cells above this voltage
 
     bool estop_pressed;
-    // whether we have performed a slow operation this tick and possibly missed
-    // the deadline (we allow such slow operations occasionally, as long as they
-    // are spaced out)
+    // Detected via the aux contacts (note that this is actually the precharge bypass contactor)
+    bool precharge_closed; 
+    // Whether we should ignore a potential loop overrun at the end of this tick
+    // (eg, due to a slow flash write). This is reset each tick.
     bool ignore_missed_deadline;
   
 } bms_model_t;

@@ -228,7 +228,10 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
                 rx_buf[module * 9 + 8],
                 calc_crc
             );
-            count_bms_event(ERR_BMB_CRC_MISMATCH, 0x0100000000000000 | ((uint64_t)bank_index << 48) | ((uint64_t)module << 40) | (module_crc << 16) | calc_crc);
+            if(millis64() > 2000) {
+                // Ignore early CRC errors during startup
+                count_bms_event(ERR_BMB_CRC_MISMATCH, 0x0100000000000000 | ((uint64_t)bank_index << 48) | ((uint64_t)module << 40) | (module_crc << 16) | calc_crc);
+            }
         }
 
         if(module==0 && module_crc != calc_crc) {
@@ -304,7 +307,9 @@ bool bmb3y_read_temperatures_blocking(bms_model_t *model) {
         if(module_crc != calc_crc) {
             printf("Bad Temp CRC on module %d: msg 0x%04X calc 0x%04X\n", module, module_crc, calc_crc);
             crc_ok = false;
-            count_bms_event(ERR_BMB_CRC_MISMATCH, 0x0200000000000000 | ((uint64_t)module << 48) | (module_crc << 16) | calc_crc);
+            if(millis64() > 2000) {
+                count_bms_event(ERR_BMB_CRC_MISMATCH, 0x0200000000000000 | ((uint64_t)module << 48) | (module_crc << 16) | calc_crc);
+            }
             continue;
         }
 
@@ -388,6 +393,13 @@ void bmb3y_tick(bms_model_t *model) {
         // }
         // printf("\n");
 
+        if(model->cell_voltages_millis && model->cell_voltage_min_mV < CELL_VOLTAGE_SOFT_MIN_mV && !model->cell_voltage_slow_mode && !last_read_crc_failed) {
+            // We're not in slow mode yet, but a cell is low - switch to slow mode
+            model->cell_voltage_slow_mode = true;
+            use_slow_mode = true;
+        }
+
+
         if(use_slow_mode) {
             // In slow mode we have to set balancing config first, and use a
             // different wakeup pattern, else we get bad CRCs back on the
@@ -430,7 +442,7 @@ void bmb3y_tick(bms_model_t *model) {
             last_read_crc_failed = true;
         } else if(step==5 && !last_read_crc_failed) {
             // All banks read successfully
-            printf("CRC: GOOD!!!\n");
+            //printf("CRC: GOOD!!!\n");
             model->cell_voltages_millis = millis();
         }
         
@@ -464,5 +476,11 @@ void bmb3y_tick(bms_model_t *model) {
             balancing_sm_tick(model);
             bmb3y_send_balancing(model);
         }
+    // } else if(step > 7) {
+    //     if(use_slow_mode && model->cell_voltages_millis && model->cell_voltage_min_mV >= CELL_VOLTAGE_SOFT_MIN_mV) {
+    //         // Exit slow mode
+    //         model->cell_voltage_slow_mode = false;
+    //         use_slow_mode = true;
+    //     }
     }
 }
