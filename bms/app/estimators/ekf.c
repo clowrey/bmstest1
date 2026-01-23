@@ -335,7 +335,7 @@ uint32_t ekf_tick(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV) {
     float voltage_volts = (float)voltage_mV / 1000.0f;     // Convert mV to V
 
     // TODO - sequence this startup better so it waits for actual values
-    if (!initialized && voltage_mV > 0.0f && timestep() > 200) {
+    if (!initialized && voltage_mV > 0.0f) {
         float initial_soc = 1.0f;
         for(int i=0; i<10; i++) {
             initial_soc += (voltage_volts - soc_to_ocv(initial_soc)); // Simple convergence
@@ -346,8 +346,7 @@ uint32_t ekf_tick(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV) {
 
         initialized = true;
     } else if(!initialized) {
-        return 0; // Not initialized yet
-
+        return 0xFFFFFFFF; // Not initialized yet
     }
 
     // if(timestep() > 300) {

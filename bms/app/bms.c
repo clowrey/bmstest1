@@ -159,32 +159,18 @@ void bms_tick() {
     // Phase 2: Update model
 
     static int32_t last_charge_raw = 0;
-    uint32_t soc = kalman_update(
-        raw_charge_to_mC(model.charge_raw - last_charge_raw),
-        model.current_mA,
-        //model.battery_voltage_mV
-        model.cell_voltage_total_mV / NUM_CELLS
-    );
-    if(soc != 0xFFFFFFFF) {
-        model.soc = (uint16_t)soc;
-        model.soc_millis = millis();
-    }
-    last_charge_raw = model.charge_raw;
-
-    static int32_t last_charge_raw2 = 0;
-    static millis_t last_ekf_update_millis = 0;
     millis_t now = millis();
-    if(now - last_ekf_update_millis >= 1000) {
-        uint32_t soc2 = ekf_tick(
-            raw_charge_to_mC(model.charge_raw - last_charge_raw2),
+    if(now - model.soc_millis >= 1000) {
+        uint32_t soc = ekf_tick(
+            raw_charge_to_mC(model.charge_raw - last_charge_raw),
             model.current_mA,
             model.cell_voltage_total_mV / NUM_CELLS
         );
-        if(soc2 != 0xFFFFFFFF) {
-            model.soc_ekf = (uint16_t)soc2;
+        if(soc != 0xFFFFFFFF) {
+            model.soc = (uint16_t)soc;
+            model.soc_millis = now;
         }
-        last_charge_raw2 = model.charge_raw;
-        last_ekf_update_millis = now;
+        last_charge_raw = model.charge_raw;
     }
 
     model.soc_voltage_based = voltage_based_soc_estimate(&model);
@@ -256,14 +242,13 @@ void bms_tick() {
             model.pos_contactor_voltage_range_mV
         );
         int64_t charge_mC = raw_charge_to_mC(model.charge_raw);
-        printf("Current: %6ld mA | Charge: %lld mC | SoC: %2.2f %% | SoC(VB): %2.2f %% | SoC(BC): %2.2f %% | SoC(FC): %2.2f %% | SoC(EKF): %2.2f %%\n\n",
+        printf("Current: %6ld mA | Charge: %lld mC | SoC: %2.2f %% | SoC(VB): %2.2f %% | SoC(BC): %2.2f %% | SoC(FC): %2.2f %%\n\n",
             model.current_mA,
             charge_mC,
             model.soc / 100.0f,
             model.soc_voltage_based / 100.0f,
             model.soc_basic_count / 100.0f,
-            model.soc_fancy_count / 100.0f,
-            model.soc_ekf / 100.0f
+            model.soc_fancy_count / 100.0f
         );
     }
 }

@@ -187,10 +187,6 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
             buf[idx++] = HMI_TYPE_UINT16;
             idx += hmi_buf_append_uint16(&buf[idx], model->soc_basic_count);
             break;
-        case HMI_REG_SOC_EKF:
-            buf[idx++] = HMI_TYPE_UINT16;
-            idx += hmi_buf_append_uint16(&buf[idx], model->soc_ekf);
-            break;
         case HMI_REG_CAPACITY:
             buf[idx++] = HMI_TYPE_UINT32;
             idx += hmi_buf_append_uint32(&buf[idx], model->capacity_mC);
@@ -219,6 +215,15 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
                     idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->cell_voltages_mV[cell_idx]);
                 } else {
                     // Unknown cell
+                    idx -= 2; // rollback reg_id
+                }
+            } else if (reg_id >= HMI_REG_RAW_TEMPS_START && reg_id <= HMI_REG_RAW_TEMPS_END) {
+                uint16_t temp_idx = reg_id - HMI_REG_RAW_TEMPS_START;
+                if (temp_idx < (16+24+8)) {
+                    buf[idx++] = HMI_TYPE_UINT16;
+                    idx += hmi_buf_append_uint16(&buf[idx], model->raw_temperatures[temp_idx]);
+                } else {
+                    // Unknown temp
                     idx -= 2; // rollback reg_id
                 }
             } else {

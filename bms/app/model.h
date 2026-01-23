@@ -39,7 +39,6 @@ typedef struct bms_model {
     millis_t soc_millis;
     uint16_t soh; // state of health in 0.01% units (0=0%, 10000=100.00%)
 
-    uint16_t soc_ekf;
     uint16_t soc_voltage_based;
     uint16_t soc_basic_count;
     uint16_t soc_fancy_count;
@@ -74,6 +73,8 @@ typedef struct bms_model {
     // Individual raw cell voltages, which will bounce around during balancing
     int16_t raw_cell_voltages_mV[120]; // are unstable during balancing
     millis_t raw_cell_voltages_millis;
+
+    uint16_t raw_temperatures[16+24+8];
 
     bool cell_voltage_slow_mode; // only request BMB data infrequently
 

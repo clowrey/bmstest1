@@ -1,5 +1,5 @@
-#include "../../sys/time/time.h"
-#include "../../config/limits.h"
+#include "../hw/chip/time.h"
+#include "../limits.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -91,7 +91,8 @@ float measurement_noise = 0.1f;
 //float covariance = 0.1f;
 float covariance = 0.1f;
 
-float soc_estimate = 0.5f; // initial SOC estimate (0.0 to 1.0)
+float discharge_estimate = 0.0f; // 0 = full charge
+//float soc_estimate = 0.5f; // initial SOC estimate (0.0 to 1.0)
 bool initialized = false;
 
 static float lfp_soc_to_ocv(float soc, float *jacobian) {
@@ -152,23 +153,23 @@ uint32_t kalman_update(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV
     
     float voltage_V = voltage_mV / 1000.0f;
 
-    // TODO - sequence this startup better so it waits for actual values
+    //printf("Voltage is %.3f V\n", voltage_V);
     if(!initialized && voltage_V > 0.0f && timestep() > 200) {
         // Initialize SOC estimate based on OCV
-        soc_estimate = nmc_ocv_to_soc(voltage_V);
+        float soc_estimate = nmc_ocv_to_soc(voltage_V);
+        discharge_estimate = (1.0f - soc_estimate) * capacity;
         initialized = true;
         //printf("Kalman filter initialized: OCV=%.3f V, initial SOC=%.5f\n", voltage_V, soc_estimate);
     }
 
-    if(!initialized) {
-        return 0xFFFFFFFF;
-    }
 
     // Predict
 
     //(current_A * dt_s)
-    float soc_prediction = soc_estimate + (charge_C / capacity);
+    //float soc_prediction = soc_estimate + (charge_C / capacity);
+    float discharge_prediction = discharge_estimate - charge_C;
     float covariance_prediction = covariance + process_noise;
+    float soc_prediction = 1.0f - (discharge_prediction / capacity);
 
     // Update
 
@@ -181,7 +182,8 @@ uint32_t kalman_update(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV
     float innovation_covariance = jacobian * covariance_prediction * jacobian + measurement_noise;
     float kalman_gain = covariance_prediction * jacobian / innovation_covariance;
 
-    soc_estimate = soc_prediction + kalman_gain * innovation;
+    discharge_estimate = discharge_prediction + kalman_gain * innovation;
+    //soc_estimate = soc_prediction + kalman_gain * innovation;
     // printf("Kalman update: soc_prediction=%.5f, jacobian=%.5f, estimated_ocv=%.3f V, estimated_voltage=%.3f V, innovation=%.3f V, kalman_gain=%.5f, soc_estimate=%.5f\n",
     //     soc_prediction,
     //     jacobian,

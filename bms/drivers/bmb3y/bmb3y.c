@@ -418,6 +418,93 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
     return crc_ok;
 }
 
+/* 
+NMC 
+
+TEMPS readings:
+Temp hex: 73 94 5B 05 67 F3 21 BA
+Temp hex: 78 94 62 05 AA F4 08 A9
+Temp hex: B2 93 68 05 47 F4 E0 DE
+Temp hex: 91 94 71 05 99 F3 59 92
+Temp hex: A3 94 53 05 1E F4 CD 5C
+Temp hex: B6 93 57 05 A6 F4 C3 5D
+Temp hex: 5A 93 63 05 E9 F3 03 13
+Temp hex: 7C 94 5B 05 DE F3 5E D3
+
+TEMPS3 readings:
+Temp hex: D0 16 31 F2 E2 18 32 88
+Temp hex: E6 17 18 F6 E6 17 25 14
+Temp hex: 5E 16 D8 F1 52 19 E2 FF
+Temp hex: A2 17 ED F4 CB 17 69 B2
+Temp hex: DB 15 37 F2 E6 16 F3 72
+Temp hex: 33 17 81 F3 FF 17 D6 9E
+Temp hex: 8F 16 97 F1 D8 17 02 09
+Temp hex: C2 16 BB F1 9A 18 4A 9A
+
+TEMPS4 (actually register F, probably not temps)
+Temp hex: 03 00 AA 88 5C E3 
+          03 00 32 95 4E A2 
+          03 00 35 95 00 30
+          02 00 9F A1 AD D3
+          02 00 18 95 1C F4 
+          02 00 66 A1 1C 31
+          03 00 C0 88 47 7F
+          03 00 06 95 AB 8D
+
+TEMPS2
+Temp hex: 80 20 C0 BD 5C 70
+          80 20 C0 E7 5E 66
+          80 20 C0 9F 28 1F
+          80 20 C0 ED 83 68
+          80 20 C0 B8 32 F7
+          80 20 C0 BB 29 43
+          80 20 C0 EA 7B 81
+          80 20 C0 E0 A6 8F
+
+*/
+
+
+// Read some temperature-like values
+bool bmb3y_read_more_temps_blocking(bms_model_t *model) {
+    uint8_t rx_buf[90];
+
+    if(!bmb3y_short_command_get_data_blocking(BMB3Y_CMD_READ_TEMPS3, rx_buf, 64)) {
+        printf("BMB3Y temperature3 read failed\n");
+        count_bms_event(ERR_BMB_READ_ERROR, 0x0200000000000000);
+        return false;
+    }
+
+    bool crc_ok = true;
+    for(int module=0; module<NUM_MODULE_TEMPS; module++) {
+        uint16_t module_crc = (uint16_t)(rx_buf[module * 8 + 6] << 8) | (uint16_t)(rx_buf[module * 8 + 7]);
+        uint16_t calc_crc = crc14(&rx_buf[module * 8], 6, 0x0010);
+        if(!crc_matches(module_crc, calc_crc)) {
+            printf("Bad Temp CRC on module %d: msg 0x%04X calc 0x%04X xor %04x or %04x\n", 
+                module, module_crc, calc_crc, calc_crc ^ 0x425b, calc_crc ^ 0xc6ed);
+            crc_ok = false;
+            if(millis64() > 2000) {
+                count_bms_event(ERR_BMB_CRC_MISMATCH, 0x0200000000000000 | ((uint64_t)module << 48) | (module_crc << 16) | calc_crc);
+            }
+            continue;
+        }
+
+        model->raw_temperatures[16+module] = (
+            (int16_t)(rx_buf[module * 8 + 0]) |
+            (int16_t)(rx_buf[module * 8 + 1] << 8)
+        );
+        model->raw_temperatures[24+module] = (
+            (int16_t)(rx_buf[module * 8 + 2]) |
+            (int16_t)(rx_buf[module * 8 + 3] << 8)
+        );
+        model->raw_temperatures[32+module] = (
+            (int16_t)(rx_buf[module * 8 + 4]) |
+            (int16_t)(rx_buf[module * 8 + 5] << 8)
+        );
+    }
+
+    return crc_ok;
+}
+
 bool bmb3y_read_temperatures_blocking(bms_model_t *model) {
     uint8_t rx_buf[90];
 
@@ -427,12 +514,6 @@ bool bmb3y_read_temperatures_blocking(bms_model_t *model) {
     if(!bmb3y_short_command_get_data_blocking(BMB3Y_CMD_READ_TEMPS, rx_buf, 64)) {
         printf("BMB3Y temperature read failed\n");
         count_bms_event(ERR_BMB_READ_ERROR, 0x0200000000000000);
-        // printf("temptest failed hex: ");
-        // for(int i=0;i<8;i++) {
-        //     printf("%02X ", rx_buf[i]);
-        // }
-        // printf("\n");
-        // isosnoop_print_buffer();
         return false;
     }
 
@@ -444,7 +525,7 @@ bool bmb3y_read_temperatures_blocking(bms_model_t *model) {
         uint16_t module_crc = (uint16_t)(rx_buf[module * 8 + 6] << 8) | (uint16_t)(rx_buf[module * 8 + 7]);
         uint16_t calc_crc = crc14(&rx_buf[module * 8], 6, 0x0010);
 
-        // printf("temptest gooded hex: ");
+        // printf("Temp hex: ");
         // for(int i=0;i<8;i++) {
         //     printf("%02X ", rx_buf[module * 8 + i]);
         // }
@@ -482,6 +563,16 @@ bool bmb3y_read_temperatures_blocking(bms_model_t *model) {
             // FIXME - do proper thermistor conversion
             model->module_temperatures_dC[module] = ((raw_temp - 0x4300) * (1000 - 280)) / (0x6e00 - 0x4300) + 280;
         }
+
+        model->raw_temperatures[module] = (
+            (int16_t)(rx_buf[module * 8 + 0]) |
+            (int16_t)(rx_buf[module * 8 + 1] << 8)
+        );
+        model->raw_temperatures[8+module] = (
+            (int16_t)(rx_buf[module * 8 + 4]) |
+            (int16_t)(rx_buf[module * 8 + 5] << 8)
+        );
+
     }
 
     if(crc_ok) {
@@ -521,10 +612,12 @@ void bmb3y_tick(bms_model_t *model) {
         bmb3y_send_command_blocking(BMB3Y_CMD_SNAPSHOT);
     } else if(step == 1) {
         // Wake up BMBs, read voltages and temperatures, setup balancing
-        // Takes about 6ms
+        // Takes about 6ms (so we can get away with doing it all at once rather
+        // than spreading across multiple timesteps)
         bmb3y_send_wakeup_cs_blocking();
         bmb3y_read_cell_voltages_blocking(model);
         bmb3y_read_temperatures_blocking(model);
+        bmb3y_read_more_temps_blocking(model);
         balancing_sm_tick(model);
         bmb3y_send_balancing(model);
     } else if(step == PAUSE_CYCLE_PERIOD && model->balancing_sm.is_pause_cycle) {

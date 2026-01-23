@@ -232,15 +232,15 @@ static int send_150(bms_model_t *model) {
     msg.dlc = 8;
     
     //const uint16_t soc = 5000; // 50.00%
-    msg.data[0] = (model->soc_ekf >> 8) & 0xFF;
-    msg.data[1] = model->soc_ekf & 0xFF;
+    msg.data[0] = (model->soc >> 8) & 0xFF;
+    msg.data[1] = model->soc & 0xFF;
     // TODO: workaround for Deye?
     //const uint16_t soh = 10000; // 100.00%
     const uint16_t soh = 9900; // 99.00%
     msg.data[2] = (soh >> 8) & 0xFF;
     msg.data[3] = soh & 0xFF;
 
-    const uint16_t remaining_capacity_Ah = ((uint64_t)model->capacity_mC * model->soc_ekf) / ((uint64_t)10000 * 3600 * 1000);
+    const uint16_t remaining_capacity_Ah = ((uint64_t)model->capacity_mC * model->soc) / ((uint64_t)10000 * 3600 * 1000);
     msg.data[4] = (remaining_capacity_Ah >> 8) & 0xFF;
     msg.data[5] = remaining_capacity_Ah & 0xFF;
 
