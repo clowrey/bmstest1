@@ -334,6 +334,7 @@ uint32_t ekf_tick(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV) {
     float current_amps = (float)current_mA / 1000.0f;      // Convert mA to A
     float voltage_volts = (float)voltage_mV / 1000.0f;     // Convert mV to V
 
+    // TODO - sequence this startup better so it waits for actual values
     if (!initialized && voltage_mV > 0.0f && timestep() > 200) {
         float initial_soc = 1.0f;
         for(int i=0; i<10; i++) {

@@ -152,7 +152,7 @@ uint32_t kalman_update(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV
     
     float voltage_V = voltage_mV / 1000.0f;
 
-    //printf("Voltage is %.3f V\n", voltage_V);
+    // TODO - sequence this startup better so it waits for actual values
     if(!initialized && voltage_V > 0.0f && timestep() > 200) {
         // Initialize SOC estimate based on OCV
         soc_estimate = nmc_ocv_to_soc(voltage_V);

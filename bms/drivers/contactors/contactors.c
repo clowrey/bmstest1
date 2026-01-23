@@ -17,9 +17,31 @@ void contactors_init() {
     init_pwm_pin(PIN_CONTACTOR_PRE);
     init_pwm_pin(PIN_CONTACTOR_NEG);
 
-    // Pos is on a difference slice, advance it to desync from the others
+    // Since the contactors will be on most of the time, at a low duty cycle, we
+    // should stagger their PWM phases to reduce peak current draw. Oddly, in
+    // synchrony, the contactors actually boost the rail voltage, so we want the
+    // settings that give the least boost.
+
+    // Pre and neg are on the same slice, meaning the only way to stagger them
+    // is to invert one of them (so the contactors will be energised just before
+    // and after the PWM cycle start).
+
+    // Pos is on a difference slice, so we can advance the slice phase (into
+    // roughly the middle of the pre/neg period) to stagger it. The advance is
+    // chosen experimentally to minimise voltage boost.
+
+    /* 
+      Advance Voltage
+            0   14703
+        0x500   13767
+        0x600   13528
+        0x700   13630
+        0x800   13896
+        0x900   14155
+    */
+   
     int slice_num = pwm_gpio_to_slice_num(PIN_CONTACTOR_POS);
-    for(int i=0;i<0x800;i++) {
+    for(int i=0;i<0x600;i++) {
         pwm_advance_count(slice_num);
     }
 }

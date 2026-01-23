@@ -511,7 +511,46 @@ void bmb3y_tick(bms_model_t *model) {
     int period = use_slow_mode ? 0xfff : 0x3f;
     int step = (timestep() & period) - 5; // was 3f
 
-    if(step==0) {
+    // We can 'MUTE' the BMBs which pauses the balancing, but we then have to
+    // wait for a while before requesting a snapshot for the voltages to settle:
+    //    without muting:
+    //     cell 23: 3958 - 4137 mV
+    //    with 1 timestep between mute and snapshot
+    //     cell 23: 4022 - 4107
+    //    2 timesteps:
+    //     cell 23: 4052 - 4094
+    //    3 timesteps:
+    //     cell 23: 4066 - 4086
+    //    4 timesteps:
+    //     cell 23: 4073 - 4083
+    //    5 timesteps:
+    //     cell 23: 4077 - 4081
+    //    6 timesteps:
+    //     cell 23: 4078 - 4081
+    //    7 timesteps:
+    //     cell 23: 4079 - 4080
+    //    8 timesteps:
+    //     cell 23: 4080 - 4080
+    //    9 timesteps:
+    //     cell 23: 4080 - 4080 (other cells still bouncing by 1mV)
+
+    // 9 timesteps is 180ms, a bit much to pause every 1.28s?
+    // alternatively, we could:
+    //   mute during a pair of balance cycles every so often (one odd, one even)
+    //     for say 6 timesteps each (120ms)
+    //   and average the readings from those two cycles
+    // could get down to 240ms every, say 5.12s, or 5% of the time, or whatever
+
+    int mute_steps = 0;
+
+    if(mute_steps>0 && step==0) {
+        // Wake up and stop balancing
+        bmb3y_send_wakeup_cs_blocking();
+        //pause_balancing(&model->balancing_sm);
+        //bmb3y_send_balancing(model);
+        bmb3y_send_command_blocking(BMB3Y_CMD_MUTE);
+
+    } else if(step==(mute_steps + 0)) {
         // Wake up and request snapshot
 
         bmb3y_send_wakeup_cs_blocking();
@@ -571,8 +610,15 @@ void bmb3y_tick(bms_model_t *model) {
         // muting doesn't seem to work? cellvoltages still bouncy during balance
         // bmb3y_send_command_blocking(BMB3Y_CMD_MUTE);
         // sleep_us(100);
-        bmb3y_send_command_blocking(BMB3Y_CMD_IDLE_WAKE);
+        if(mute_steps==0) {
+            bmb3y_send_command_blocking(BMB3Y_CMD_IDLE_WAKE);
+        } else {
+            bmb3y_send_command_blocking(BMB3Y_CMD_MUTE);
+        }
         bmb3y_send_command_blocking(BMB3Y_CMD_SNAPSHOT);
+
+        // If muting, could wait 300us and wake now, which would give more
+        // balancing-enabled time...
 
         // As we wait longer than 5ms before the next command, the BMB will go
         // to comms-idle and need a wakeup. A single CS wakeup each time seems
@@ -581,15 +627,18 @@ void bmb3y_tick(bms_model_t *model) {
         // uint32_t end = time_us_32();
         // printf("BMB3Y snapshot took %ld us\n", end - start);
 
-    } else if(step>=1 && step <= 5) {
+    } else if(step>=(mute_steps+1) && step <= (mute_steps+5)) {
         // Read each of the five cellvoltage banks
 
         bmb3y_send_wakeup_cs_blocking();
 
-        if(!bmb3y_read_cell_voltage_bank_blocking(model, step - 1)) {
+        // Resume balancing
+        bmb3y_send_command_blocking(BMB3Y_CMD_IDLE_WAKE);
+
+        if(!bmb3y_read_cell_voltage_bank_blocking(model, step - (mute_steps+1))) {
             // Read failed
             last_read_crc_failed = true;
-        } else if(step==5 && !last_read_crc_failed) {
+        } else if(step==(mute_steps+5) && !last_read_crc_failed) {
             // All banks read successfully
             //printf("CRC: GOOD!!!\n");
 
@@ -605,10 +654,12 @@ void bmb3y_tick(bms_model_t *model) {
         
         // uint32_t end = time_us_32();
         // printf("BMB3Y bank %d read took %ld us\n", step - 1, end - start);
-    } else if(step==6) {
+    } else if(step==(mute_steps+6)) {
         // Module temperatures
 
         bmb3y_send_wakeup_cs_blocking();
+
+        //bmb3y_send_command_blocking(BMB3Y_CMD_IDLE_WAKE);
 
         bmb3y_read_temperatures_blocking(model);
 
@@ -625,7 +676,7 @@ void bmb3y_tick(bms_model_t *model) {
             printf("\n");
         }
 
-    } else if(step==7) {
+    } else if(step==(mute_steps+7)) {
         // Enable/disable per-cell balancing as needed.
 
         if(!use_slow_mode) {
