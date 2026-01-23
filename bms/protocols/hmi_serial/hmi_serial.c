@@ -217,6 +217,15 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
                     // Unknown cell
                     idx -= 2; // rollback reg_id
                 }
+            } else if (reg_id >= HMI_REG_MODULE_TEMPS_START && reg_id <= HMI_REG_MODULE_TEMPS_END) {
+                uint16_t temp_idx = reg_id - HMI_REG_MODULE_TEMPS_START;
+                if (temp_idx < 8) {
+                    buf[idx++] = HMI_TYPE_UINT16;
+                    idx += hmi_buf_append_uint16(&buf[idx], model->module_temperatures_dC[temp_idx]);
+                } else {
+                    // Unknown temp
+                    idx -= 2; // rollback reg_id
+                }
             } else if (reg_id >= HMI_REG_RAW_TEMPS_START && reg_id <= HMI_REG_RAW_TEMPS_END) {
                 uint16_t temp_idx = reg_id - HMI_REG_RAW_TEMPS_START;
                 if (temp_idx < (16+24+8)) {
