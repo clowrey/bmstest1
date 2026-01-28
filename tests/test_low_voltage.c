@@ -67,13 +67,41 @@ static void tick(battery_model_t *bat, bms_model_t *model, float current_A, uint
     events_tick();
 }
 
+static void discharge(battery_model_t *bat, bms_model_t *model, uint32_t target_cell_voltage_mV) {
+    float current = model->discharge_current_limit_dA / 10.0f; // in A
+
+    while (model->cell_voltage_min_mV > target_cell_voltage_mV) {
+        tick(bat, model, -current, 10); // 10ms timestep
+
+        // Respect current limit
+        float new_limit = model->discharge_current_limit_dA / 10.0f;
+        if (new_limit < current) {
+            current = new_limit;
+        }
+
+        // Converge towards target voltage
+        float convergence_limit = (model->cell_voltage_min_mV - target_cell_voltage_mV) / 10.0f; // in A
+        if (convergence_limit < current) {
+            current = convergence_limit;
+        }
+
+        if(current<0.1f) {
+            current = 0.1f; // minimum current to avoid stalling
+        }
+
+        // printf("Current cell voltage: %d mV, Next current: %.2f A\n",
+        //       model->cell_voltage_min_mV,
+        //       current);
+    }
+}
+
 static void test_low_voltage_protection(void **state) {
     (void) state;
     bms_model_t model = {0};
     battery_model_t bat = {
         .capacity_Ah = 2.0f,
         .soc = 0.1f, // Start at 10% SoC
-        .internal_resistance_Ohm = 0.005f
+        .internal_resistance_Ohm = 0.00005f
     };
 
     // System must be in RUNNING state to trigger safety checks properly
@@ -86,6 +114,7 @@ static void test_low_voltage_protection(void **state) {
     model.current_millis = stored_millis;
     model.temperature_max_dC = 250; // 25.0C
     model.temperature_min_dC = 250;
+    model.contactor_sm.enable_current = true;
 
     // 1. Initially safe
     tick(&bat, &model, 0, 100);
@@ -95,62 +124,27 @@ static void test_low_voltage_protection(void **state) {
     // Discharge limit should be healthy
     assert_true(model.cell_voltage_discharge_current_limit_dA > 100);
 
-    printf("Starting discharge from %d mV...\n", model.cell_voltage_min_mV);
-
-    // 2. Discharge until we hit SOFT_MIN (3200mV)
-    // We expect derating to start before that if we are below 3500mV (per current_limits.c)
-    while (model.cell_voltage_min_mV > CELL_VOLTAGE_SOFT_MIN_mV) {
-        tick(&bat, &model, -10.0f, 10000); // 20A discharge
-        printf("Cell voltage: %d mV, Discharge limit: %d dA\n", 
-               model.cell_voltage_min_mV, model.cell_voltage_discharge_current_limit_dA);
-    }
-
-    printf("Reached SOFT_MIN: %d mV. Discharge limit: %d dA\n", 
-           model.cell_voltage_min_mV, model.cell_voltage_discharge_current_limit_dA);
-    
-    // Per calculate_cell_voltage_discharge_current_limit: 
-    // if(cell_voltage_min_mV < CELL_VOLTAGE_SOFT_MIN_mV) discharge_limit = 0;
+    // 2. Discharge to just below SOFT_MIN
+    discharge(&bat, &model, CELL_VOLTAGE_SOFT_MIN_mV - 1);
+    // Check that discharge limit has been zeroed           
     assert_int_equal(model.cell_voltage_discharge_current_limit_dA, 0);
-    
     // Highest level should still be NONE or WARNING (if LOW is warning)
-    // ERR_CELL_VOLTAGE_LOW is LEVEL_WARNING
     assert_int_equal(get_event_level(ERR_CELL_VOLTAGE_LOW), LEVEL_WARNING);
 
-    // 3. Continue discharge until we hit HARD_MIN (2800mV)
-    while(true) {
-        battery_model_t new_bat = bat;
-        bms_model_t new_model = model;
-        tick(&new_bat, &new_model, -5.0f, 100); // 5A discharge
-        if(new_model.cell_voltage_min_mV <= CELL_VOLTAGE_HARD_MIN_mV) {
-            // Stop before crossing threshold
-            break;
-        }
-        bat = new_bat;
-        model = new_model;
-    }
-    // while (model.cell_voltage_min_mV > 2840) { // Stay slightly above to avoid jumping past it in one step
-    //      tick(&bat, &model, -5.0f, 100);
-    // }
-    tick(&bat, &model, -5.0f, 100); // One more step to cross 2800
-    tick(&bat, &model, -5.0f, 100); // One more step to cross 2800
-
-    printf("Reached HARD_MIN: %d mV. Highest level: %d\n", 
-           model.cell_voltage_min_mV, get_highest_event_level());
-    
+    // 3. Sudden discharge to below HARD_MIN
+    tick(&bat, &model, -10000.0f, 100);
     assert_true(model.cell_voltage_min_mV <= CELL_VOLTAGE_HARD_MIN_mV);
     // Should have recorded VERY_LOW event (LEVEL_CRITICAL)
     assert_int_equal(get_event_level(ERR_CELL_VOLTAGE_VERY_LOW), LEVEL_CRITICAL);
+    // And charge buffer exceeded
+    assert_int_equal(get_event_level(ERR_SOFT_CHARGE_BUFFER_EXCEEDED), LEVEL_CRITICAL);
+    // But nothing higher yet
     assert_int_equal(get_highest_event_level(), LEVEL_CRITICAL);
 
     // 4. Wait for escalation (leeway is 1000ms = 1s)
-    printf("Waiting for escalation...\n");
     for (int i = 0; i < 11; i++) {
         tick(&bat, &model, -0.1f, 100);
     }
-
-    printf("Final state: %d mV. Highest level: %d (%s)\n", 
-           model.cell_voltage_min_mV, get_highest_event_level(),
-           get_highest_event_level() == LEVEL_FATAL ? "FATAL" : "NOT FATAL");
 
     // Should have escalated to FATAL
     assert_int_equal(get_highest_event_level(), LEVEL_FATAL);

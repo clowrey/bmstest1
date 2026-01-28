@@ -257,11 +257,11 @@ static int send_150(bms_model_t *model) {
     msg.dlc = 8;
 
     int16_t divisor = model->soc_scaling_max - model->soc_scaling_min;
-    if(divisor == 0) {
+    if(divisor <= 0) {
         divisor = 10000; // default to no scaling
     }
     
-    int16_t scaled_soc =(int32_t)(model->soc - model->soc_scaling_min) * 10000 / divisor;
+    int16_t scaled_soc = (int32_t)(model->soc - model->soc_scaling_min) * 10000 / divisor;
     if(scaled_soc > 10000) scaled_soc = 10000;
     if(scaled_soc < 0) scaled_soc = 0;
 
@@ -273,12 +273,11 @@ static int send_150(bms_model_t *model) {
     msg.data[2] = (soh >> 8) & 0xFF;
     msg.data[3] = soh & 0xFF;
 
+    // TODO - use floating point instead of the int64_t math here?
+    
     // so if scaling min/max is 50 to 75, we're only using 25% of the working capacity
 
-    int32_t scaled_working_capacity_mC = (model->working_capacity_mC * divisor) / 10000;
-    if(scaled_working_capacity_mC <= 0) {
-        scaled_working_capacity_mC = 1; // avoid div by zero
-    }
+    uint32_t scaled_working_capacity_mC = ((uint64_t)model->working_capacity_mC * divisor) / 10000;
 
     const uint16_t remaining_capacity_dAh = ((uint64_t)scaled_working_capacity_mC * scaled_soc) / ((uint64_t)10000 * 3600 * 100);
     msg.data[4] = (remaining_capacity_dAh >> 8) & 0xFF;
@@ -367,6 +366,9 @@ static uint8_t transmit_cycle = 0;
 
 void inverter_tick(bms_model_t *model) {
     // This should get called every 100ms
+
+    inverter_present = true; // for testing
+    inverter_initialized = true; // for testing
 
     if(!inverter_present) {
         // We haven't received any CAN messages from the inverter yet

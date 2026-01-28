@@ -116,6 +116,16 @@ void confirm_battery_safety(bms_model_t *model) {
         );
     }
 
+    if(model->soft_limit_charge_buffer_dC > OVERCHARGE_BUFFER_LIMIT_dC || 
+       model->soft_limit_charge_buffer_dC < -OVERDISCHARGE_BUFFER_LIMIT_dC) {
+        raise_bms_event(
+            ERR_SOFT_CHARGE_BUFFER_EXCEEDED,
+            (uint64_t)(int64_t)model->soft_limit_charge_buffer_dC
+        );
+    } else {
+        clear_bms_event(ERR_SOFT_CHARGE_BUFFER_EXCEEDED);
+    }
+
     // TODO: definitely not the right place for this
     confirm(
         !model->estop_pressed,

@@ -161,21 +161,14 @@ static void model_accumulate_soft_limit_overcurrent(bms_model_t *model) {
 }
 
 static void model_check_overcurrent_accumulation(bms_model_t *model) {
+    // TODO - do we actually want to cut off the battery, or just raise events?
+
     if(model->excess_charge_buffer_dC > OVERCURRENT_BUFFER_LIMIT_dC) {
         // Too much excess charge, cut off charging
     } else if(model->excess_discharge_buffer_dC > OVERCURRENT_BUFFER_LIMIT_dC) {
         // Too much excess discharge, cut off discharging
     }
 }
-
-static void model_check_soft_limit_charge_accumulation(bms_model_t *model) {
-    if(model->soft_limit_charge_buffer_dC > OVERCHARGE_BUFFER_LIMIT_dC) {
-        // Too much excess charge in soft limit region, cut off charging
-    } else if(model->soft_limit_charge_buffer_dC < -OVERDISCHARGE_BUFFER_LIMIT_dC) {
-        // Too much excess discharge in soft limit region, cut off discharging
-    }
-}
-
 
 static void model_calculate_temperature_current_limits(bms_model_t *model) {
     model->temp_charge_current_limit_dA = calculate_temperature_charge_current_limit(
@@ -203,5 +196,4 @@ void model_tick(bms_model_t *model) {
     model_accumulate_soft_limit_overcurrent(model);
 
     model_check_overcurrent_accumulation(model);
-    model_check_soft_limit_charge_accumulation(model);
 }

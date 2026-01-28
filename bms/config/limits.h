@@ -162,7 +162,12 @@
 
 // How much excess charge/discharge we allow in the soft-limit region before
 // cutting off the battery to protect it.
-#define OVERCHARGE_BUFFER_LIMIT_dC 500 // in 0.1Coulomb units
+
+// We dont't tolerate much overcharge (1A for 10 seconds)
+#define OVERCHARGE_BUFFER_LIMIT_dC 100 // in 0.1Coulomb units
+
+// 500 dC (50C) is 200mA (quiescent current for a big inverter) for ~4 minutes,
+// which should be long enough to get the inverter [dis]charging.
 #define OVERDISCHARGE_BUFFER_LIMIT_dC 500 // in 0.1Coulomb units
 
 

@@ -440,8 +440,9 @@ uint32_t ekf_tick(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV) {
 
         // TODO - put this somewhere else
         model.working_capacity_mC = (soc_max - prev_soc_min) * model.nameplate_capacity_mC;
+        printf("EKF Working Capacity Updated: %d mC\n", model.working_capacity_mC);
     }
-    soc = (soc / prev_soc_mul) + prev_soc_min;
+    soc = (soc - prev_soc_min) * prev_soc_mul;
 
     if (soc < 0.0f) soc = 0.0f;
     if (soc > 1.0f) soc = 1.0f;

@@ -59,15 +59,14 @@ typedef enum {
 
 // Pass a macro in as X to render the event list in different ways
 //
-// Format: X(name, default_level, escalate_after)
+// Format: X(name, level, escalate_after)
 //
 // where:
 //  - name is the event name (ERR_ is prepended to the enum value)
-//  - default_level is the default level for the event (although can be
-//    overridden)
+//  - level is the initial event severity (although can escalate)
 //  - escalate_after has different functions depending on level:
 //    - for WARNING level events, it's the number of occurrences before
-//      escalating to CRITICAL (zero means never escalate)
+//      escalating to FATAL (zero means never escalate)
 //    - for CRITICAL level events, it's the active time in milliseconds before
 //      escalating to FATAL (zero means instant). Should be a multiple of 100ms.
 //      Maximum 6553s.
@@ -108,6 +107,7 @@ typedef enum {
     X(CELL_VOLTAGE_VERY_HIGH, LEVEL_CRITICAL, 1000)             \
     X(CELL_VOLTAGE_LOW, LEVEL_WARNING, 0)                       \
     X(CELL_VOLTAGE_VERY_LOW, LEVEL_CRITICAL, 1000)              \
+    X(SOFT_CHARGE_BUFFER_EXCEEDED, LEVEL_CRITICAL, 1000)        \
     X(BATTERY_TEMPERATURE_HIGH, LEVEL_WARNING, 0)               \
     X(BATTERY_TEMPERATURE_VERY_HIGH, LEVEL_CRITICAL, 1000)      \
     X(BATTERY_TEMPERATURE_LOW, LEVEL_WARNING, 0)                \
