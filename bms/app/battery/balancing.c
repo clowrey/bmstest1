@@ -6,15 +6,13 @@
 
 #define AUTO_BALANCING_PERIOD_MS 30000 // how long to wait between auto-balancing sessions
 #define PERIODS_PER_MV 50 // how many balancing periods per mV above minimum
-#define BALANCE_MIN_OFFSET_MV 2 // minimum voltage difference to balance
+#define BALANCE_MIN_OFFSET_MV 0 // minimum voltage difference to balance
 #define PAUSE_AFTER_N_PERIODS 4 // pause balancing for a shortened period after N periods to get a good voltage reading
 
 static bool good_conditions_for_balancing(bms_model_t *model) {
     // Check if conditions are suitable for balancing
 
     // check for target balance point (mV or SoC?)
-
-    // check for min cellvoltage above some threshold
 
     // check for non-stale values
 

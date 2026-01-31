@@ -1,5 +1,6 @@
 #include "system.h"
 
+#include "drivers/chip/nvm.h"
 #include "drivers/sensors/ina228.h"
 #include "sys/events/events.h"
 #include "config/limits.h"
@@ -50,6 +51,8 @@ void system_sm_tick(bms_model_t *model) {
         // Check for fatal events
         if(get_highest_event_level() == LEVEL_FATAL) {
             // Go straight to fault state
+            model->operating = false;
+            nvm_schedule_save_persistent_fast(model);
             state_transition((sm_t*)system_sm, SYSTEM_STATE_FAULT);
         }
     }
@@ -62,19 +65,10 @@ void system_sm_tick(bms_model_t *model) {
             if(successfully_initialized(model)) {
                 // wait a few seconds for supervisor
                 if(state_timeout((sm_t*)system_sm, 10000)) {
-                    // TODO - have a better check for calibration status?
-                    if(model->neg_contactor_offset_mV) {
-                        // already calibrated
-                        state_transition((sm_t*)system_sm, SYSTEM_STATE_INACTIVE);
-                    } else {
-                        // need to calibrate
-                        model->contactor_req = CONTACTORS_REQUEST_CALIBRATE;
-                        model->offline_calibration_req = OFFLINE_CALIBRATION_REQUEST_START;
-                        state_transition((sm_t*)system_sm, SYSTEM_STATE_CALIBRATING);
-                    }
+                    state_transition((sm_t*)system_sm, SYSTEM_STATE_INACTIVE);
                 }
             }
-            // assert some events after a timeout?
+            // assert some failed-to-init events after a timeout?
             break;
         case SYSTEM_STATE_CALIBRATING:
             // TODO - use explicit set/clear flags rather than checking state?
@@ -89,11 +83,10 @@ void system_sm_tick(bms_model_t *model) {
             }
             break;
         case SYSTEM_STATE_INACTIVE:
-            // Currently, the supervisor takes a few seconds to start up, so we
-            // need a 2s delay before trying to close contactors.
-            if(model->system_req == SYSTEM_REQUEST_RUN && state_timeout((sm_t*)system_sm, 2000)) {
-                // leave request asserted?
-                //model->system_req = SYSTEM_REQUEST_NULL;
+            if(model->system_req == SYSTEM_REQUEST_RUN) {
+                model->system_req = SYSTEM_REQUEST_NULL;
+                model->operating = true;
+                nvm_schedule_save_persistent_fast(model);
                 state_transition((sm_t*)system_sm, SYSTEM_STATE_OPERATING);
             } else if(model->system_req == SYSTEM_REQUEST_CALIBRATE) {
                 model->system_req = SYSTEM_REQUEST_NULL;
@@ -110,6 +103,8 @@ void system_sm_tick(bms_model_t *model) {
                 model->system_req = SYSTEM_REQUEST_NULL;
                 // do we need a wait-for-open state?
                 model->contactor_req = CONTACTORS_REQUEST_OPEN;
+                model->operating = false;
+                nvm_schedule_save_persistent_fast(model);
                 state_transition((sm_t*)system_sm, SYSTEM_STATE_INACTIVE);
             }
             break;

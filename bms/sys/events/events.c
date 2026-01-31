@@ -17,7 +17,7 @@ const bms_event_level_t EVENT_TYPE_LEVELS[] = {
 
 // Leeway times in deciseconds (tenths of a second)
 const uint16_t EVENT_TYPE_LEEWAY[] = {
-#define X(_1, _2, leeway) leeway/100,
+#define X(_1, level, leeway) ((level==LEVEL_WARNING) ? leeway : leeway/100),
     EVENT_TYPES(X)
 #undef X
 };
@@ -68,7 +68,7 @@ void record_bms_event(bms_event_type_t type, uint64_t data, bool repeat) {
         new_level = LEVEL_FATAL;
     }
 
-    if(slot->level == LEVEL_NONE) {
+    if(slot->level < new_level) {
         slot->level = new_level;
         recalculate_highest_level();
     }

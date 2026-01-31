@@ -9,6 +9,43 @@
 #include <stdint.h>
 #include <stdio.h>
 
+// Persistent data (saved to NVM)
+// Do not reorder the fields without updating the version number. New fields can
+// be added to the end (they will default to zero);
+
+// 'Fast' persistent data (saved frequently)
+
+typedef struct {
+    uint32_t nameplate_capacity_mC; // nameplate battery capacity in mC
+    float charge_used_Ah; // charge used in Ah
+    bool operating; // Whether BMS should resume operating if restarted
+} bms_model_persistent_fast_t;
+
+static const uint32_t BMS_MODEL_PERSISTENT_FAST_VERSION = 1;
+
+// 'Slow' persistent data (saved infrequently)
+
+typedef struct {
+    // ADS1115 voltage calibration
+    int32_t battery_voltage_mul;
+    int32_t output_voltage_mul;
+    int32_t neg_contactor_mul;
+    int32_t neg_contactor_offset_mV;
+    int32_t pos_contactor_mul;
+
+    // Current calibration
+    int32_t current_offset;
+} calibration_data_t;
+
+typedef struct {
+    calibration_data_t;
+
+    uint16_t user_charge_current_limit_dA; // in 0.1A units
+    uint16_t user_discharge_current_limit_dA; // in 0.1A units
+} bms_model_persistent_slow_t;
+
+static const uint32_t BMS_MODEL_PERSISTENT_SLOW_VERSION = 1;
+
 // This entire structure will be zero-initialized at startup
 typedef struct bms_model {
     // Positive current means battery is charging
@@ -43,8 +80,18 @@ typedef struct bms_model {
     uint16_t soc_basic_count;
     uint16_t soc_fancy_count;
 
+    union {
+        bms_model_persistent_fast_t persistent_fast;
+        bms_model_persistent_fast_t;
+    };
+    union {
+        bms_model_persistent_slow_t persistent_slow;
+        bms_model_persistent_slow_t;
+    };
 
-    uint32_t nameplate_capacity_mC; // nameplate battery capacity in mC
+    uint32_t nvm_fast_saved_timestep;
+
+    //uint32_t nameplate_capacity_mC; // nameplate battery capacity in mC
     uint32_t working_capacity_mC; // nameplate capacity within working voltage range in mC
 
     system_sm_t system_sm;
@@ -103,8 +150,6 @@ typedef struct bms_model {
     uint16_t pack_voltage_discharge_current_limit_dA; // in 0.1A units
     uint16_t cell_voltage_charge_current_limit_dA; // in 0.1A units
     uint16_t cell_voltage_discharge_current_limit_dA; // in 0.1A units
-    uint16_t user_charge_current_limit_dA; // in 0.1A units
-    uint16_t user_discharge_current_limit_dA; // in 0.1A units
     // The calculated final current limits
     uint16_t charge_current_limit_dA; // in 0.1A units
     uint16_t discharge_current_limit_dA; // in 0.1A units
@@ -131,12 +176,12 @@ typedef struct bms_model {
     millis_t supply_voltage_contactor_millis;
 
     // Calibration constants
-    int32_t battery_voltage_mul; // convert raw ADC to mV (/4096)
-    int32_t output_voltage_mul; // convert raw ADC to mV (/4096)
-    int32_t neg_contactor_mul;
-    int32_t neg_contactor_offset_mV;
-    int32_t pos_contactor_mul; // actually only the bat+ to out- part
-    int32_t current_offset;
+    // int32_t battery_voltage_mul; // convert raw ADC to mV (/4096)
+    // int32_t output_voltage_mul; // convert raw ADC to mV (/4096)
+    // int32_t neg_contactor_mul;
+    // int32_t neg_contactor_offset_mV;
+    // int32_t pos_contactor_mul; // actually only the bat+ to out- part
+    //int32_t current_offset;
 
     bool balancing_enabled;
     bool balancing_active; // whether balancing was requested during the past BMB cycle

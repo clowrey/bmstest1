@@ -77,10 +77,25 @@ static void init_model() {
     sm_init((sm_t*)&model.offline_calibration_sm, "offline_calibration");
 
     // load calibration data from NVM
-    if(nvm_load_calibration(&model)) {
-        printf("Calibration data loaded from NVM\n");
+    // if(nvm_load_calibration(&model)) {
+    //     printf("Calibration data loaded from NVM\n");
+    // } else {
+    //     printf("No calibration data in NVM\n");
+    // }
+    if(nvm_load_persistent_slow(&model)) {
+        printf("Persistent slow data loaded from NVM\n");
     } else {
-        printf("No calibration data in NVM\n");
+        printf("No persistent slow data in NVM\n");
+    }
+    if(nvm_load_persistent_fast(&model)) {
+        printf("Persistent fast data loaded from NVM\n");
+    } else {
+        printf("No persistent fast data in NVM\n");
+    }
+
+    // If NVM contained operating=true, resume operating
+    if(model.operating) {
+        model.system_req = SYSTEM_REQUEST_RUN;
     }
 
     model.nameplate_capacity_mC = NAMEPLATE_CAPACITY_AH * 3600 * 1000; // in mC
@@ -94,9 +109,6 @@ void bms_init() {
     init_hw();
     init_comms();
     init_model();
-
-    // start up by default
-    model.system_req = SYSTEM_REQUEST_RUN;
 
     // This will advance the time to a non-zero value
     update_millis();

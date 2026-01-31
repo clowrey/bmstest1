@@ -1,6 +1,7 @@
 #include "../../config/limits.h"
 
 #include <stdint.h>
+#include <stdio.h>
 
 float nmc_ocv_to_soc(float ocv);
 

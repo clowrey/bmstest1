@@ -4,12 +4,13 @@
 
 #include "hardware/flash.h"
 #include "pico/flash.h"
+#include "pico/stdlib.h"
 #include "../vendor/littlefs/lfs.h"
 #include <string.h>
 #include <stdio.h>
 
-// Use the last part of the flash. Assuming 2MB flash, 1.5MB offset is safe.
-#define NVM_FLASH_OFFSET (1536 * 1024)
+// Use the last part of the flash. Assuming 2MB flash, start 128KB before the end.
+#define NVM_FLASH_OFFSET ((2048 - 128) * 1024)
 #define FLASH_MMAP_ADDR (XIP_BASE + NVM_FLASH_OFFSET)
 
 typedef struct {
@@ -68,6 +69,7 @@ static int lfs_erase(const struct lfs_config *c, lfs_block_t block) {
 }
 
 static int lfs_sync(const struct lfs_config *c) {
+    (void)c;
     return LFS_ERR_OK;
 }
 
@@ -112,80 +114,128 @@ int update_boot_count(void) {
     return (int)boot_count;
 }
 
-typedef struct __attribute__((packed)) {
-    uint32_t version;
-
-    // ADS1115 voltage calibration
-    int32_t battery_voltage_mul;
-    int32_t output_voltage_mul;
-    int32_t neg_contactor_mul;
-    int32_t neg_contactor_offset_mV;
-    int32_t pos_contactor_mul;
-
-    // Current calibration
-    int32_t current_offset;
-} calibration_data_t;
-
-bool nvm_save_calibration(bms_model_t *model) {
+bool nvm_save(const char *name, const void *data, size_t size) {
     int err = lfs_mount(&lfs, &cfg);
     if (err) return false;
 
     lfs_file_t file;
-    err = lfs_file_open(&lfs, &file, "calibration", LFS_O_WRONLY | LFS_O_CREAT);
+    err = lfs_file_open(&lfs, &file, name, LFS_O_WRONLY | LFS_O_CREAT);
     if (err) return false;
 
-    calibration_data_t data = {
-        .version = 1,
-        .battery_voltage_mul = model->battery_voltage_mul,
-        .output_voltage_mul = model->output_voltage_mul,
-        .neg_contactor_mul = model->neg_contactor_mul,
-        .neg_contactor_offset_mV = model->neg_contactor_offset_mV,
-        .pos_contactor_mul = model->pos_contactor_mul,
-        .current_offset = model->current_offset,
-    };
-    lfs_file_write(&lfs, &file, &data, sizeof(data));
+    lfs_file_write(&lfs, &file, data, size);
     lfs_file_close(&lfs, &file);
 
     lfs_unmount(&lfs);
     return true;
 }
 
-bool nvm_load_calibration(bms_model_t *model) {
+bool nvm_load(const char *name, void *data, size_t size) {
     int err = lfs_mount(&lfs, &cfg);
     if (err) return false;
 
     lfs_file_t file;
-    err = lfs_file_open(&lfs, &file, "calibration", LFS_O_RDONLY);
+    err = lfs_file_open(&lfs, &file, name, LFS_O_RDONLY);
     if (err) return false;
 
-    calibration_data_t data = {0};
-    lfs_file_read(&lfs, &file, &data, sizeof(data));
+    lfs_file_read(&lfs, &file, data, size);
     lfs_file_close(&lfs, &file);
 
     lfs_unmount(&lfs);
+    return true;
+}
 
-    if (data.version != 1) {
+// typedef struct __attribute__((packed)) {
+//     uint32_t version;
+
+//     // ADS1115 voltage calibration
+//     int32_t battery_voltage_mul;
+//     int32_t output_voltage_mul;
+//     int32_t neg_contactor_mul;
+//     int32_t neg_contactor_offset_mV;
+//     int32_t pos_contactor_mul;
+
+//     // Current calibration
+//     int32_t current_offset;
+// } calibration_data_t;
+
+typedef struct {
+    uint32_t version;
+    bms_model_persistent_fast_t data;
+} stored_persistent_fast_t;
+
+bool nvm_save_persistent_fast(bms_model_t *model) {
+    stored_persistent_fast_t data = {
+        .version = BMS_MODEL_PERSISTENT_FAST_VERSION,
+        .data = model->persistent_fast,
+    };
+
+    // Allow missing a deadline due to NVM write slowness
+    model->ignore_missed_deadline = true;
+
+    return nvm_save("fast", &data, sizeof(data));
+}
+
+bool nvm_load_persistent_fast(bms_model_t *model) {
+    stored_persistent_fast_t data = {0};
+    if(!nvm_load("fast", &data, sizeof(data))) {
         return false;
     }
 
-    model->battery_voltage_mul = data.battery_voltage_mul;
-    model->output_voltage_mul = data.output_voltage_mul;
-    model->neg_contactor_mul = data.neg_contactor_mul;
-    model->neg_contactor_offset_mV = data.neg_contactor_offset_mV;
-    model->pos_contactor_mul = data.pos_contactor_mul;
-    model->current_offset = data.current_offset;
+    if (data.version != BMS_MODEL_PERSISTENT_FAST_VERSION) {
+        return false;
+    }
+    
+    model->persistent_fast = data.data;
 
     return true;
 }
 
-struct __attribute__((packed)) {
+typedef struct {
     uint32_t version;
+    bms_model_persistent_slow_t data;
+} stored_persistent_slow_t;
 
-    float ekf_x[3];
-    float ekf_P[3][3];
+bool nvm_save_persistent_slow(bms_model_t *model) {
+    stored_persistent_slow_t data = {
+        .version = BMS_MODEL_PERSISTENT_SLOW_VERSION,
+        .data = model->persistent_slow,
+    };
 
-    // TODO - should we just use float for this?
-    int32_t basic_count_charge_raw;
-    
-    // store events here? or separately?
-} runtime_state_t;
+    // Allow missing a deadline due to NVM write slowness
+    model->ignore_missed_deadline = true;
+
+    return nvm_save("slow", &data, sizeof(data));
+}
+
+bool nvm_load_persistent_slow(bms_model_t *model) {
+    stored_persistent_slow_t data = {0};
+    if(!nvm_load("slow", &data, sizeof(data))) {
+        return false;
+    }
+
+    if (data.version != BMS_MODEL_PERSISTENT_SLOW_VERSION) {
+        return false;
+    }
+
+    model->persistent_slow = data.data;
+
+    return true;
+}
+
+void nvm_schedule_save_persistent_fast(bms_model_t *model) {
+    // TODO: prevent too many saves in a short time?
+
+    // Schedule immediate save of 'fast' persistent data
+    model->nvm_fast_saved_timestep = timestep() - (300000 / TIMESTEP_PERIOD_MS) + 1;
+}
+
+void nvm_tick(bms_model_t *model) {
+    // Saving takes a few ms (or longer, if erase is needed).
+
+    // Save 'fast' persistent data every 5 minutes
+    if(timestep_every_ms(300000, &model->nvm_fast_saved_timestep)) {
+        uint32_t start = time_us_32();
+        nvm_save_persistent_fast(model);
+        printf("NVM: saved persistent fast data in %ld us\n", time_us_32() - start);
+    }
+}

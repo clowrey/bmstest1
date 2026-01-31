@@ -21,7 +21,6 @@ typedef struct {
     float R0;      // Ohmic Resistance
     float R1;      // Polarization Resistance
     float C1;      // Polarization Capacitance
-
 } EKF;
 
 // Initialize the filter

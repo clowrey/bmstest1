@@ -129,8 +129,18 @@ static void model_accumulate_overcurrent(bms_model_t *model) {
     } else if(model->current_mA < 0) {
         // Discharging
         int32_t excess_dA = (-model->current_mA / 100) - model->discharge_current_limit_dA - CURRENT_LIMIT_ERROR_MARGIN_dA;
+        // Accumulate into the discharge buffer if there is excess
         model->excess_discharge_buffer_dC = sadd_i32(model->excess_discharge_buffer_dC,
                                                      (excess_dA > 0) ? excess_dA : 0);
+    }
+
+    if(model->excess_charge_buffer_dC > 0) {
+        // Decay the excess charge buffer slowly
+        model->excess_charge_buffer_dC--;
+    }
+    if(model->excess_discharge_buffer_dC > 0) {
+        // Decay the excess discharge buffer slowly
+        model->excess_discharge_buffer_dC--;
     }
 }
 

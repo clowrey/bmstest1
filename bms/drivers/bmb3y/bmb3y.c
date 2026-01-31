@@ -32,7 +32,7 @@ bool bmb3y_long_command_get_data_blocking(uint32_t cmd, uint8_t *response, int r
     // Send a four-byte command and read data from BMBs into the supplied buffer.
     // Returns true if the read was successful.
     
-    // TODO: Check whether we need to wake up?
+    // Assumes the BMB is already awake.
 
     uint8_t tx[104] = {0};
     if(response_len > 100) {
@@ -58,8 +58,8 @@ bool bmb3y_long_command_get_data_blocking(uint32_t cmd, uint8_t *response, int r
 bool bmb3y_short_command_get_data_blocking(uint16_t cmd, uint8_t *response, int response_len) {
     // Send a two-byte command and read data from BMBs into the supplied buffer.
     // Returns true if the read was successful.
-    
-    // TODO: Check whether we need to wake up?
+
+    // Assumes the BMB is already awake.
 
     uint8_t tx[104] = {0};
     if(response_len > 100) {
@@ -74,57 +74,44 @@ bool bmb3y_short_command_get_data_blocking(uint16_t cmd, uint8_t *response, int 
 }
 
 void bmb3y_send_wakeup_cs_blocking() {
+    // Wakes up the BMBs for further communication. The BMBs will fall back to sleep
+    // after about 5ms of inactivity.
+
     isospi_send_wakeup_cs_blocking();
 }
 
 // Higher level functions
 
-bool bmb3y_set_balancing(uint8_t bitmap[16], bool even) {
-    uint8_t tx_buf[50] = {0};
+// bool bmb3y_set_balancing(uint8_t bitmap[16], bool even) {
+//     uint8_t tx_buf[50] = {0};
     
-    tx_buf[0] = (BMB3Y_CMD_WRITE_CONFIG >> 8) & 0xFF;
-    tx_buf[1] = BMB3Y_CMD_WRITE_CONFIG & 0xFF;
+//     tx_buf[0] = (BMB3Y_CMD_WRITE_CONFIG >> 8) & 0xFF;
+//     tx_buf[1] = BMB3Y_CMD_WRITE_CONFIG & 0xFF;
 
-    uint8_t balance_mask = even ? 0xAA : 0x55;
+//     uint8_t balance_mask = even ? 0xAA : 0x55;
 
-    for(int module=0; module<8; module++) {
-        // was f3
-        tx_buf[2 + module*6] = 0xf3;
-        // was 00
-        tx_buf[3 + module*6] = 0;
+//     for(int module=0; module<8; module++) {
+//         // was f3
+//         tx_buf[2 + module*6] = 0xf3;
+//         // was 00
+//         tx_buf[3 + module*6] = 0;
 
-        tx_buf[4 + module*6] = bitmap[module*2 + 1] & balance_mask;
-        tx_buf[5 + module*6] = bitmap[module*2] & balance_mask;
+//         tx_buf[4 + module*6] = bitmap[module*2 + 1] & balance_mask;
+//         tx_buf[5 + module*6] = bitmap[module*2] & balance_mask;
 
-        uint16_t calc_crc = crc14(&tx_buf[2 + module*6], 4, 0x0010);
+//         uint16_t calc_crc = crc14(&tx_buf[2 + module*6], 4, 0x0010);
 
-        tx_buf[6 + module*6] = (calc_crc >> 8) & 0xFF;
-        tx_buf[7 + module*6] = calc_crc & 0xFF;
-    }
+//         tx_buf[6 + module*6] = (calc_crc >> 8) & 0xFF;
+//         tx_buf[7 + module*6] = calc_crc & 0xFF;
+//     }
 
-    // Balance command:
-    // for(int i=0; i<50; i++) {
-    //     printf("%02X ", tx_buf[i]);
-    // }
-    // printf("\n");
+//     // We skip all of the response bytes
+//     isospi_write_read_blocking(tx_buf, NULL, 50, 50);
 
-    // We skip all of the response bytes
-    isospi_write_read_blocking(tx_buf, NULL, 50, 50);
-
-    return true;
-}
-
-// void bmb3y_clear_balancing(bms_model_t *model) {
-//     balancing_sm_t *balancing_sm = &model->balancing_sm;
-//     pause_balancing();
-
-//     // // Clear all balancing requests
-//     // for(int i=0; i<4; i++) {
-//     //     balancing_sm->balance_request_mask[i] = 0;
-//     // }
+//     return true;
 // }
 
-void bmb3y_send_balancing(bms_model_t *model) {
+void bmb3y_send_balancing_blocking(bms_model_t *model) {
     balancing_sm_t *balancing_sm = &model->balancing_sm;
 
     uint8_t tx_buf[150] = {0};
@@ -134,7 +121,7 @@ void bmb3y_send_balancing(bms_model_t *model) {
 
     /* 
     The balancing mask consists of four 32-bit ints, with a bit for each cell -
-    the LSB of the last int is cell 0.
+    the LSB of the first int is cell 0.
 
     However the BMB modules consume the mask 15-bits at a time, so it is
     necessary to re-pack the bits accordingly.
@@ -274,7 +261,7 @@ void bmb3y_send_balancing(bms_model_t *model) {
                   balancing_sm->balance_request_mask[2] != 0 ||
                   balancing_sm->balance_request_mask[3] != 0;
 
-    // We skip all of the response bytes
+    // Write only - we skip all of the response bytes
     isospi_write_read_blocking(tx_buf, NULL, 50, 50);
 
     
@@ -406,8 +393,6 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
             model->raw_cell_voltages_mV[cell_index] = converted;
 
             // Don't store voltages during balancing, as they are unstable
-            // (TODO: can't use the unstable voltages flag here since it doesn't
-            // get unset until we've finished reading)
             if(!model->balancing_active) {
                 model->cell_voltages_mV[cell_index] = converted;
             }
@@ -630,7 +615,7 @@ static bool should_use_slow_mode(bms_model_t *model) {
 
 int bmb3y_timestep_offset = 0;
 // Cut balancing pause cycles short so we can get back to balancing sooner.
-const int PAUSE_CYCLE_PERIOD = 10;
+const int PAUSE_CYCLE_LENGTH = 10;
 
 void bmb3y_tick(bms_model_t *model) {
     int period_mask = 0x3f;
@@ -647,9 +632,10 @@ void bmb3y_tick(bms_model_t *model) {
         period_mask = 0xfff;
     }
 
-    int step = ((timestep() + bmb3y_timestep_offset) & period_mask) - 5; // was 3f
+    // Derive a step number which loops every 'period' timesteps
+    int step = ((timestep() + bmb3y_timestep_offset) & period_mask) - 5;
 
-    uint32_t start = time_us_32();
+    //uint32_t start = time_us_32();
 
     if(step == 0) {
         // Wake up BMBs, take snapshot
@@ -665,16 +651,17 @@ void bmb3y_tick(bms_model_t *model) {
         bmb3y_read_temperatures_blocking(model);
         bmb3y_read_more_temps_blocking(model);
         balancing_sm_tick(model);
-        bmb3y_send_balancing(model);
+        bmb3y_send_balancing_blocking(model);
 
         if(model->cell_voltage_slow_mode && !should_use_slow_mode(model)) {
             // Exit slow mode now that we have fresh readings
             model->cell_voltage_slow_mode = false;
             printf("BMB3Y exiting slow mode\n");
         }
-    } else if(step == PAUSE_CYCLE_PERIOD && model->balancing_sm.is_pause_cycle) {
+    } else if(step == PAUSE_CYCLE_LENGTH && model->balancing_sm.is_pause_cycle) {
         // Cut the cycle short if we're in a pause cycle by adjusting the offset.
-        bmb3y_timestep_offset = (bmb3y_timestep_offset + (period_mask + 1) - PAUSE_CYCLE_PERIOD - 1) & period_mask;
+        // This allows us to get back to balancing sooner.
+        bmb3y_timestep_offset = (bmb3y_timestep_offset + (period_mask + 1) - PAUSE_CYCLE_LENGTH - 1) & period_mask;
     } 
 }
 

@@ -1,7 +1,6 @@
 #include "drivers/bmb3y/bmb3y.h"
 #include "drivers/chip/pwm.h"
 #include "drivers/chip/watchdog.h"
-#include "drivers/comms/duart.h"
 #include "drivers/sensors/ina228.h"
 #include "drivers/sensors/internal_adc.h"
 #include "drivers/sensors/ads1115.h"
@@ -151,9 +150,23 @@ void bms_tick() {
     bmb3y_tick(&model);
 
     // For debugging, prepare for restart (zero current) if 'R' received on USB stdio
-    if(stdio_getchar_timeout_us(0) == 'R') {
+
+    int c = stdio_getchar_timeout_us(0);
+    if(c == 'R') {
         printf("Preparing to restart due to 'R' on USB stdio\n");
         count_bms_event(ERR_RESTARTING, 1);
+    } else if(c == 'T') {
+        // Toggle system operational state
+        if(model.system_sm.state == SYSTEM_STATE_INACTIVE) {
+            printf("Requesting operation mode\n");
+            model.system_req = SYSTEM_REQUEST_RUN;
+        } else if(model.system_sm.state == SYSTEM_STATE_OPERATING) {
+            printf("Requesting inactive mode\n");
+            model.system_req = SYSTEM_REQUEST_STOP;
+        }
+    } else if(c == 'C') {
+        printf("Requesting contactor calibration\n");
+        model.system_req = SYSTEM_REQUEST_CALIBRATE;
     }
 
     // Phase 2: Update model
@@ -193,6 +206,7 @@ void bms_tick() {
 
     // Phase 5: Comms
 
+    nvm_tick(&model);
     inverter_tick(&model);
     internal_serial_tick();
     hmi_serial_tick(&model);
@@ -200,6 +214,8 @@ void bms_tick() {
     // Phase 6: Debug output
 
     if((timestep() & 0x3f) == 32) {
+        printf("\033[2J\033[H"); // Clear terminal
+
         //isosnoop_print_buffer();
         uint32_t total = 0;
         for(int i=0; i<NUM_CELLS; i++) {

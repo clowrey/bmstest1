@@ -103,6 +103,7 @@ void confirm_battery_safety(bms_model_t *model) {
 
     // TODO: Is this the right place for this?
 
+    // Check for battery vs cell voltage discrepancy
     if(model->battery_voltage_millis > 0 && model->cell_voltage_millis > 0 && (model->battery_voltage_millis - model->cell_voltage_millis) < 1000) {
         // If we have a recent cell voltage reading, compare total to battery
         // voltage. We may be sampling the cell voltages very infrequently, so
@@ -116,6 +117,7 @@ void confirm_battery_safety(bms_model_t *model) {
         );
     }
 
+    // Check for soft-limit charge buffer exceeded
     if(model->soft_limit_charge_buffer_dC > OVERCHARGE_BUFFER_LIMIT_dC || 
        model->soft_limit_charge_buffer_dC < -OVERDISCHARGE_BUFFER_LIMIT_dC) {
         raise_bms_event(
@@ -125,6 +127,26 @@ void confirm_battery_safety(bms_model_t *model) {
     } else {
         clear_bms_event(ERR_SOFT_CHARGE_BUFFER_EXCEEDED);
     }
+
+    // Check for normal-limit overcurrent buffer exceeded.
+    if(model->excess_charge_buffer_dC > OVERCURRENT_BUFFER_LIMIT_dC) {
+        raise_bms_event(
+            ERR_OVERCURRENT_CHARGING,
+            (uint64_t)(int64_t)model->current_mA
+        );
+    } else {
+        clear_bms_event(ERR_OVERCURRENT_CHARGING);
+    }
+
+    if(model->excess_discharge_buffer_dC > OVERCURRENT_BUFFER_LIMIT_dC) {
+        raise_bms_event(
+            ERR_OVERCURRENT_DISCHARGING,
+            (uint64_t)(int64_t)model->current_mA
+        );
+    } else {
+        clear_bms_event(ERR_OVERCURRENT_DISCHARGING);
+    }
+
 
     // TODO: definitely not the right place for this
     confirm(

@@ -1,3 +1,5 @@
+#pragma once
+
 #define LFP 1
 #define NMC 2
 #define CHEMISTRY NMC
@@ -154,7 +156,7 @@
 #define OVERDISCHARGE_CHARGE_CURRENT_LIMIT_dA 10 // in 0.1A units
 
 // How much over the normal-region current limits we consider excessive.
-#define CURRENT_LIMIT_ERROR_MARGIN_dA 5 // in 0.1A units
+#define CURRENT_LIMIT_ERROR_MARGIN_dA 10 // in 0.1A units
 
 // How much excess normal-region charge/discharge (beyond current limits) we allow before
 // cutting off the battery to protect it.
@@ -191,7 +193,7 @@
 #define CURRENT_STALE_THRESHOLD_MS 1000
 
 #define TEMPERATURE_STALE_THRESHOLD_MS(model) (  \
-    model->cell_voltage_slow_mode ?              \
+    (model)->cell_voltage_slow_mode ?              \
         CELL_TEMPERATURE_STALE_THRESHOLD_SLOW_MS  \
         : CELL_TEMPERATURE_STALE_THRESHOLD_MS )
 

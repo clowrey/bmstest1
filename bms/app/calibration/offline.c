@@ -134,8 +134,7 @@ void offline_calibration_sm_tick(bms_model_t *model) {
                 state_transition((sm_t*)sm, OFFLINE_CALIBRATION_STATE_IDLE);
             } else if(ads1115_calibration_finished(&ads1115_dev)) {
                 if(finish_calibration(model)) {
-                    // TODO - save to flash?
-                    nvm_save_calibration(model);
+                    nvm_save_persistent_slow(model);
                 }
 
                 state_transition((sm_t*)sm, OFFLINE_CALIBRATION_STATE_IDLE);

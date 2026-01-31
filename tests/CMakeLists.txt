@@ -70,3 +70,21 @@ target_include_directories(test_soc PRIVATE
 )
 
 add_test(NAME test_soc COMMAND ${MEMORY_CHECK} test_soc)
+
+add_executable(test_events 
+    test_events.c 
+    ../bms/sys/events/events.c
+    ../bms/app/battery/current_limits.c
+    ../bms/app/battery/safety_checks.c
+    ../bms/app/estimators/ekf.c
+    ../bms/app/hardware_checks.c
+    ../bms/app/model.c
+)
+target_link_libraries(test_events PRIVATE cmocka m)
+target_include_directories(test_events PRIVATE 
+    ${cmocka_SOURCE_DIR}/include
+    include
+    ../bms
+)
+
+add_test(NAME test_events COMMAND ${MEMORY_CHECK} test_events)
