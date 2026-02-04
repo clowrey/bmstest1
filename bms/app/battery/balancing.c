@@ -49,6 +49,27 @@ static bool good_conditions_for_balancing(bms_model_t *model) {
     //return true;
 }
 
+// TODO - make this more efficient
+static uint8_t get_cell_physical_index(int cell_logical_index) {
+    // Map logical cell index to physical index based on presence mask
+    uint32_t cell_presence_mask[] = CELL_PRESENCE_MASK;
+
+    int physical_index = -1;
+    for(int i=0; i<120; i++) {
+        int mask_index = i / 32;
+        int bit_index = i % 32;
+        if(cell_presence_mask[mask_index] & (1 << bit_index)) {
+            physical_index++;
+            if(physical_index == cell_logical_index) {
+                return i;
+            }
+        }
+    }
+
+    // Should not reach here if logical index is valid
+    return 0xFF;
+}
+
 // Update the balance request mask based on the remaining balance times and
 // whether even or odd cells are being balanced this cycle. Decrement the
 // remaining balance times by the given amount.
@@ -59,15 +80,20 @@ static void update_balance_requests(balancing_sm_t *balancing_sm, int16_t decrem
     }
 
     bool any_balancing = false;
+    int last_physical_index = -2;
     for(int cell=0; cell<120; cell++) {
         int mask_index = cell / 32;
         int bit_index = cell % 32;
 
-        if(balancing_sm->balance_time_remaining[cell] > 0 && (balancing_sm->even_cells == ((cell % 2) == 0))) {
+        int physical_index = get_cell_physical_index(cell);
+
+        if(balancing_sm->balance_time_remaining[cell] > 0 && (physical_index - last_physical_index) > 1) {
+            //(balancing_sm->even_cells == ((cell % 2) == 0))) {
             balancing_sm->balance_time_remaining[cell] -= decrement;
             //printf("Cell %d balance time remaining now: %d\n", cell, balancing_sm->balance_time_remaining[cell]);
             balancing_sm->balance_request_mask[mask_index] |= (1 << bit_index);
             any_balancing = true;
+            last_physical_index = physical_index;
         // } else {
         //     balancing_sm->balance_request_mask[mask_index] &= ~(1 << bit_index);
         }
@@ -129,10 +155,10 @@ static bool start_balancing(bms_model_t *model) {
     for(int cell=0; cell<NUM_CELLS; cell++) {
         int16_t voltage = model->cell_voltages_mV[cell];
         model->balancing_sm.balance_time_remaining[cell] = calculate_balance_time(voltage, min_cell_voltage);
-        if(model->balancing_sm.balance_time_remaining[cell] > 0) {
-            printf("Cell %d voltage %d mV, balancing for %d periods\n",
-                cell, voltage, model->balancing_sm.balance_time_remaining[cell]);
-        }
+        // if(model->balancing_sm.balance_time_remaining[cell] > 0) {
+        //     printf("Cell %d voltage %d mV, balancing for %d periods\n",
+        //         cell, voltage, model->balancing_sm.balance_time_remaining[cell]);
+        // }
     }
 
     update_balance_requests(balancing_sm, 0, false);

@@ -20,7 +20,15 @@
     // Soft voltage limits, beyond which the battery will only allow a low-current
     // restoration charge/discharge
     #define CELL_VOLTAGE_SOFT_MIN_mV 2800
-    #define CELL_VOLTAGE_SOFT_MAX_mV 3350
+    #define CELL_VOLTAGE_SOFT_MAX_mV 3400
+    // Working voltage range, which defines 0% and 100% SoC. This may be
+    // overridden by user settings.
+    #define CELL_VOLTAGE_WORKING_MIN_mV 2900
+    #define CELL_VOLTAGE_WORKING_MAX_mV 3350
+
+
+    #define CHARGE_MAX_CURRENT_dA 500 // 50A
+    #define DISCHARGE_MAX_CURRENT_dA 500 // 50A
 
     // TEMPERATURE
 
@@ -152,8 +160,8 @@
 #define DISCHARGE_VOLTAGE_DERATE_dA_PER_mV 2
 
 // Current limits to apply in the soft-limit region
-#define OVERCHARGE_DISCHARGE_CURRENT_LIMIT_dA 10 // in 0.1A units
-#define OVERDISCHARGE_CHARGE_CURRENT_LIMIT_dA 10 // in 0.1A units
+#define OVERCHARGE_DISCHARGE_CURRENT_LIMIT_dA 50 // in 0.1A units
+#define OVERDISCHARGE_CHARGE_CURRENT_LIMIT_dA 50 // in 0.1A units
 
 // How much over the normal-region current limits we consider excessive.
 #define CURRENT_LIMIT_ERROR_MARGIN_dA 10 // in 0.1A units

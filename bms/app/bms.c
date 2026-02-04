@@ -99,7 +99,7 @@ void read_inputs(bms_model_t *model) {
 
     // INA228 current and charge readings
     
-    if((timestep() & 0x7) == 0) {
+    //if((timestep() & 0x7) == 0) {
         // Only query every 160ms or so (readings are available every 531ms but
         // we want to be sure we don't miss any). This is currently blocking due
         // to the I2C transaction but doesn't have to wait for the reading
@@ -109,10 +109,8 @@ void read_inputs(bms_model_t *model) {
         // a new reading
 
         extern ina228_t ina228_dev;
-        if(!ina228_read_current_blocking(&ina228_dev)) {
-            printf("INA228 current read failed\n");
-        }
-    }
+        ina228_read_current_async(&ina228_dev);
+    //}
 
     /* Read supply voltages */
 
@@ -130,6 +128,9 @@ void read_inputs(bms_model_t *model) {
     //printf("Pre: %d\n", model->precharge_closed);
 }
 
+uint32_t timings[10];
+uint32_t max_timings[10];
+
 void bms_tick() {
     // The main tick function
 
@@ -143,11 +144,19 @@ void bms_tick() {
         gpio_put(PIN_LED, false);
     }
 
+    timings[0] = time_us_32();
+
     // Phase 1: Read sensors
 
     read_inputs(&model);
+
+    timings[1] = time_us_32();
+
     //model.cell_voltage_slow_mode = true;
     bmb3y_tick(&model);
+
+    timings[2] = time_us_32();
+    
 
     // For debugging, prepare for restart (zero current) if 'R' received on USB stdio
 
@@ -169,6 +178,8 @@ void bms_tick() {
         model.system_req = SYSTEM_REQUEST_CALIBRATE;
     }
 
+    timings[3] = time_us_32();
+
     // Phase 2: Update model
 
     static int32_t last_charge_raw = 0;
@@ -186,11 +197,16 @@ void bms_tick() {
         last_charge_raw = model.charge_raw;
     }
 
+
     model.soc_voltage_based = voltage_based_soc_estimate(&model);
     model.soc_basic_count = basic_count_soc_estimate(&model);
     model.soc_fancy_count = fancy_count_soc_estimate(&model);
 
+    timings[4] = time_us_32();
+
     model_tick(&model);
+
+    timings[5] = time_us_32();
 
     // Phase 3: Checks
 
@@ -198,11 +214,15 @@ void bms_tick() {
     confirm_hardware_integrity(&model);
     events_tick();
 
+    timings[6] = time_us_32();
+
     // Phase 4: Update state machines
 
     system_sm_tick(&model);
     contactor_sm_tick(&model);
     offline_calibration_sm_tick(&model);
+
+    timings[7] = time_us_32();
 
     // Phase 5: Comms
 
@@ -210,6 +230,8 @@ void bms_tick() {
     inverter_tick(&model);
     internal_serial_tick();
     hmi_serial_tick(&model);
+
+    timings[8] = time_us_32();
 
     // Phase 6: Debug output
 
@@ -266,6 +288,24 @@ void bms_tick() {
             model.soc_basic_count / 100.0f,
             model.soc_fancy_count / 100.0f
         );
+    }
+
+    timings[9] = time_us_32();
+
+    for(int i=0; i<9; i++) {
+        uint32_t delta = timings[i+1] - timings[i];
+        if(delta > max_timings[i]) {
+            max_timings[i] = delta;
+        }
+    }
+
+    if((timestep() & 0x3ff) == 33) {
+        printf("Max timings (us): ");
+        for(int i=0; i<9; i++) {
+            printf("%lu ", max_timings[i]);
+            max_timings[i] = 0;
+        }
+        printf("\n");
     }
 }
 

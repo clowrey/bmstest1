@@ -56,6 +56,14 @@ bool ina228_read_charge(ina228_t *dev);
 bool ina228_read_shunt_voltage(ina228_t *dev, float *voltage_mv);
 bool ina228_read_bus_voltage(ina228_t *dev, float *voltage_mv);
 
+/**
+ * @brief Read the latest current measurement sampled by the background timer.
+ * 
+ * @param dev Pointer to INA228 device handle
+ * @return true if data was available and updated
+ */
+bool ina228_read_current_async(ina228_t *dev);
+
 // Getter functions for last read values
 int32_t ina228_get_current_raw();
 millis_t ina228_get_current_millis();

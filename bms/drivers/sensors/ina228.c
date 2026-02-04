@@ -3,6 +3,7 @@
 #include "config/allocations.h"
 #include "config/pins.h"
 #include "app/model.h"
+#include "drivers/chip/i2c.h"
 
 #include "hardware/irq.h"
 #include "hardware/i2c.h"
@@ -48,87 +49,63 @@
 #define INA228_AVG_1024   7
 
 // Global variables for storing current measurements
-static int32_t ina228_current_raw = 0;
-static millis_t ina228_current_millis = 0;
-static int64_t ina228_charge_raw = 0;
-static millis_t ina228_charge_millis = 0;
+// static int32_t ina228_current_raw = 0;
+// static millis_t ina228_current_millis = 0;
+// static int64_t ina228_charge_raw = 0;
+// static millis_t ina228_charge_millis = 0;
+
+static void ina228_start_async_timer(ina228_t *dev);
 
 // Helper function to write a 16-bit register
 static bool ina228_write_reg16(ina228_t *dev, uint8_t reg, uint16_t value) {
-    uint8_t buf[3];
-    buf[0] = reg;
-    buf[1] = (value >> 8) & 0xFF;
-    buf[2] = value & 0xFF;
+    uint8_t buf[2];
+    buf[0] = (value >> 8) & 0xFF;
+    buf[1] = value & 0xFF;
     
-    int result = i2c_write_timeout_us(dev->i2c, dev->addr, buf, 3, false, INA228_I2C_TIMEOUT_US);
-    return result == 3;
+    return i2c_blocking_write_reg(dev->i2c, dev->addr, reg, buf, 2, INA228_I2C_TIMEOUT_US);
 }
 
 // Helper function to read a 20-bit register (3 bytes)
-static bool ina228_read_reg20(ina228_t *dev, uint8_t reg, int32_t *value) {
-    uint8_t buf[3];
+// static bool ina228_read_reg20(ina228_t *dev, uint8_t reg, int32_t *value) {
+//     uint8_t buf[3];
     
-    // Write register address
-    int result = i2c_write_timeout_us(dev->i2c, dev->addr, &reg, 1, true, INA228_I2C_TIMEOUT_US);
-    if (result != 1) {
-        return false;
-    }
+//     if (!i2c_blocking_read_reg(dev->i2c, dev->addr, reg, buf, 3, INA228_I2C_TIMEOUT_US)) {
+//         return false;
+//     }
     
-    // Read 3 bytes
-    result = i2c_read_timeout_us(dev->i2c, dev->addr, buf, 3, false, INA228_I2C_TIMEOUT_US);
-    if (result != 3) {
-        return false;
-    }
+//     // Combine bytes - INA228 uses 20-bit signed values in MSB first format
+//     int32_t raw = ((int32_t)buf[0] << 12) | ((int32_t)buf[1] << 4) | ((int32_t)buf[2] >> 4);
     
-    // Combine bytes - INA228 uses 20-bit signed values in MSB first format
-    int32_t raw = ((int32_t)buf[0] << 12) | ((int32_t)buf[1] << 4) | ((int32_t)buf[2] >> 4);
+//     // Sign extend from 20 bits to 32 bits
+//     if (raw & 0x80000) {
+//         raw |= 0xFFF00000;
+//     }
     
-    // Sign extend from 20 bits to 32 bits
-    if (raw & 0x80000) {
-        raw |= 0xFFF00000;
-    }
-    
-    *value = raw;
-    return true;
-}
+//     *value = raw;
+//     return true;
+// }
 
 // Helper function to read a 40-bit register (5 bytes)
-static bool ina228_read_reg40(ina228_t *dev, uint8_t reg, int64_t *value) {
-    uint8_t buf[5];
+// static bool ina228_read_reg40(ina228_t *dev, uint8_t reg, int64_t *value) {
+//     uint8_t buf[5];
     
-    // Write register address
-    int result = i2c_write_timeout_us(dev->i2c, dev->addr, &reg, 1, true, INA228_I2C_TIMEOUT_US);
-    if (result != 1) {
-        return false;
-    }
+//     if (!i2c_blocking_read_reg(dev->i2c, dev->addr, reg, buf, 5, INA228_I2C_TIMEOUT_US)) {
+//         return false;
+//     }
     
-    // Read 5 bytes
-    result = i2c_read_timeout_us(dev->i2c, dev->addr, buf, 5, false, INA228_I2C_TIMEOUT_US);
-    if (result != 5) {
-        return false;
-    }
+//     // Combine bytes
+//     int64_t raw = ((int64_t)buf[0] << 32) | ((int64_t)buf[1] << 24) | 
+//                   ((int64_t)buf[2] << 16) | ((int64_t)buf[3] << 8) | (int64_t)buf[4];
     
-    // Combine bytes
-    int64_t raw = ((int64_t)buf[0] << 32) | ((int64_t)buf[1] << 24) | 
-                  ((int64_t)buf[2] << 16) | ((int64_t)buf[3] << 8) | (int64_t)buf[4];
-    
-    *value = raw;
-    return true;
-}
+//     *value = raw;
+//     return true;
+// }
 
 // Helper function to read a 16-bit register
 static bool ina228_read_reg16(ina228_t *dev, uint8_t reg, uint16_t *value) {
     uint8_t buf[2];
     
-    // Write register address
-    int result = i2c_write_timeout_us(dev->i2c, dev->addr, &reg, 1, true, INA228_I2C_TIMEOUT_US);
-    if (result != 1) {
-        return false;
-    }
-    
-    // Read 2 bytes
-    result = i2c_read_timeout_us(dev->i2c, dev->addr, buf, 2, false, INA228_I2C_TIMEOUT_US);
-    if (result != 2) {
+    if (!i2c_blocking_read_reg(dev->i2c, dev->addr, reg, buf, 2, INA228_I2C_TIMEOUT_US)) {
         return false;
     }
     
@@ -142,12 +119,8 @@ bool ina228_init(ina228_t *dev, uint8_t i2c_addr, float shunt_resistor_ohms, flo
     dev->shunt_resistor_ohms = shunt_resistor_ohms;
     dev->async_busy = false;
     
-    // Initialize I2C if not already done
-    i2c_init(dev->i2c, 400 * 1000);  // 400 kHz
-    gpio_set_function(PIN_INA228_I2C_SDA, GPIO_FUNC_I2C);
-    gpio_set_function(PIN_INA228_I2C_SCL, GPIO_FUNC_I2C);
-    gpio_pull_up(PIN_INA228_I2C_SDA);
-    gpio_pull_up(PIN_INA228_I2C_SCL);
+    // Initialize I2C using new async-capable driver
+    i2c_async_init(dev->i2c, 400 * 1000, PIN_INA228_I2C_SDA, PIN_INA228_I2C_SCL);
     
     // Read and verify manufacturer ID (should be 0x5449 = "TI")
     uint16_t mfg_id;
@@ -187,6 +160,8 @@ bool ina228_init(ina228_t *dev, uint8_t i2c_addr, float shunt_resistor_ohms, flo
     
     // Configure the device
     ina228_configure(dev);
+
+    ina228_start_async_timer(dev);
     
     return true;
 }
@@ -262,121 +237,193 @@ uint32_t last_sample_us = 0;
 //uint32_t average_sampling_period_us = 530000; //530944; // Initial estimate based on INA228 datasheet
 float average_sampling_period_us = 530307.0f; // Initial estimate based on INA228 datasheet
 
-// Read current from the INA228 (blocking)
-bool ina228_read_current_blocking(ina228_t *dev) {
-    int32_t current_raw;
-    int32_t current_corrected;
-    
-    uint16_t diag_alert;
-    if (!ina228_read_reg16(dev, INA228_REG_DIAG_ALRT, &diag_alert)) {
-        printf("INA228: Failed to read DIAG_ALRT\n");
-        return false;
-    }
+static uint8_t async_diag_buf[2];
+static uint8_t async_current_buf[3];
+static volatile int32_t latest_async_current_raw = 0;
+static volatile bool async_new_reading_available = false;
 
-    if (!ina228_read_reg20(dev, INA228_REG_CURRENT, &current_raw)) {
-        printf("INA228: Failed to read CURRENT\n");
-        return false;
-    }
-    
-    current_corrected = current_raw - model.current_offset;
-    // Positive current means charging.
-    model.current_mA = div_round_closest(current_corrected, 4);
+static void on_current_read_complete(i2c_inst_t *i2c, bool success, void *user_data) {
+    (void)i2c;
+    (void)user_data;
 
-    // Was a new conversion
-    if(diag_alert & 0x0002) {
-        model.current_millis = millis();
-
-        //printf("raw current: %d\n", current_raw);
-
-        uint32_t now_us = time_us_32();
-        uint32_t elapsed_us = now_us - last_sample_us;
-
-        // TODO: do we care about this?
-        if(last_sample_us != 0) {
-            average_sampling_period_us = (average_sampling_period_us * 0.99999f) + ((float)elapsed_us * 0.00001f);
+    if (success) {
+        int32_t raw = ((int32_t)async_current_buf[0] << 12) | 
+                      ((int32_t)async_current_buf[1] << 4) | 
+                      ((int32_t)async_current_buf[2] >> 4);
+        
+        // Sign extend from 20 bits
+        if (raw & 0x80000) {
+            raw |= 0xFFF00000;
         }
+        
+        latest_async_current_raw = raw;
+        async_new_reading_available = true;
+    }
+}
 
-        // average_sampling_period_us = (average_sampling_period_us * (SAMPLING_PERIOD_SMOOTHING - 1) + elapsed_us) / SAMPLING_PERIOD_SMOOTHING;
-        last_sample_us = now_us;
-        //printf("avg: %.2f us\n", average_sampling_period_us);
+static void on_diag_read_complete(i2c_inst_t *i2c, bool success, void *user_data) {
+    ina228_t *dev = (ina228_t *)user_data;
+    if (success) {
+        uint16_t diag = ((uint16_t)async_diag_buf[0] << 8) | async_diag_buf[1];
+        if (diag & 0x0002) { // Conversion Ready
+            i2c_async_read_reg(i2c, dev->addr, INA228_REG_CURRENT, async_current_buf, 3, on_current_read_complete, NULL);
+        }
+    }
+}
 
-        // Is a new conversion, update charge
-        model.charge_raw += (int64_t)current_corrected;
-        model.charge_millis = model.current_millis;
-
-        // charge_raw is in units equivalent to 0.132736mC (0.25mA LSB, 530.944ms per sample)
-
-        // We sample at the same rate as the INA228 conversions, which has a
-        // clock accurate to 1% - we would do better to use the crystal instead,
-        // but the jitter would probably outweigh the accuracy improvement.
-
-        dev->null_accumulator += current_raw;
-        dev->null_counter++;
+static bool timer_callback(struct repeating_timer *t) {
+    ina228_t *dev = (ina228_t *)t->user_data;
+    
+    // Only start if not already busy
+    if (!i2c_async_is_busy(dev->i2c)) {
+        i2c_async_read_reg(dev->i2c, dev->addr, INA228_REG_DIAG_ALRT, async_diag_buf, 2, on_diag_read_complete, dev);
     }
     
     return true;
 }
+
+static void ina228_start_async_timer(ina228_t *dev) {
+    static struct repeating_timer timer;
+    // 160ms = 160,000us. Negative value for start-to-start timing.
+    add_repeating_timer_us(-160000, timer_callback, dev, &timer);
+}
+
+bool ina228_read_current_async(ina228_t *dev) {
+    if (!async_new_reading_available) {
+        return false;
+    }
+
+    int32_t current_raw = latest_async_current_raw;
+    async_new_reading_available = false;
+
+    int32_t current_corrected = current_raw - model.current_offset;
+    model.current_mA = div_round_closest(current_corrected, 4);
+    model.current_millis = millis();
+    
+    // Update charge
+    model.charge_raw += (int64_t)current_corrected;
+    model.charge_millis = model.current_millis;
+
+    dev->null_accumulator += current_raw;
+    dev->null_counter++;
+
+    return true;
+}
+// Read current from the INA228 (blocking)
+// bool ina228_read_current_blocking(ina228_t *dev) {
+//     int32_t current_raw;
+//     int32_t current_corrected;
+    
+//     uint16_t diag_alert;
+//     if (!ina228_read_reg16(dev, INA228_REG_DIAG_ALRT, &diag_alert)) {
+//         printf("INA228: Failed to read DIAG_ALRT\n");
+//         return false;
+//     }
+
+//     if (!ina228_read_reg20(dev, INA228_REG_CURRENT, &current_raw)) {
+//         printf("INA228: Failed to read CURRENT\n");
+//         return false;
+//     }
+    
+//     current_corrected = current_raw - model.current_offset;
+//     // Positive current means charging.
+//     model.current_mA = div_round_closest(current_corrected, 4);
+
+//     // Was a new conversion
+//     if(diag_alert & 0x0002) {
+//         model.current_millis = millis();
+
+//         //printf("raw current: %d\n", current_raw);
+
+//         uint32_t now_us = time_us_32();
+//         uint32_t elapsed_us = now_us - last_sample_us;
+
+//         // TODO: do we care about this?
+//         if(last_sample_us != 0) {
+//             average_sampling_period_us = (average_sampling_period_us * 0.99999f) + ((float)elapsed_us * 0.00001f);
+//         }
+
+//         // average_sampling_period_us = (average_sampling_period_us * (SAMPLING_PERIOD_SMOOTHING - 1) + elapsed_us) / SAMPLING_PERIOD_SMOOTHING;
+//         last_sample_us = now_us;
+//         //printf("avg: %.2f us\n", average_sampling_period_us);
+
+//         // Is a new conversion, update charge
+//         model.charge_raw += (int64_t)current_corrected;
+//         model.charge_millis = model.current_millis;
+
+//         // charge_raw is in units equivalent to 0.132736mC (0.25mA LSB, 530.944ms per sample)
+
+//         // We sample at the same rate as the INA228 conversions, which has a
+//         // clock accurate to 1% - we would do better to use the crystal instead,
+//         // but the jitter would probably outweigh the accuracy improvement.
+
+//         dev->null_accumulator += current_raw;
+//         dev->null_counter++;
+//     }
+    
+//     return true;
+// }
 
 // Read charge accumulator from the INA228 (blocking)
-bool ina228_read_charge(ina228_t *dev) {
-    int64_t charge_raw;
+// bool ina228_read_charge(ina228_t *dev) {
+//     int64_t charge_raw;
     
-    if (!ina228_read_reg40(dev, INA228_REG_CHARGE, &charge_raw)) {
-        return false;
-    }
+//     if (!ina228_read_reg40(dev, INA228_REG_CHARGE, &charge_raw)) {
+//         return false;
+//     }
     
-    // Store in global variables
-    ina228_charge_raw = charge_raw;
-    ina228_charge_millis = millis();
+//     // Store in global variables
+//     ina228_charge_raw = charge_raw;
+//     ina228_charge_millis = millis();
     
-    // Update model
-    model.charge_raw = charge_raw;
-    model.charge_millis = ina228_charge_millis;
+//     // Update model
+//     model.charge_raw = charge_raw;
+//     model.charge_millis = ina228_charge_millis;
     
-    return true;
-}
+//     return true;
+// }
 
 // Read shunt voltage (blocking)
-bool ina228_read_shunt_voltage(ina228_t *dev, float *voltage_mv) {
-    int32_t vshunt_raw;
+// bool ina228_read_shunt_voltage(ina228_t *dev, float *voltage_mv) {
+//     int32_t vshunt_raw;
     
-    if (!ina228_read_reg20(dev, INA228_REG_VSHUNT, &vshunt_raw)) {
-        return false;
-    }
+//     if (!ina228_read_reg20(dev, INA228_REG_VSHUNT, &vshunt_raw)) {
+//         return false;
+//     }
     
-    // VSHUNT LSB = 312.5 nV for ±163.84 mV range
-    *voltage_mv = (float)vshunt_raw * 312.5e-6f;  // Convert to mV
+//     // VSHUNT LSB = 312.5 nV for ±163.84 mV range
+//     *voltage_mv = (float)vshunt_raw * 312.5e-6f;  // Convert to mV
     
-    return true;
-}
+//     return true;
+// }
 
 // Read bus voltage (blocking)
-bool ina228_read_bus_voltage(ina228_t *dev, float *voltage_mv) {
-    int32_t vbus_raw;
+// bool ina228_read_bus_voltage(ina228_t *dev, float *voltage_mv) {
+//     int32_t vbus_raw;
     
-    if (!ina228_read_reg20(dev, INA228_REG_VBUS, &vbus_raw)) {
-        return false;
-    }
+//     if (!ina228_read_reg20(dev, INA228_REG_VBUS, &vbus_raw)) {
+//         return false;
+//     }
     
-    // VBUS LSB = 195.3125 µV
-    *voltage_mv = (float)vbus_raw * 0.1953125f;  // Convert to mV
+//     // VBUS LSB = 195.3125 µV
+//     *voltage_mv = (float)vbus_raw * 0.1953125f;  // Convert to mV
     
-    return true;
-}
+//     return true;
+// }
 
 // Getter functions
-int32_t ina228_get_current_raw() {
-    return ina228_current_raw;
-}
+// int32_t ina228_get_current_raw() {
+//     return ina228_current_raw;
+// }
 
-millis_t ina228_get_current_millis() {
-    return ina228_current_millis;
-}
+// millis_t ina228_get_current_millis() {
+//     return ina228_current_millis;
+// }
 
-int64_t ina228_get_charge_raw() {
-    return ina228_charge_raw;
-}
+// int64_t ina228_get_charge_raw() {
+//     return ina228_charge_raw;
+// }
 
-millis_t ina228_get_charge_millis() {
-    return ina228_charge_millis;
-}
+// millis_t ina228_get_charge_millis() {
+//     return ina228_charge_millis;
+// }

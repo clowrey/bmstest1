@@ -5,7 +5,10 @@
 
 #include <stdint.h>
 
-
+// Define extern variables from time.h (if not already defined by the test)
+__attribute__((weak)) millis_t stored_millis = 0;
+__attribute__((weak)) millis64_t stored_millis64 = 0;
+__attribute__((weak)) uint32_t stored_timestep = 0;
 
 static const float test_nmc_ocv_curve[] = {
     2.50005757, 3.10031943, 3.24625788, 3.33618626, 3.40073441,

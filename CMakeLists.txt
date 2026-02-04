@@ -36,6 +36,7 @@ add_executable(bms
     bms/protocols/hmi_serial/hmi_serial.c
     bms/protocols/internal_serial/internal_serial.c
     bms/drivers/chip/nvm.c
+    bms/drivers/chip/i2c.c
     bms/drivers/chip/pwm.c
     bms/sys/time/time.c
     bms/drivers/chip/watchdog.c

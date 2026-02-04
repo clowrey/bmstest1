@@ -5,26 +5,38 @@
 
 float nmc_ocv_to_soc(float ocv);
 
+
+
 uint16_t calculate_cell_voltage_charge_current_limit(uint32_t cell_voltage_min_mV, uint32_t cell_voltage_max_mV) {
     uint16_t charge_limit = 0xFFFF;
 
-    if(cell_voltage_max_mV > 4000) {
-        int16_t delta_from_max = CELL_VOLTAGE_SOFT_MAX_mV - cell_voltage_max_mV;
-        // TODO: Add a nonlinear curve to reduce charge current as delta falls to zero.
-        
-
-
-        // TODO - handle LFP or use EKF SoC?
-        // We're onto the steeper part of the curve now, so SoC estimation is more accurate
-        float soc = nmc_ocv_to_soc(cell_voltage_max_mV / 1000.0f);
-        int32_t derate_dA = (int32_t)((1.0f - soc) * 100.0f * CHARGE_CELL_VOLTAGE_DERATE_dA_PER_SoC);
-        if(derate_dA < charge_limit) {
+#if CHEMISTRY == LFP
+    if(cell_voltage_max_mV >= 3570) {
+        charge_limit = 0;
+    } else if(cell_voltage_max_mV > 3350) {
+        // The LFP knee is very sharp - use a quadratic curve to model it
+        uint32_t delta_from_top = 3570 - cell_voltage_max_mV;
+        charge_limit = (((71*CHARGE_MAX_CURRENT_dA)/500) * delta_from_top * delta_from_top + ((3014*CHARGE_MAX_CURRENT_dA)/500) * delta_from_top) / 8192;
+    }
+#elif CHEMISTRY == NMC
+    if(cell_voltage_max_mV >= 4200) {
+        charge_limit = 0;
+    } else {
+        // Linear derate using CHARGE_VOLTAGE_DERATE_dA_PER_mV
+        int32_t delta_from_max_mV = 4200 - cell_voltage_max_mV;
+        int32_t derate_dA = delta_from_max_mV * CHARGE_VOLTAGE_DERATE_dA_PER_mV;
+        if(derate_dA >= 0) {
             charge_limit = derate_dA;
         }
     }
+#endif
 
     if(cell_voltage_max_mV > CELL_VOLTAGE_SOFT_MAX_mV) {
         // Above max cell voltage, stop charging
+        charge_limit = 0;
+    }
+    if(cell_voltage_min_mV < CELL_VOLTAGE_HARD_MIN_mV) {
+        // Below hard min cell voltage, stop charging
         charge_limit = 0;
     }
     if(cell_voltage_min_mV < CELL_VOLTAGE_SOFT_MIN_mV) {
@@ -40,13 +52,31 @@ uint16_t calculate_cell_voltage_charge_current_limit(uint32_t cell_voltage_min_m
 uint16_t calculate_cell_voltage_discharge_current_limit(uint32_t cell_voltage_min_mV, uint32_t cell_voltage_max_mV) {
     uint16_t discharge_limit = 0xFFFF;
 
-    if(cell_voltage_min_mV < 3500) {
-        float soc = nmc_ocv_to_soc(cell_voltage_min_mV / 1000.0f);
-        int32_t derate_dA = (int32_t)(soc * 100.0f * DISCHARGE_CELL_VOLTAGE_DERATE_dA_PER_SoC);
-        if(derate_dA < discharge_limit) {
+#if CHEMISTRY == LFP
+    if(cell_voltage_min_mV <= 2770) {
+        discharge_limit = 0;
+    } else if(cell_voltage_min_mV < 3300) {
+        int32_t delta_from_min_mV = cell_voltage_min_mV - 2700;
+        int32_t numerator = delta_from_min_mV * (((1545*DISCHARGE_MAX_CURRENT_dA)/500) * delta_from_min_mV - ((112537*DISCHARGE_MAX_CURRENT_dA)/500));
+
+        if (numerator < 0) {
+            discharge_limit = 0;
+        } else {
+            discharge_limit = numerator >> 19;
+        }
+    }
+#elif CHEMISTRY == NMC
+    if(cell_voltage_min_mV <= 2900) {
+        discharge_limit = 0;
+    } else {
+        // Linear derate using DISCHARGE_VOLTAGE_DERATE_dA_PER_mV
+        int32_t delta_from_min_mV = cell_voltage_min_mV - 2900;
+        int32_t derate_dA = delta_from_min_mV * DISCHARGE_VOLTAGE_DERATE_dA_PER_mV;
+        if(derate_dA >= 0) {
             discharge_limit = derate_dA;
         }
     }
+#endif
 
     if(cell_voltage_min_mV < CELL_VOLTAGE_SOFT_MIN_mV) {
         // Hit min cell voltage, stop discharging
