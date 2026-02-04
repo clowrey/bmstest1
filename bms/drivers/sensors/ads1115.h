@@ -48,20 +48,14 @@ typedef struct {
     // Async state
     enum {
         ADS1115_STATE_IDLE,
-        ADS1115_STATE_WRITE_CONFIG,
         ADS1115_STATE_WAIT_CONVERSION,
-        ADS1115_STATE_READ_CONVERSION_REG_PTR,
-        ADS1115_STATE_READ_CONVERSION_DATA
+        ADS1115_STATE_READING_CONVERSION,
     } state;
 
-    uint8_t async_buf[3];
-    int async_idx;
-    int async_len;
+    uint8_t async_buf[2];
 } ads1115_t;
 
 bool ads1115_init(ads1115_t *dev, uint8_t addr);
-void ads1115_start_sampling(ads1115_t *dev);
-void ads1115_irq_handler(ads1115_t *dev);
 int16_t ads1115_get_sample_range(int channel);
 millis_t ads1115_get_sample_millis(int channel);
 void ads1115_start_calibration(ads1115_t *dev, uint16_t num_samples);

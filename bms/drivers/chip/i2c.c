@@ -76,7 +76,6 @@ static void i2c_irq_handler_internal(i2c_inst_t *i2c) {
 
     if (ctx->state == STATE_COMMAND_SENT && (stat & I2C_IC_INTR_STAT_R_TX_EMPTY_BITS)) {
         // Transition from writing the command (register address) to reading data
-        // (Write data is now handled entirely in i2c_async_write_reg)
         if (!ctx->writing) {
             // Queue read requests. Since FIFO is 16 deep and we only support small reads,
             // we can push them all here.
@@ -177,7 +176,7 @@ bool i2c_async_write_reg(i2c_inst_t *i2c, uint8_t addr, uint8_t reg, const uint8
         hw->data_cmd = cmd;
     }
 
-// Enable TX_EMPTY to fire once the FIFO has drained, and TX_ABRT for errors
+    // Enable TX_EMPTY to fire once the FIFO has drained, and TX_ABRT for errors
     hw->intr_mask = I2C_IC_INTR_MASK_M_TX_EMPTY_BITS | I2C_IC_INTR_MASK_M_TX_ABRT_BITS;
 
     return true;
