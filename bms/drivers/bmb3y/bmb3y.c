@@ -173,7 +173,7 @@ void bmb3y_send_balancing_blocking(bms_model_t *model) {
 
             //printf("0x%02X%02X ", tx_buf[5 + module*6], tx_buf[4 + module*6]);
 
-            uint16_t calc_crc = crc14(&tx_buf[2 + module*6], 4, 0x0010);
+            uint16_t calc_crc = crc14(&tx_buf[2 + module*6], 4, 0x0010, 0);
 
             tx_buf[6 + module*6] = (calc_crc >> 8) & 0xFF;
             tx_buf[7 + module*6] = calc_crc & 0xFF;
@@ -235,7 +235,7 @@ void bmb3y_send_balancing_blocking(bms_model_t *model) {
 
             // bytes 2, 3 are already filled in by the loop above
 
-            uint16_t calc_crc = crc14(&tx_buf[2 + 0 + module*6], 4, 0x0010);
+            uint16_t calc_crc = crc14(&tx_buf[2 + 0 + module*6], 4, 0x0010, 0);
 
             tx_buf[2 + 4 + module*6] = (calc_crc >> 8) & 0xFF;
             tx_buf[2 + 5 + module*6] = calc_crc & 0xFF;
@@ -289,23 +289,23 @@ static const uint16_t SHORT_READ_COMMANDS[] = {
 // happens. However this totally resolves all CRC mismatch issues and sequencing
 // workarounds.
 bool crc_matches(uint16_t received_crc, uint16_t calculated_crc) {
-    if(received_crc == calculated_crc) {
+    if((received_crc&0x3fff) == calculated_crc) {
         //printf("CRC matched directly\n");
         return true;
     }
     // This is the CRC14 polynomial (with the 15th bit set)
     if((received_crc ^ 0x425b) == calculated_crc) {
-        //printf("CRC matched with 0x425b xor\n");
+        printf("CRC matched with 0x425b xor\n");
         return true;
     }
     // This is the above, left shifted by 1
     if((received_crc ^ 0x84b6) == calculated_crc) {
-        //printf("CRC matched with 0x84b6 xor\n");
+        printf("CRC matched with 0x84b6 xor\n");
         return true;
     }
     // This is the two previous patterns xored together
     if((received_crc ^ 0xc6ed) == calculated_crc) {
-        //printf("CRC matched with 0xc6ed xor\n");
+        printf("CRC matched with 0xc6ed xor\n");
         return true;
     }
     printf("CRC mismatch, xor: %04X\n", received_crc ^ calculated_crc);
@@ -334,9 +334,11 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
 
     for(int module=0; module<NUM_MODULE_VOLTAGES; module++) {
         uint16_t module_crc = (uint16_t)(rx_buf[module * 9 + 6] << 8) | (uint16_t)(rx_buf[module * 9 + 7]);
-        uint16_t calc_crc = crc14(&rx_buf[module * 9], 6, 0x1000);
+        //uint16_t calc_crc = crc14(&rx_buf[module * 9], 6, 0x1000);
+        uint16_t calc_crc = crc14(&rx_buf[module * 9], 6, 0x1000, module_crc);
 
-        if(!crc_matches(module_crc, calc_crc)) {
+        if((module_crc & 0x3fff) != calc_crc) {
+        //if(!crc_matches(module_crc, calc_crc)) {
             printf("CRC: %s %d %02X %02X %02X %02X %02X %02X %02X %02X %02X calc %04X xor %04X or %04X\n",
                 module_crc == calc_crc ? "OK" : "FAIL",
                 bank_index,
@@ -462,8 +464,10 @@ bool bmb3y_read_more_temps_blocking(bms_model_t *model) {
     bool crc_ok = true;
     for(int module=0; module<NUM_MODULE_TEMPS; module++) {
         uint16_t module_crc = (uint16_t)(rx_buf[module * 8 + 6] << 8) | (uint16_t)(rx_buf[module * 8 + 7]);
-        uint16_t calc_crc = crc14(&rx_buf[module * 8], 6, 0x0010);
-        if(!crc_matches(module_crc, calc_crc)) {
+        //uint16_t calc_crc = crc14(&rx_buf[module * 8], 6, 0x0010);
+        uint16_t calc_crc = crc14(&rx_buf[module * 8], 6, 0x0010, module_crc);
+        if((module_crc & 0x3fff) != calc_crc) {
+        //if(!crc_matches(module_crc, calc_crc)) {
             printf("Bad Temp CRC on module %d: msg 0x%04X calc 0x%04X xor %04x or %04x\n", 
                 module, module_crc, calc_crc, calc_crc ^ 0x425b, calc_crc ^ 0xc6ed);
             crc_ok = false;
@@ -508,7 +512,8 @@ bool bmb3y_read_temperatures_blocking(bms_model_t *model) {
         // The temp is in bytes 2 and 3 (little-endian)
         
         uint16_t module_crc = (uint16_t)(rx_buf[module * 8 + 6] << 8) | (uint16_t)(rx_buf[module * 8 + 7]);
-        uint16_t calc_crc = crc14(&rx_buf[module * 8], 6, 0x0010);
+        //uint16_t calc_crc = crc14(&rx_buf[module * 8], 6, 0x0010);
+        uint16_t calc_crc = crc14(&rx_buf[module * 8], 6, 0x0010, module_crc);
 
         // printf("Temp hex: ");
         // for(int i=0;i<8;i++) {
@@ -517,7 +522,8 @@ bool bmb3y_read_temperatures_blocking(bms_model_t *model) {
         // printf("\n");
         //isosnoop_print_buffer();
 
-        if(!crc_matches(module_crc, calc_crc)) {
+        if((module_crc & 0x3fff) != calc_crc) {
+        //if(!crc_matches(module_crc, calc_crc)) {
             printf("Bad Temp CRC on module %d: msg 0x%04X calc 0x%04X xor %04x or %04x\n", 
                 module, module_crc, calc_crc, calc_crc ^ 0x425b, calc_crc ^ 0xc6ed);
             crc_ok = false;

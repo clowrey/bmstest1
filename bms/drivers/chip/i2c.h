@@ -35,6 +35,25 @@ void i2c_async_init(i2c_inst_t *i2c, uint baudrate, uint sda_pin, uint scl_pin);
 bool i2c_async_read_reg(i2c_inst_t *i2c, uint8_t addr, uint8_t reg, uint8_t *buffer, size_t len, i2c_async_callback_t callback, void *user_data);
 
 /**
+ * @brief Start a non-blocking dual register read.
+ * 
+ * This will write the first register address, perform a restart and read len1,
+ * then write the second register address, perform a restart and read len2.
+ * 
+ * @param i2c I2C instance
+ * @param addr 7-bit peripheral address
+ * @param reg1 First register address
+ * @param len1 Number of bytes to read from reg1
+ * @param reg2 Second register address
+ * @param len2 Number of bytes to read from reg2
+ * @param buffer Buffer to store all read data (must be at least len1 + len2 bytes)
+ * @param callback Callback to fire on completion
+ * @param user_data User data to pass to the callback
+ * @return true if the transaction was started
+ */
+bool i2c_async_read_regs_dual(i2c_inst_t *i2c, uint8_t addr, uint8_t reg1, size_t len1, uint8_t reg2, size_t len2, uint8_t *buffer, i2c_async_callback_t callback, void *user_data);
+
+/**
  * @brief Start a non-blocking register write.
  * 
  * This will write the register address followed by the data bytes.

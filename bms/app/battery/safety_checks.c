@@ -101,6 +101,14 @@ void confirm_battery_safety(bms_model_t *model) {
         );
     }
 
+    check_or_confirm(
+        millis_recent_enough(model->current_millis, CURRENT_STALE_THRESHOLD_MS),
+        // Don't raise faults if we're still initializing
+        !not_fully_initialized,
+        ERR_CURRENT_STALE,
+        0x1000000000000000
+    );
+
     // TODO: Is this the right place for this?
 
     // Check for battery vs cell voltage discrepancy

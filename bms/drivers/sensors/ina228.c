@@ -237,36 +237,28 @@ uint32_t last_sample_us = 0;
 //uint32_t average_sampling_period_us = 530000; //530944; // Initial estimate based on INA228 datasheet
 float average_sampling_period_us = 530307.0f; // Initial estimate based on INA228 datasheet
 
-static uint8_t async_diag_buf[2];
-static uint8_t async_current_buf[3];
+static uint8_t async_read_buf[5];
 static volatile int32_t latest_async_current_raw = 0;
 static volatile bool async_new_reading_available = false;
 
-static void on_current_read_complete(i2c_inst_t *i2c, bool success, void *user_data) {
+static void on_read_complete(i2c_inst_t *i2c, bool success, void *user_data) {
     (void)i2c;
     (void)user_data;
 
     if (success) {
-        int32_t raw = ((int32_t)async_current_buf[0] << 12) | 
-                      ((int32_t)async_current_buf[1] << 4) | 
-                      ((int32_t)async_current_buf[2] >> 4);
-        
-        // Sign extend from 20 bits
-        if (raw & 0x80000) {
-            raw |= 0xFFF00000;
-        }
-        
-        latest_async_current_raw = raw;
-        async_new_reading_available = true;
-    }
-}
-
-static void on_diag_read_complete(i2c_inst_t *i2c, bool success, void *user_data) {
-    ina228_t *dev = (ina228_t *)user_data;
-    if (success) {
-        uint16_t diag = ((uint16_t)async_diag_buf[0] << 8) | async_diag_buf[1];
+        uint16_t diag = ((uint16_t)async_read_buf[0] << 8) | async_read_buf[1];
         if (diag & 0x0002) { // Conversion Ready
-            i2c_async_read_reg(i2c, dev->addr, INA228_REG_CURRENT, async_current_buf, 3, on_current_read_complete, NULL);
+            int32_t raw = ((int32_t)async_read_buf[2] << 12) | 
+                          ((int32_t)async_read_buf[3] << 4) | 
+                          ((int32_t)async_read_buf[4] >> 4);
+            
+            // Sign extend from 20 bits
+            if (raw & 0x80000) {
+                raw |= 0xFFF00000;
+            }
+            
+            latest_async_current_raw = raw;
+            async_new_reading_available = true;
         }
     }
 }
@@ -276,7 +268,10 @@ static bool timer_callback(struct repeating_timer *t) {
     
     // Only start if not already busy
     if (!i2c_async_is_busy(dev->i2c)) {
-        i2c_async_read_reg(dev->i2c, dev->addr, INA228_REG_DIAG_ALRT, async_diag_buf, 2, on_diag_read_complete, dev);
+        i2c_async_read_regs_dual(dev->i2c, dev->addr, 
+                                 INA228_REG_DIAG_ALRT, 2, 
+                                 INA228_REG_CURRENT, 3, 
+                                 async_read_buf, on_read_complete, dev);
     }
     
     return true;

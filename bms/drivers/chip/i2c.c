@@ -6,7 +6,6 @@
 
 typedef enum {
     STATE_IDLE,
-    STATE_COMMAND_SENT,   // Written the register address, waiting for it to clear TX FIFO
     STATE_READING,        // Reading data into buffer
     STATE_WRITING,        // Writing data from buffer
     STATE_ERROR
@@ -15,9 +14,7 @@ typedef enum {
 typedef struct {
     uint8_t *buffer;
     size_t len;
-    size_t pos;
     volatile i2c_state_e state;
-    bool writing;
     i2c_async_callback_t callback;
     void *user_data;
 } i2c_context_t;
@@ -74,28 +71,11 @@ static void i2c_irq_handler_internal(i2c_inst_t *i2c) {
         return;
     }
 
-    if (ctx->state == STATE_COMMAND_SENT && (stat & I2C_IC_INTR_STAT_R_TX_EMPTY_BITS)) {
-        // Transition from writing the command (register address) to reading data
-        if (!ctx->writing) {
-            // Queue read requests. Since FIFO is 16 deep and we only support small reads,
-            // we can push them all here.
-            for (size_t i = 0; i < ctx->len; i++) {
-                uint32_t cmd = I2C_IC_DATA_CMD_CMD_BITS; // 1 = Read
-                if (i == 0) cmd |= I2C_IC_DATA_CMD_RESTART_BITS;
-                if (i == ctx->len - 1) cmd |= I2C_IC_DATA_CMD_STOP_BITS;
-                hw->data_cmd = cmd;
-            }
-            ctx->state = STATE_READING;
-            // Set threshold so it fires when all data is ready
-            hw->rx_tl = ctx->len - 1;
-            // Now wait for RX FIFO to fill up
-            hw->intr_mask = I2C_IC_INTR_MASK_M_RX_FULL_BITS | I2C_IC_INTR_MASK_M_TX_ABRT_BITS;
-        }
-    } else if (ctx->state == STATE_READING && (stat & I2C_IC_INTR_STAT_R_RX_FULL_BITS)) {
+    if (ctx->state == STATE_READING && (stat & I2C_IC_INTR_STAT_R_RX_FULL_BITS)) {
         // Store the result after the FIFO has been filled to the anticipated level.
-        // This is safe because we set rx_tl = ctx->len - 1 in the COMMAND_SENT state.
-        for (ctx->pos = 0; ctx->pos < ctx->len; ctx->pos++) {
-            ctx->buffer[ctx->pos] = (uint8_t)hw->data_cmd;
+        // This is safe because we set rx_tl = ctx->len - 1 in i2c_async_read_reg.
+        for (size_t i = 0; i < ctx->len; i++) {
+            ctx->buffer[i] = (uint8_t)hw->data_cmd;
         }
         i2c_finish(i2c, STATE_IDLE);
     } else if (ctx->state == STATE_WRITING && (stat & I2C_IC_INTR_STAT_R_TX_EMPTY_BITS)) {
@@ -114,14 +94,12 @@ bool i2c_async_read_reg(i2c_inst_t *i2c, uint8_t addr, uint8_t reg, uint8_t *buf
     // Only start if idle or previous error
     if (ctx->state != STATE_IDLE && ctx->state != STATE_ERROR) return false;
 
-    // Check if there is room for the command byte (reg address)
-    if (hw->txflr >= 16) return false;
+    // Check if there is room for the command byte (reg address) + read requests
+    if (hw->txflr + 1 + len > 16) return false;
 
     ctx->buffer = buffer;
     ctx->len = len;
-    ctx->pos = 0;
-    ctx->writing = false;
-    ctx->state = STATE_COMMAND_SENT;
+    ctx->state = STATE_READING;
     ctx->callback = callback;
     ctx->user_data = user_data;
 
@@ -134,8 +112,68 @@ bool i2c_async_read_reg(i2c_inst_t *i2c, uint8_t addr, uint8_t reg, uint8_t *buf
     // Push the command (register address)
     hw->data_cmd = reg;
     
-    // Enable TX_EMPTY to trigger the transition to reading in the IRQ
-    hw->intr_mask = I2C_IC_INTR_MASK_M_TX_EMPTY_BITS | I2C_IC_INTR_MASK_M_TX_ABRT_BITS;
+    // Queue read requests. Since FIFO is 16 deep and we checked for room,
+    // we can push them all here.
+    for (size_t i = 0; i < len; i++) {
+        uint32_t cmd = I2C_IC_DATA_CMD_CMD_BITS; // 1 = Read
+        if (i == 0) cmd |= I2C_IC_DATA_CMD_RESTART_BITS;
+        if (i == len - 1) cmd |= I2C_IC_DATA_CMD_STOP_BITS;
+        hw->data_cmd = cmd;
+    }
+
+    // Set threshold so it fires when all data is ready
+    hw->rx_tl = len - 1;
+    // Enable RX_FULL to fire once all data is read, and TX_ABRT for errors
+    hw->intr_mask = I2C_IC_INTR_MASK_M_RX_FULL_BITS | I2C_IC_INTR_MASK_M_TX_ABRT_BITS;
+
+    return true;
+}
+
+bool i2c_async_read_regs_dual(i2c_inst_t *i2c, uint8_t addr, uint8_t reg1, size_t len1, uint8_t reg2, size_t len2, uint8_t *buffer, i2c_async_callback_t callback, void *user_data) {
+    int idx = (i2c == i2c0) ? 0 : 1;
+    i2c_context_t *ctx = &contexts[idx];
+    i2c_hw_t *hw = i2c_get_hw(i2c);
+
+    // Only start if idle or previous error
+    if (ctx->state != STATE_IDLE && ctx->state != STATE_ERROR) return false;
+
+    // Check if there is room for the commands:
+    // reg1_addr (1) + len1 reads + reg2_addr (1) + len2 reads
+    if (hw->txflr + 2 + len1 + len2 > 16) return false;
+
+    ctx->buffer = buffer;
+    ctx->len = len1 + len2;
+    ctx->state = STATE_READING;
+    ctx->callback = callback;
+    ctx->user_data = user_data;
+
+    // Set target address
+    i2c_set_slave_mode(i2c, false, 0);
+    hw->enable = 0;
+    hw->tar = addr;
+    hw->enable = 1;
+
+    // Push first register read sequence
+    hw->data_cmd = reg1;
+    for (size_t i = 0; i < len1; i++) {
+        uint32_t cmd = I2C_IC_DATA_CMD_CMD_BITS;
+        if (i == 0) cmd |= I2C_IC_DATA_CMD_RESTART_BITS;
+        // No stop bit here, we're continuing to reg2
+        hw->data_cmd = cmd;
+    }
+
+    // Push second register read sequence
+    hw->data_cmd = reg2 | I2C_IC_DATA_CMD_RESTART_BITS;
+    for (size_t i = 0; i < len2; i++) {
+        uint32_t cmd = I2C_IC_DATA_CMD_CMD_BITS;
+        if (i == 0) cmd |= I2C_IC_DATA_CMD_RESTART_BITS;
+        if (i == len2 - 1) cmd |= I2C_IC_DATA_CMD_STOP_BITS;
+        hw->data_cmd = cmd;
+    }
+
+    // Set threshold so it fires when all data from both reads is ready
+    hw->rx_tl = ctx->len - 1;
+    hw->intr_mask = I2C_IC_INTR_MASK_M_RX_FULL_BITS | I2C_IC_INTR_MASK_M_TX_ABRT_BITS;
 
     return true;
 }
@@ -152,8 +190,6 @@ bool i2c_async_write_reg(i2c_inst_t *i2c, uint8_t addr, uint8_t reg, const uint8
 
     ctx->buffer = NULL; // No longer used for writing
     ctx->len = len;
-    ctx->pos = 0;
-    ctx->writing = true;
     ctx->state = STATE_WRITING;
     ctx->callback = callback;
     ctx->user_data = user_data;

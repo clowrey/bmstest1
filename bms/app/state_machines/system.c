@@ -67,8 +67,10 @@ void system_sm_tick(bms_model_t *model) {
                 if(state_timeout((sm_t*)system_sm, 10000)) {
                     state_transition((sm_t*)system_sm, SYSTEM_STATE_INACTIVE);
                 }
+            } else if(state_timeout((sm_t*)system_sm, 10000)) {
+                // TODO: raise a specific event too?
+                state_transition((sm_t*)system_sm, SYSTEM_STATE_FAULT);
             }
-            // assert some failed-to-init events after a timeout?
             break;
         case SYSTEM_STATE_CALIBRATING:
             // TODO - use explicit set/clear flags rather than checking state?
