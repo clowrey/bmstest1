@@ -1,3 +1,4 @@
+#include "isospi_master.h"
 #include "isospi_master.pio.h"
 
 #include "config/allocations.h"
@@ -6,7 +7,6 @@
 
 #include <stdio.h>
 
-#define ISOSPI_MASTER_SM 0
 
 void isospi_master_setup(unsigned int tx_pin_base, uint rx_pin_base) {
     // tx_pin_base      is the driver enable pin (active high)

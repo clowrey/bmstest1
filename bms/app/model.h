@@ -184,7 +184,7 @@ typedef struct bms_model {
     //int32_t current_offset;
 
     bool balancing_enabled;
-    bool balancing_active; // whether balancing was requested during the past BMB cycle
+    bool balancing_active; // whether balancing was requested during the past BMB cycle (and so whether any read voltages are unstable)
     int16_t balancing_voltage_threshold_mV; // Only balance cells above this voltage
 
     bool estop_pressed;

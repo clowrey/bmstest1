@@ -51,7 +51,7 @@ void system_sm_tick(bms_model_t *model) {
         // Check for fatal events
         if(get_highest_event_level() == LEVEL_FATAL) {
             // Go straight to fault state
-            model->operating = false;
+            model->operating = false; // TODO: avoid setting this if RESTARTING?
             nvm_schedule_save_persistent_fast(model);
             state_transition((sm_t*)system_sm, SYSTEM_STATE_FAULT);
         }

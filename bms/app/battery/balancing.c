@@ -4,6 +4,8 @@
 #include "config/limits.h"
 #include "app/model.h"
 
+#include "pico/stdlib.h"
+
 #define AUTO_BALANCING_PERIOD_MS 30000 // how long to wait between auto-balancing sessions
 #define PERIODS_PER_MV 50 // how many balancing periods per mV above minimum
 #define BALANCE_MIN_OFFSET_MV 0 // minimum voltage difference to balance
@@ -49,69 +51,66 @@ static bool good_conditions_for_balancing(bms_model_t *model) {
     //return true;
 }
 
-// TODO - make this more efficient
-static uint8_t get_cell_physical_index(int cell_logical_index) {
-    // Map logical cell index to physical index based on presence mask
-    uint32_t cell_presence_mask[] = CELL_PRESENCE_MASK;
-
-    int physical_index = -1;
-    for(int i=0; i<120; i++) {
-        int mask_index = i / 32;
-        int bit_index = i % 32;
-        if(cell_presence_mask[mask_index] & (1 << bit_index)) {
-            physical_index++;
-            if(physical_index == cell_logical_index) {
-                return i;
-            }
-        }
-    }
-
-    // Should not reach here if logical index is valid
-    return 0xFF;
-}
-
 // Update the balance request mask based on the remaining balance times and
 // whether even or odd cells are being balanced this cycle. Decrement the
 // remaining balance times by the given amount.
 static void update_balance_requests(balancing_sm_t *balancing_sm, int16_t decrement, bool skipping) {
+    uint32_t start = time_us_32();
     // Clear all balancing requests
     for(int i=0; i<4; i++) {
         balancing_sm->balance_request_mask[i] = 0;
     }
 
     bool any_balancing = false;
-    int last_physical_index = -2;
-    for(int cell=0; cell<120; cell++) {
-        int mask_index = cell / 32;
-        int bit_index = cell % 32;
+    int last_balancing_physical_index = -2;
 
-        int physical_index = get_cell_physical_index(cell);
+    uint32_t cell_presence_mask[] = CELL_PRESENCE_MASK;
+    int logical_index = 0;
 
-        if(balancing_sm->balance_time_remaining[cell] > 0 && (physical_index - last_physical_index) > 1) {
-            //(balancing_sm->even_cells == ((cell % 2) == 0))) {
-            balancing_sm->balance_time_remaining[cell] -= decrement;
-            //printf("Cell %d balance time remaining now: %d\n", cell, balancing_sm->balance_time_remaining[cell]);
-            balancing_sm->balance_request_mask[mask_index] |= (1 << bit_index);
-            any_balancing = true;
-            last_physical_index = physical_index;
-        // } else {
-        //     balancing_sm->balance_request_mask[mask_index] &= ~(1 << bit_index);
+    // Go through each of the masks in order
+    for (int i = 0; i < 4; i++) {
+        uint32_t mask = cell_presence_mask[i];
+        while (mask) {
+            // Find the next present cell in the mask
+            int bit_index = __builtin_ctz(mask);
+            // Calculate the physical index of that cell
+            int physical_index = i * 32 + bit_index;
+
+            if (logical_index < 120) {
+                // We can't balance physically adjacent cells (due to the BMB resistor arrangement)
+                bool is_physically_adjacent = (physical_index - last_balancing_physical_index) == 1;
+
+                if (balancing_sm->balance_time_remaining[logical_index] > 0 && !is_physically_adjacent) {
+                    balancing_sm->balance_time_remaining[logical_index] -= decrement;
+                    balancing_sm->balance_request_mask[logical_index / 32] |= (1 << (logical_index % 32));
+                    any_balancing = true;
+                    last_balancing_physical_index = physical_index;
+                }
+            }
+
+            logical_index++;
+            // Clear the bit we just processed
+            mask &= ~(1u << bit_index);
         }
     }
 
-    if(!any_balancing && !skipping) {
-        // Nothing to balance on this cycle, skip to the next one
-        balancing_sm->even_cells = !balancing_sm->even_cells;
-        update_balance_requests(balancing_sm, decrement, true);
-        return;
-    }
+    uint32_t end = time_us_32();
+    printf("Updating balance requests took %zu us\n", (size_t)(end - start));
 
-    printf("Balance mask now: %08lX %08lX %08lX %08lX\n",
-        balancing_sm->balance_request_mask[3],
-        balancing_sm->balance_request_mask[2],
-        balancing_sm->balance_request_mask[1],
-        balancing_sm->balance_request_mask[0]
-    );
+    // if(!any_balancing && !skipping) {
+    //     // Nothing to balance on this cycle, skip to the next one
+    //     balancing_sm->even_cells = !balancing_sm->even_cells;
+    //     update_balance_requests(balancing_sm, decrement, true);
+    //     return;
+    // }
+
+
+    // printf("Balance mask now: %08lX %08lX %08lX %08lX\n",
+    //     balancing_sm->balance_request_mask[3],
+    //     balancing_sm->balance_request_mask[2],
+    //     balancing_sm->balance_request_mask[1],
+    //     balancing_sm->balance_request_mask[0]
+    // );
 }
 
 // Calculate how long to balance a cell for, based on its voltage above the
@@ -236,7 +235,7 @@ void balancing_sm_tick(bms_model_t *model) {
             // Update the mask and decrement the times.
             update_balance_requests(balancing_sm, 1, false);
             // Switch even/odd cells for next time
-            balancing_sm->even_cells = !balancing_sm->even_cells;
+            //balancing_sm->even_cells = !balancing_sm->even_cells;
 
             if(finished_balancing(balancing_sm)) {
                 state_transition((sm_t*)balancing_sm, BALANCING_STATE_IDLE);

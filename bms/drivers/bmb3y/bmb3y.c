@@ -129,142 +129,57 @@ void bmb3y_send_balancing_blocking(bms_model_t *model) {
 
     uint32_t cell_presence_mask[] = CELL_PRESENCE_MASK;
 
-    // balancing_sm->balance_request_mask[0] = 0;
-    // balancing_sm->balance_request_mask[1] = 0;
-    // balancing_sm->balance_request_mask[2] = 1<<20;
-    // balancing_sm->balance_request_mask[3] = 0;
+    int logical_index = 0;
+    for (int word_idx = 0; word_idx < 4; word_idx++) {
+        uint32_t presence = cell_presence_mask[word_idx];
+        while (presence) {
+            int bit_in_word = __builtin_ctz(presence);
+            presence &= ~(1U << bit_in_word);
 
-    if(false) {
-        uint64_t window = 0;
-        // We will throw away the top 8 bits of the first mask int.
-        int bits_in_window = -8;
-        int mask_idx = 4;
+            if (balancing_sm->balance_request_mask[logical_index / 32] & (1U << (logical_index & 0x1F))) {
+                int physical_index = (word_idx * 32) | bit_in_word;
 
-        //printf("Sending mask ");
+                // The balancing register has an extra padding bit after every 15
+                // cells, compared to our cell presence mask.
+                int balance_index = physical_index + (physical_index / 15);
+                int module = 7 - (balance_index >> 4);
+                int module_cell_index = balance_index & 0x0F;
 
-        for(int module=0; module<8; module++) {
-            tx_buf[2 + module*6] = 0xf3;
-            tx_buf[3 + module*6] = 0;
-
-            // Pull more bits into the window if needed
-            while (bits_in_window < 15 && mask_idx > 0) {
-                window |= ((uint64_t)balancing_sm->balance_request_mask[--mask_idx]) << (32 - bits_in_window);
-                bits_in_window += 32;
+                tx_buf[2 + 2 + module * 6 + (module_cell_index / 8)] |= (1 << (module_cell_index & 0x07));
             }
-
-            // Extract 15 bits for this module
-            uint16_t balance_bits = (uint16_t)(window >> 49);
-            window <<= 15;
-            bits_in_window -= 15;
-
-            tx_buf[2 + 2 + module*6] = (uint8_t)(balance_bits & 0xFF);
-            tx_buf[2 + 3 + module*6] = (uint8_t)((balance_bits >> 8) & 0xFF);
-            
-            /* old code (assumes 16 bits per module rather than 15) */
-            // int mask_idx2 = 3 - (module / 2);
-            // uint32_t mask = balancing_sm->balance_request_mask[mask_idx2];
-            // if (module % 2 == 0) {
-            //     tx_buf[4 + module*6] = (uint8_t)((mask >> 16) & 0xFF);
-            //     tx_buf[5 + module*6] = (uint8_t)((mask >> 24) & 0xFF);
-            // } else {
-            //     tx_buf[4 + module*6] = (uint8_t)(mask & 0xFF);
-            //     tx_buf[5 + module*6] = (uint8_t)((mask >> 8) & 0xFF);
-            // }
-
-            //printf("0x%02X%02X ", tx_buf[5 + module*6], tx_buf[4 + module*6]);
-
-            uint16_t calc_crc = crc14(&tx_buf[2 + module*6], 4, 0x0010, 0);
-
-            tx_buf[6 + module*6] = (calc_crc >> 8) & 0xFF;
-            tx_buf[7 + module*6] = calc_crc & 0xFF;
-        }
-    } else {
-        int cell_index = 0;
-        for(int balance_index=0; balance_index<128; balance_index++) {
-            // The balancing register has an extra padding bit after every 15
-            // cells, compared to our cell presence mask.
-            
-            // How many padding bits have been added so far?
-            int padding_bits = balance_index / 16;
-            // Is the current index a padding bit?
-            int is_padding_bit = (balance_index % 16) == 15;
-
-            if(is_padding_bit) {
-                // Skip this bit
-                continue;
-            }
-
-            // Find the position in the cell presence mask (padding bits excluded)
-            int mask_word_index = (balance_index - padding_bits) / 32;
-            int bit_index = (balance_index - padding_bits) % 32;
-            if(!(cell_presence_mask[mask_word_index] & (1 << bit_index))) {
-                // This cell is not present, skip it
-                continue;
-            }
-
-        // for(int balance_index=0; balance_index<128; balance_index++) {
-        //     int mask_word_index = balance_index / 32;
-        //     int bit_index = balance_index % 32;
-        //     if(!(balance_presence_mask[mask_word_index] & (1 << bit_index))) {
-        //         // This cell is not present, skip it
-        //         continue;
-        //     }
-
-            if(balancing_sm->balance_request_mask[cell_index / 32] & (1 << (cell_index % 32))) {
-                // This cell is to be balanced
-
-                int module = 7 - (balance_index / 16);
-                int module_cell_index = balance_index % 16;
-
-                //printf("Balancing cell %d (mod %d mci %d)\n", cell_index, module, module_cell_index);
-
-                if(module_cell_index < 8) {
-                    tx_buf[2 + 2 + module*6] |= (1 << module_cell_index);
-                } else {
-                    tx_buf[2 + 3 + module*6] |= (1 << (module_cell_index - 8));
-                }
-            }
-
-            cell_index++;
         }
 
-        // Fill in config bytes and calculate CRCs
-        for(int module=0; module<8; module++) {
-            tx_buf[2 + 0 + module*6] = 0xf3;
-            tx_buf[2 + 1 + module*6] = 0;
-
-            // bytes 2, 3 are already filled in by the loop above
-
-            uint16_t calc_crc = crc14(&tx_buf[2 + 0 + module*6], 4, 0x0010, 0);
-
-            tx_buf[2 + 4 + module*6] = (calc_crc >> 8) & 0xFF;
-            tx_buf[2 + 5 + module*6] = calc_crc & 0xFF;
-        }
-
-        // testing
-        // for(int module=0; module<8; module++) {
-        //     tx_buf[2 + module*6] = 0xf3;
-        //     tx_buf[3 + module*6] = 0;
-
-        //     // Just balance one cell per module for testing
-        //     tx_buf[4 + module*6] = module==7 ? 1 : 0;
-        //     tx_buf[5 + module*6] = 0;
-
-        //     uint16_t calc_crc = crc14(&tx_buf[2 + module*6], 4, 0x0010);
-        //     tx_buf[6 + module*6] = (calc_crc >> 8) & 0xFF;
-        //     tx_buf[7 + module*6] = calc_crc & 0xFF;
-        // }
+        logical_index++;
     }
+
+    // Fill in config bytes and calculate CRCs
+    for(int module=0; module<8; module++) {
+        tx_buf[2 + 0 + module*6] = 0xf3;
+        tx_buf[2 + 1 + module*6] = 0;
+
+        // bytes 2, 3 are already filled in by the loop above
+
+        uint16_t calc_crc = crc14(&tx_buf[2 + 0 + module*6], 4, 0x0010, 0);
+
+        tx_buf[2 + 4 + module*6] = (calc_crc >> 8) & 0xFF;
+        tx_buf[2 + 5 + module*6] = calc_crc & 0xFF;
+    }
+
+
+    // Write only - we skip all of the response bytes
+    isospi_write_read_blocking(tx_buf, NULL, 50, 50);
+}
+
+static void bmb3y_update_balancing_active(bms_model_t *model) {
+    balancing_sm_t *balancing_sm = &model->balancing_sm;
+
+    // Update the balancing active flag based on what we previously requested to
+    // balance.
 
     model->balancing_active = balancing_sm->balance_request_mask[0] != 0 ||
                   balancing_sm->balance_request_mask[1] != 0 ||
                   balancing_sm->balance_request_mask[2] != 0 ||
                   balancing_sm->balance_request_mask[3] != 0;
-
-    // Write only - we skip all of the response bytes
-    isospi_write_read_blocking(tx_buf, NULL, 50, 50);
-
-    
 }
 
 static const uint32_t READ_COMMANDS[] = {
@@ -622,6 +537,7 @@ static bool should_use_slow_mode(bms_model_t *model) {
 int bmb3y_timestep_offset = 0;
 // Cut balancing pause cycles short so we can get back to balancing sooner.
 const int PAUSE_CYCLE_LENGTH = 10;
+bool crc_failed = false;
 
 void bmb3y_tick(bms_model_t *model) {
     int period_mask = 0x3f;
@@ -648,25 +564,50 @@ void bmb3y_tick(bms_model_t *model) {
         // Takes about 90us
         bmb3y_send_wakeup_cs_blocking();
         bmb3y_send_command_blocking(BMB3Y_CMD_SNAPSHOT);
+
+        // Update balancing_active to indicate whether the preceding cycle's
+        // voltages are unstable.
+        bmb3y_update_balancing_active(model);
     } else if(step == 1) {
-        // Wake up BMBs, read voltages and temperatures, setup balancing
-        // Takes about 6ms (so we can get away with doing it all at once rather
-        // than spreading across multiple timesteps)
+        // Wake up, resume balancing (if active). Our voltage/temp snapshot
+        // will remain readable even while balancing.
         bmb3y_send_wakeup_cs_blocking();
-        bmb3y_read_cell_voltages_blocking(model);
-        bmb3y_read_temperatures_blocking(model);
-        bmb3y_read_more_temps_blocking(model);
+
+        crc_failed = false;
+
         balancing_sm_tick(model);
         bmb3y_send_balancing_blocking(model);
+    } else if(step >= 2 && step <= 6) {
+        // Wake up and read a voltage bank
 
-        if(model->cell_voltage_slow_mode && !should_use_slow_mode(model)) {
-            // Exit slow mode now that we have fresh readings
+        bmb3y_send_wakeup_cs_blocking();
+
+        if(!bmb3y_read_cell_voltage_bank_blocking(model, step - 2)) {
+            crc_failed = true;
+        }
+
+        if(step == 6 && !crc_failed && !model->balancing_active) {
+            // All banks read successfully
+            model->cell_voltages_millis = millis();
+        }
+    } else if(step == 7) {
+        // Wake up, read temperatures
+        bmb3y_send_wakeup_cs_blocking();
+        bmb3y_read_temperatures_blocking(model);
+    } else if(step == 8) {
+        // Wake up, read more temps
+        bmb3y_send_wakeup_cs_blocking();
+        bmb3y_read_more_temps_blocking(model);
+
+        if(!crc_failed && !model->balancing_active && model->cell_voltage_slow_mode && !should_use_slow_mode(model)) {
+            // Exit slow mode now that we have fresh readings (both voltage and temp)
             model->cell_voltage_slow_mode = false;
             printf("BMB3Y exiting slow mode\n");
         }
     } else if(step == PAUSE_CYCLE_LENGTH && model->balancing_sm.is_pause_cycle) {
-        // Cut the cycle short if we're in a pause cycle by adjusting the offset.
-        // This allows us to get back to balancing sooner.
+        // Cut the cycle short if we're in a pause cycle by adjusting the
+        // offset. This allows us to get back to balancing sooner, we just need
+        // to have left enough time for voltages to settle.
         bmb3y_timestep_offset = (bmb3y_timestep_offset + (period_mask + 1) - PAUSE_CYCLE_LENGTH - 1) & period_mask;
     } 
 }

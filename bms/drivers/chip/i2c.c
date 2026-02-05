@@ -21,7 +21,7 @@ typedef struct {
 
 static i2c_context_t contexts[2];
 
-static void i2c_finish(i2c_inst_t *i2c, i2c_state_e state) {
+static void __not_in_flash_func(i2c_finish)(i2c_inst_t *i2c, i2c_state_e state) {
     int idx = (i2c == i2c0) ? 0 : 1;
     i2c_context_t *ctx = &contexts[idx];
     ctx->state = state;
@@ -33,8 +33,8 @@ static void i2c_finish(i2c_inst_t *i2c, i2c_state_e state) {
 
 static void i2c_irq_handler_internal(i2c_inst_t *i2c);
 
-static void i2c0_irq_handler(void) { i2c_irq_handler_internal(i2c0); }
-static void i2c1_irq_handler(void) { i2c_irq_handler_internal(i2c1); }
+static void __not_in_flash_func(i2c0_irq_handler)(void) { i2c_irq_handler_internal(i2c0); }
+static void __not_in_flash_func(i2c1_irq_handler)(void) { i2c_irq_handler_internal(i2c1); }
 
 void i2c_async_init(i2c_inst_t *i2c, uint baudrate, uint sda_pin, uint scl_pin) {
     i2c_init(i2c, baudrate);
@@ -58,7 +58,7 @@ void i2c_async_init(i2c_inst_t *i2c, uint baudrate, uint sda_pin, uint scl_pin) 
     }
 }
 
-static void i2c_irq_handler_internal(i2c_inst_t *i2c) {
+static void __not_in_flash_func(i2c_irq_handler_internal)(i2c_inst_t *i2c) {
     int idx = (i2c == i2c0) ? 0 : 1;
     i2c_context_t *ctx = &contexts[idx];
     i2c_hw_t *hw = i2c_get_hw(i2c);

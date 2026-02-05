@@ -54,6 +54,7 @@ add_executable(bms
     bms/sys/events/events.c
     bms/protocols/inverter/byd_can.c
     bms/drivers/isospi/isospi_master.c
+    bms/drivers/isospi/isospi_master_async.c
     bms/drivers/isospi/isosnoop.c
     bms/app/state_machines/base.c
     bms/app/state_machines/contactors.c

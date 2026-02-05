@@ -24,7 +24,7 @@ typedef struct {
     // current balancing session.
     int16_t balance_time_remaining[120];
     // Whether we're balancing even or odd cells this cycle.
-    bool even_cells;
+    //bool even_cells;
     uint16_t pause_counter;
     bool is_pause_cycle;
 } balancing_sm_t;

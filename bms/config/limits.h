@@ -144,7 +144,7 @@
 // (which should be calibrated away at zero current).
 #define VOLTAGE_MISMATCH_THRESHOLD_mV 5000
 
-#define MINIMUM_BALANCE_VOLTAGE_mV 3840
+#define MINIMUM_BALANCE_VOLTAGE_mV 3830
 
 // Is voltage derating of current limits feasible, given the steepness of the
 // voltage curves at top of charge? Probably not?
