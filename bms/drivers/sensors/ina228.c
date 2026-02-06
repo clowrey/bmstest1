@@ -1,6 +1,7 @@
 #include "ina228.h"
 
 #include "config/allocations.h"
+#include "config/limits.h"
 #include "config/pins.h"
 #include "app/model.h"
 #include "drivers/chip/i2c.h"
@@ -184,7 +185,7 @@ void ina228_configure(ina228_t *dev) {
     float shunt_cal_float = 13107.2e6f * dev->current_lsb * dev->shunt_resistor_ohms;
     uint16_t shunt_cal = (uint16_t)shunt_cal_float;
     // 332 to read mA, *4 due to adcrange, /4 because we want in 0.25mA units instead
-    shunt_cal = 332*4/4;
+    shunt_cal = INA228_SHUNT_CAL*4/4;
     
     printf("INA228: Current LSB = %.6f A/LSB\n", dev->current_lsb);
     printf("INA228: SHUNT_CAL = %u (0x%04X)\n", shunt_cal, shunt_cal);

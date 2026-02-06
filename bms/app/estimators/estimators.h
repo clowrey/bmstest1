@@ -7,4 +7,4 @@ uint16_t voltage_based_soc_estimate(bms_model_t *model);
 uint16_t basic_count_soc_estimate(bms_model_t *model);
 uint16_t fancy_count_soc_estimate(bms_model_t *model);
 
-float nmc_ocv_to_soc(float ocv);
+float ocv_to_soc(float ocv);

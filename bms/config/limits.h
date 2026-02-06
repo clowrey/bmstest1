@@ -101,12 +101,12 @@
 // #define NUM_MODULE_TEMPS 1
 
 #if BMS_PROFILE == BMS_DESK
-    // for the 96-cell NMC pack:
 #define CELL_PRESENCE_MASK { 0x7FFF, 0, 0, 0 }
 #define NUM_CELLS 15
 #define NUM_MODULE_VOLTAGES 1
 #define NUM_MODULE_TEMPS 1
 #define NAMEPLATE_CAPACITY_AH 1
+#define INA228_SHUNT_CAL 3088
     
 #elif BMS_PROFILE == BMS_BLUETESLA
     // for the 96-cell NMC pack:
@@ -115,6 +115,7 @@
 #define NUM_MODULE_VOLTAGES 8
 #define NUM_MODULE_TEMPS 8
 #define NAMEPLATE_CAPACITY_AH 200
+#define INA228_SHUNT_CAL 332
 
 #else
     #error "Unsupported BMS_PROFILE"
@@ -141,10 +142,12 @@
 #define BATTERY_VOLTAGE_SOFT_MIN_mV (NUM_CELLS * CELL_VOLTAGE_SOFT_MIN_mV)
 
 // Max discrepancy between BMB cell voltages and measured terminal voltage
-// (which should be calibrated away at zero current).
-#define VOLTAGE_MISMATCH_THRESHOLD_mV 5000
+// (which should be calibrated away at zero current). If in slow mode there
+// could be a considerable time delay between cellvoltage and pack samples.
+#define VOLTAGE_MISMATCH_THRESHOLD_mV 10000
 
-#define MINIMUM_BALANCE_VOLTAGE_mV 3830
+#define MINIMUM_BALANCE_VOLTAGE_mV 3000
+//3830
 
 // Is voltage derating of current limits feasible, given the steepness of the
 // voltage curves at top of charge? Probably not?
@@ -173,12 +176,12 @@
 // How much excess charge/discharge we allow in the soft-limit region before
 // cutting off the battery to protect it.
 
-// We dont't tolerate much overcharge (1A for 10 seconds)
-#define OVERCHARGE_BUFFER_LIMIT_dC 100 // in 0.1Coulomb units
+// We dont't tolerate much overcharge (1A for 200 seconds)
+#define OVERCHARGE_BUFFER_LIMIT_dC 2000 // in 0.1Coulomb units
 
-// 500 dC (50C) is 200mA (quiescent current for a big inverter) for ~4 minutes,
+// 5000 dC (50C) is 200mA (quiescent current for a big inverter) for ~40 minutes,
 // which should be long enough to get the inverter [dis]charging.
-#define OVERDISCHARGE_BUFFER_LIMIT_dC 500 // in 0.1Coulomb units
+#define OVERDISCHARGE_BUFFER_LIMIT_dC 5000 // in 0.1Coulomb units
 
 
 
@@ -225,3 +228,4 @@
 #define SUPPLY_VOLTAGE_CONTACTOR_SOFT_MIN_MV 12000
 #define SUPPLY_VOLTAGE_CONTACTOR_MAX_MV 16000
 #define SUPPLY_VOLTAGE_STALE_THRESHOLD_MS 2000
+

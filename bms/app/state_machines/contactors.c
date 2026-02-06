@@ -19,7 +19,7 @@
 // How long to wait after a failed contactor test (to avoid rapid cycling)
 #define CONTACTORS_FAILED_TEST_TIMEOUT_MS 20000
 // Max voltage across a contactor to consider it closed
-#define CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV 1500
+#define CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV 3000
 // Min voltage across a contactor to consider it open
 #define CONTACTORS_OPEN_VOLTAGE_THRESHOLD_MV 5000 // was 5000
 // Pos contactor has wider tolerances due to the way it is measured
@@ -70,9 +70,9 @@ bool check_current_is_below(bms_model_t *model, int32_t threshold_ma) {
         return false;
     }
     
-    if(abs_int32(model->current_mA) <= threshold_ma) {
-        printf("Yes, current %d mA is below threshold %d mA\n", model->current_mA, threshold_ma);
-    }
+//    if(abs_int32(model->current_mA) <= threshold_ma) {
+        printf("Checking current %d mA is below threshold %d mA\n", model->current_mA, threshold_ma);
+    //}
 
     return abs_int32(model->current_mA) <= threshold_ma;
 
@@ -563,9 +563,12 @@ void contactor_sm_tick(bms_model_t *model) {
                 // There should be no real precharging as nothing should be
                 // attached. We need a margin to accommodate for uncalibrated
                 // values however.
+                printf("[11] checking current\n");
                 if(check_current_is_below(model, 200)) {
+                    printf("[11] pass!\n");
                     state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_CALIBRATING_CLOSED);
                 } else {
+                    printf("[11] fail!\n");
                     // Error properly?
                     state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
                 }

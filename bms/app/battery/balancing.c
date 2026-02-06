@@ -7,8 +7,8 @@
 #include "pico/stdlib.h"
 
 #define AUTO_BALANCING_PERIOD_MS 30000 // how long to wait between auto-balancing sessions
-#define PERIODS_PER_MV 50 // how many balancing periods per mV above minimum
-#define BALANCE_MIN_OFFSET_MV 0 // minimum voltage difference to balance
+#define PERIODS_PER_MV 1 //50 // how many balancing periods per mV above minimum
+#define BALANCE_MIN_OFFSET_MV 50 // minimum voltage difference to balance
 #define PAUSE_AFTER_N_PERIODS 4 // pause balancing for a shortened period after N periods to get a good voltage reading
 
 static bool good_conditions_for_balancing(bms_model_t *model) {
@@ -105,12 +105,12 @@ static void update_balance_requests(balancing_sm_t *balancing_sm, int16_t decrem
     // }
 
 
-    // printf("Balance mask now: %08lX %08lX %08lX %08lX\n",
-    //     balancing_sm->balance_request_mask[3],
-    //     balancing_sm->balance_request_mask[2],
-    //     balancing_sm->balance_request_mask[1],
-    //     balancing_sm->balance_request_mask[0]
-    // );
+    printf("Balance mask now: %08lX %08lX %08lX %08lX\n",
+        balancing_sm->balance_request_mask[3],
+        balancing_sm->balance_request_mask[2],
+        balancing_sm->balance_request_mask[1],
+        balancing_sm->balance_request_mask[0]
+    );
 }
 
 // Calculate how long to balance a cell for, based on its voltage above the
@@ -119,6 +119,8 @@ int16_t calculate_balance_time(int16_t voltage_mV, int16_t min_voltage_mV) {
     // Calculate balance time in BMB-update-periods based on voltage difference
 
     // TODO - figure out multiplier, and base on SoC/OCV curve
+
+    //return 10;
 
     int16_t diff = voltage_mV - min_voltage_mV - BALANCE_MIN_OFFSET_MV;
     if(diff < 0) {

@@ -147,10 +147,11 @@ void bmb3y_send_balancing_blocking(bms_model_t *model) {
 
                 tx_buf[2 + 2 + module * 6 + (module_cell_index / 8)] |= (1 << (module_cell_index & 0x07));
             }
+            logical_index++;
         }
-
-        logical_index++;
     }
+
+    //printf("Balancing sent: ");
 
     // Fill in config bytes and calculate CRCs
     for(int module=0; module<8; module++) {
@@ -158,12 +159,14 @@ void bmb3y_send_balancing_blocking(bms_model_t *model) {
         tx_buf[2 + 1 + module*6] = 0;
 
         // bytes 2, 3 are already filled in by the loop above
+        //printf("%02X%02X ", tx_buf[2 + 2 + module*6], tx_buf[2 + 3 + module*6]);
 
         uint16_t calc_crc = crc14(&tx_buf[2 + 0 + module*6], 4, 0x0010, 0);
 
         tx_buf[2 + 4 + module*6] = (calc_crc >> 8) & 0xFF;
         tx_buf[2 + 5 + module*6] = calc_crc & 0xFF;
     }
+    //printf("\n");
 
 
     // Write only - we skip all of the response bytes
@@ -517,6 +520,11 @@ static bool should_stop(bms_model_t *model) {
 static bool should_use_slow_mode(bms_model_t *model) {
     // Determine whether we should enter slow mode to reduce battery self-discharge.
 
+    // FIXME - if we enter slow mode after a long time inactive, we consistently
+    // fail to ever perform a snapshot (although we can read the old stale
+    // readings, for some reaso#n)
+    return false;
+
     if(model->system_sm.state == SYSTEM_STATE_INACTIVE && 
        state_time(&model->system_sm) > 60000 && 
        (model->cell_voltages_millis > 0 && model->cell_voltage_min_mV < MINIMUM_BALANCE_VOLTAGE_mV)) {
@@ -538,9 +546,15 @@ int bmb3y_timestep_offset = 0;
 // Cut balancing pause cycles short so we can get back to balancing sooner.
 const int PAUSE_CYCLE_LENGTH = 10;
 bool crc_failed = false;
+bool started = false;
 
 void bmb3y_tick(bms_model_t *model) {
     int period_mask = 0x3f;
+
+    // if(timestep() < 50*300) {
+    //     return;
+    // }
+
 
     if(should_stop(model)) {
         // Stop talking to the BMBs to save power
@@ -551,18 +565,32 @@ void bmb3y_tick(bms_model_t *model) {
             printf("BMB3Y entering slow mode\n");
             model->cell_voltage_slow_mode = true;
         }
-        period_mask = 0xfff;
+        period_mask = 0x7ff;
     }
 
     // Derive a step number which loops every 'period' timesteps
     int step = ((timestep() + bmb3y_timestep_offset) & period_mask) - 5;
 
+    if(!started) {
+        printf("first step is %d\n", step);
+        started = true;
+
+    }
+
     //uint32_t start = time_us_32();
+    // if(step >= 0 && step <= 8) {
+    //     printf("BMB3Y step %d\n", step);
+    // }
+    // return;
 
     if(step == 0) {
         // Wake up BMBs, take snapshot
         // Takes about 90us
         bmb3y_send_wakeup_cs_blocking();
+        // bmb3y_send_wakeup_cs_blocking();
+        // bmb3y_send_command_blocking(BMB3Y_CMD_IDLE_WAKE);
+        // bmb3y_send_command_blocking(BMB3Y_CMD_IDLE_WAKE);
+        // bmb3y_send_command_blocking(BMB3Y_CMD_IDLE_WAKE);
         bmb3y_send_command_blocking(BMB3Y_CMD_SNAPSHOT);
 
         // Update balancing_active to indicate whether the preceding cycle's

@@ -181,14 +181,24 @@ static float nmc_ocv_curve_diff[100] = {
     // 1.27195335,  1.2590027 ,  1.3141156 ,  1.30435473,  1.35620603
 };
 
-float nmc_ocv_to_soc(float ocv) {
+#if CHEMISTRY == LFP
+    #define ocv_curve lfp_ocv_curve
+    #define ocv_curve_diff lfp_ocv_curve_diff
+#elif CHEMISTRY == NMC
+    #define ocv_curve nmc_ocv_curve
+    #define ocv_curve_diff nmc_ocv_curve_diff
+#else
+    #error "Unsupported chemistry"
+#endif
+
+float ocv_to_soc(float ocv) {
     // Simple linear search (could be optimized with binary search)
-    if (ocv <= nmc_ocv_curve[0]) return 0.0f;
-    if (ocv >= nmc_ocv_curve[100]) return 1.0f;
+    if (ocv <= ocv_curve[0]) return 0.0f;
+    if (ocv >= ocv_curve[100]) return 1.0f;
 
     for (int i = 0; i < 100; i++) {
-        if (ocv < nmc_ocv_curve[i + 1]) {
-            float frac = (ocv - nmc_ocv_curve[i]) / (nmc_ocv_curve[i + 1] - nmc_ocv_curve[i]);
+        if (ocv < ocv_curve[i + 1]) {
+            float frac = (ocv - ocv_curve[i]) / (ocv_curve[i + 1] - ocv_curve[i]);
             return (i + frac) / 100.0f;
         }
     }
@@ -200,20 +210,20 @@ static float prev_max;
 static float prev_soc_min;
 static float prev_soc_mul;
 
-float nmc_ocv_to_soc_scaled(float ocv, float min_voltage, float max_voltage) {
+float ocv_to_soc_scaled(float ocv, float min_voltage, float max_voltage) {
     if (ocv <= min_voltage) return 0.0f;
     if (ocv >= max_voltage) return 1.0f;
 
     if (min_voltage != prev_min || max_voltage != prev_max) {
         // Cache the scaling factors
-        prev_soc_min = nmc_ocv_to_soc(min_voltage);
-        float soc_max = nmc_ocv_to_soc(max_voltage);
+        prev_soc_min = ocv_to_soc(min_voltage);
+        float soc_max = ocv_to_soc(max_voltage);
         prev_soc_mul = 1.0f / (soc_max - prev_soc_min);
         prev_min = min_voltage;
         prev_max = max_voltage;
     }
 
-    float soc = nmc_ocv_to_soc(ocv);
+    float soc = ocv_to_soc(ocv);
     return (soc - prev_soc_min) * prev_soc_mul;
 }
 
@@ -229,10 +239,10 @@ static float soc_to_ocv(float soc) {
     // Simple linear interpolation on the OCV curve
     float index = soc * 100.0f;
     int idx_lower = (int)index;
-    if (idx_lower >= 100) return nmc_ocv_curve[100];
+    if (idx_lower >= 100) return ocv_curve[100];
     int idx_upper = idx_lower + 1;
     float frac = index - (float)idx_lower;
-    return nmc_ocv_curve[idx_lower] * (1.0f - frac) + nmc_ocv_curve[idx_upper] * frac;
+    return ocv_curve[idx_lower] * (1.0f - frac) + ocv_curve[idx_upper] * frac;
 }
 
 static float soc_to_ocv_scaled(float soc, float min_voltage, float max_voltage) {
@@ -241,8 +251,8 @@ static float soc_to_ocv_scaled(float soc, float min_voltage, float max_voltage) 
 
     if(min_voltage != prev_min || max_voltage != prev_max) {
         // Cache the scaling factors
-        prev_soc_min = nmc_ocv_to_soc(min_voltage);
-        float soc_max = nmc_ocv_to_soc(max_voltage);
+        prev_soc_min = ocv_to_soc(min_voltage);
+        float soc_max = ocv_to_soc(max_voltage);
         prev_soc_mul = 1.0f / (soc_max - prev_soc_min);
         prev_min = min_voltage;
         prev_max = max_voltage;
@@ -261,8 +271,8 @@ static float soc_to_ocv_derivative(float soc) {
 
     float index = soc * 100.0f;
     int idx_lower = (int)index;
-    if (idx_lower >= 100) return nmc_ocv_curve_diff[99];
-    return nmc_ocv_curve_diff[idx_lower];
+    if (idx_lower >= 100) return ocv_curve_diff[99];
+    return ocv_curve_diff[idx_lower];
 }
 
 void ekf_init(EKF *ekf, float initial_soc, float initial_capacity) {
@@ -472,7 +482,7 @@ uint32_t ekf_tick(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV) {
 
         float initial_soc = 1.0f;
         // TODO: is zero charge_used_Ah a valid indicator of uninitialized?
-        if(model.charge_used_Ah != 0.0f) {
+        if(model.charge_used_Ah != 0.0f && model.charge_used_Ah < initial_capacity_ah) {
             // Use stored charge_used if available
             initial_soc = 1.0f - (model.charge_used_Ah / initial_capacity_ah);
         } else {
@@ -482,6 +492,8 @@ uint32_t ekf_tick(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV) {
             }
         }
 
+        printf("EKF Initial SOC Estimate: %2.2f %% | Voltage: %2.3f V | Charge Used: %f Ah\n",
+               initial_soc * 100.0f, voltage_volts, model.charge_used_Ah);
         ekf_init(&ekf_instance, initial_soc, initial_capacity_ah);
 
         initialized = true;
@@ -511,8 +523,8 @@ uint32_t ekf_tick(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV) {
     // Scale soc according to voltage limits
     if(cell_voltage_working_min_mV != prev_min || cell_voltage_working_max_mV != prev_max) {
         // Cache the scaling factors
-        prev_soc_min = nmc_ocv_to_soc(cell_voltage_working_min_mV/1000.0f);
-        float soc_max = nmc_ocv_to_soc(cell_voltage_working_max_mV/1000.0f);
+        prev_soc_min = ocv_to_soc(cell_voltage_working_min_mV/1000.0f);
+        float soc_max = ocv_to_soc(cell_voltage_working_max_mV/1000.0f);
         prev_soc_mul = 1.0f / (soc_max - prev_soc_min);
         prev_min = cell_voltage_working_min_mV;
         prev_max = cell_voltage_working_max_mV;
@@ -533,6 +545,8 @@ uint32_t ekf_tick(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV) {
 
     // TODO: Should we persist the entire EKF?
     model.charge_used_Ah = ekf_instance.x[0];
+    printf("EKF Update: SOC=%2.2f %% | Ah Used: %f Ah | Capacity: %f Ah\n",
+           soc * 100.0f, ekf_instance.x[0], ekf_instance.x[2]);
 
     return (uint32_t)(soc * 10000.0f); // Return SOC in 0.01% units
 }

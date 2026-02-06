@@ -3,10 +3,6 @@
 #include <stdint.h>
 #include <stdio.h>
 
-float nmc_ocv_to_soc(float ocv);
-
-
-
 uint16_t calculate_cell_voltage_charge_current_limit(uint32_t cell_voltage_min_mV, uint32_t cell_voltage_max_mV) {
     uint16_t charge_limit = 0xFFFF;
 

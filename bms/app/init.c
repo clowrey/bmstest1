@@ -102,7 +102,10 @@ static void init_model() {
 
     // Pretend balancing is active at startup to avoid trusting
     // cell voltages until we've definitely turned balancing off.
-    model.balancing_active = true;
+    // Disabled, works badly if slow mode is entered at startup with low cell
+    // voltages, as it will never exit slow mode since voltages won't update
+    // until we exit slow mode.
+    //model.balancing_active = true;
 }
 
 void bms_init() {

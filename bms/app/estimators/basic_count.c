@@ -9,7 +9,7 @@ static float charge_counter_mC;
 
 static bool initialized = false;
 
-float nmc_ocv_to_soc(float ocv);
+float ocv_to_soc(float ocv);
 
 // we can measure this, with extremely slow averaging
 static const float INA228_SAMPLING_PERIOD_S = 0.530940f;
@@ -32,7 +32,7 @@ uint16_t basic_count_soc_estimate(bms_model_t *model) {
 
     if(!initialized && timestep() > 200 && model->battery_voltage_mV > 0) {
         // Initialize SOC estimate based on OCV
-        float soc = nmc_ocv_to_soc((float)model->battery_voltage_mV / (NUM_CELLS * 1000.0f));
+        float soc = ocv_to_soc((float)model->battery_voltage_mV / (NUM_CELLS * 1000.0f));
 
         charge_counter_mC = (1.0f - soc) * model->nameplate_capacity_mC;
 
