@@ -492,8 +492,8 @@ uint32_t ekf_tick(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV) {
             }
         }
 
-        printf("EKF Initial SOC Estimate: %2.2f %% | Voltage: %2.3f V | Charge Used: %f Ah\n",
-               initial_soc * 100.0f, voltage_volts, model.charge_used_Ah);
+        //printf("EKF Initial SOC Estimate: %2.2f %% | Voltage: %2.3f V | Charge Used: %f Ah\n",
+        //       initial_soc * 100.0f, voltage_volts, model.charge_used_Ah);
         ekf_init(&ekf_instance, initial_soc, initial_capacity_ah);
 
         initialized = true;
@@ -512,13 +512,7 @@ uint32_t ekf_tick(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV) {
     float soc = ekf_get_soc(&ekf_instance);
 
     uint16_t cell_voltage_working_min_mV = model.cell_voltage_working_min_mV;
-    if(cell_voltage_working_min_mV == 0) {
-        cell_voltage_working_min_mV = CELL_VOLTAGE_WORKING_MIN_mV;
-    }
     uint16_t cell_voltage_working_max_mV = model.cell_voltage_working_max_mV;
-    if(cell_voltage_working_max_mV == 0) {
-        cell_voltage_working_max_mV = CELL_VOLTAGE_WORKING_MAX_mV;
-    }
 
     // Scale soc according to voltage limits
     if(cell_voltage_working_min_mV != prev_min || cell_voltage_working_max_mV != prev_max) {
@@ -545,8 +539,8 @@ uint32_t ekf_tick(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV) {
 
     // TODO: Should we persist the entire EKF?
     model.charge_used_Ah = ekf_instance.x[0];
-    printf("EKF Update: SOC=%2.2f %% | Ah Used: %f Ah | Capacity: %f Ah\n",
-           soc * 100.0f, ekf_instance.x[0], ekf_instance.x[2]);
+    //printf("EKF Update: SOC=%2.2f %% | Ah Used: %f Ah | Capacity: %f Ah\n",
+    //       soc * 100.0f, ekf_instance.x[0], ekf_instance.x[2]);
 
     return (uint32_t)(soc * 10000.0f); // Return SOC in 0.01% units
 }

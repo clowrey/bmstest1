@@ -1,10 +1,11 @@
 #pragma once
 
-#include "../sys/time/time.h"
-#include "../app/calibration/offline.h"
-#include "../app/battery/balancing.h"
-#include "../app/state_machines/contactors.h"
-#include "../app/state_machines/system.h"
+#include "sys/time/time.h"
+#include "app/calibration/offline.h"
+#include "app/battery/balancing.h"
+#include "app/state_machines/contactors.h"
+#include "app/state_machines/system.h"
+#include "config/limits.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -42,6 +43,29 @@ typedef struct {
 
     uint16_t user_charge_current_limit_dA; // in 0.1A units
     uint16_t user_discharge_current_limit_dA; // in 0.1A units
+
+    uint16_t cell_voltage_soft_min_mV;
+    uint16_t cell_voltage_soft_max_mV;
+
+    // User-configured working voltage range (zero for defaults)
+    uint16_t cell_voltage_working_min_mV;
+    uint16_t cell_voltage_working_max_mV;
+
+    // Inverter voltage limit offsets (to account for discrepancies between BMS and inverter readings)
+    // These values will increase the voltage limits sent to the inverter
+    int16_t pack_voltage_limit_upper_offset_dV; // in 0.1V units
+    int16_t pack_voltage_limit_lower_offset_dV; // in 0.1V units
+
+    // Inverter SoC scaling
+    int16_t soc_scaling_min; // in 0.01% units
+    int16_t soc_scaling_max; // in 0.01% units
+
+    // Balancing configuration
+    uint32_t auto_balancing_period_ms; // How long to wait between auto-balancing sessions. Zero to disable balancing.
+    uint16_t balancing_periods_per_mV; // How many balancing periods per mV
+    uint16_t balance_min_offset_mV; // Minimum voltage difference to balance
+    uint16_t minimum_balancing_voltage_mV; // Minimum cell voltage to allow balancing
+
 } bms_model_persistent_slow_t;
 
 static const uint32_t BMS_MODEL_PERSISTENT_SLOW_VERSION = 1;
@@ -127,21 +151,11 @@ typedef struct bms_model {
 
     bool cell_voltage_slow_mode; // only request BMB data infrequently
 
-    // The calculated pack voltage limits (??)
-    // uint16_t max_voltage_limit_dV;
-    // uint16_t min_voltage_limit_dV;
-    // User-configured working voltage range (zero for defaults)
-    uint16_t cell_voltage_working_max_mV;
-    uint16_t cell_voltage_working_min_mV;
-
-    // Inverter SoC scaling
-    int16_t soc_scaling_min; // in 0.01% units
-    int16_t soc_scaling_max; // in 0.01% units
-
-    // Inverter voltage limit offsets (to account for discrepancies between BMS and inverter readings)
-    // These values will increase the voltage limits sent to the inverter
-    int16_t pack_voltage_limit_upper_offset_dV; // in 0.1V units
-    int16_t pack_voltage_limit_lower_offset_dV; // in 0.1V units
+    // Inverter voltage limits (sent to the inverter, for inverters that allow
+    // absorption charging to continue at the limit). Some inverters may ignore
+    // these.
+    int16_t inverter_min_voltage_limit_dV; // in 0.1V units
+    int16_t inverter_max_voltage_limit_dV; // in 0.1V units
 
     // Current limits (the lower of these limits will be used)
     uint16_t temp_charge_current_limit_dA; // in 0.1A units
@@ -183,7 +197,6 @@ typedef struct bms_model {
     // int32_t pos_contactor_mul; // actually only the bat+ to out- part
     //int32_t current_offset;
 
-    bool balancing_enabled;
     bool balancing_active; // whether balancing was requested during the past BMB cycle (and so whether any read voltages are unstable)
     int16_t balancing_voltage_threshold_mV; // Only balance cells above this voltage
 
@@ -199,3 +212,23 @@ typedef struct bms_model {
 extern bms_model_t model;
 
 void model_tick(bms_model_t *model);
+
+inline uint16_t get_cell_voltage_soft_min_mV(bms_model_t *model) {
+    return (model->cell_voltage_soft_min_mV > 0) ? model->cell_voltage_soft_min_mV : DEFAULT_CELL_VOLTAGE_SOFT_MIN_mV;
+}
+
+inline uint16_t get_cell_voltage_soft_max_mV(bms_model_t *model) {
+    return (model->cell_voltage_soft_max_mV > 0) ? model->cell_voltage_soft_max_mV : DEFAULT_CELL_VOLTAGE_SOFT_MAX_mV;
+}
+
+inline uint16_t get_cell_voltage_working_min_mV(bms_model_t *model) {
+    return (model->cell_voltage_working_min_mV > 0) ? model->cell_voltage_working_min_mV : DEFAULT_CELL_VOLTAGE_WORKING_MIN_mV;
+}
+
+inline uint16_t get_cell_voltage_working_max_mV(bms_model_t *model) {
+    return (model->cell_voltage_working_max_mV > 0) ? model->cell_voltage_working_max_mV : DEFAULT_CELL_VOLTAGE_WORKING_MAX_mV;
+}
+
+inline uint16_t get_minimum_balancing_voltage_mV(bms_model_t *model) {
+    return (model->minimum_balancing_voltage_mV > 0) ? model->minimum_balancing_voltage_mV : DEFAULT_MINIMUM_BALANCING_VOLTAGE_mV;
+}

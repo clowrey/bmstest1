@@ -59,6 +59,10 @@ print(list(((hex(n), hex(crc8_2f(bytes([n])))) for n in range(0, 0xFF))))
 #define BMB3Y_CMD_READ_E_SHORT 0x0B88
 #define BMB3Y_CMD_READ_F_SHORT 0x0C45
 
+// Mysterious command found in sniffing, that begins every read sequence, seems
+// to be some kind of wakeup. Does ensure that a subsequent SNAPSHOT actually
+// works, after a long sleep.
+#define BMB3Y_CMD_HELLO        0x2710
 
 #define BMB3Y_CMD_READ_TEMPS   0x0E1B
 #define BMB3Y_CMD_READ_TEMPS2  0x0F34 // returns 4 + CRC?

@@ -1,3 +1,4 @@
+#include "app/monitoring/counters.h"
 #include "drivers/bmb3y/bmb3y.h"
 #include "drivers/chip/pwm.h"
 #include "drivers/chip/watchdog.h"
@@ -23,22 +24,9 @@
 
 #include "hardware/watchdog.h"
 #include "pico/stdlib.h"
-#include "../../vendor/littlefs/lfs.h"
+#include "../vendor/littlefs/lfs.h"
 
 #include <stdio.h>
-
-#define CRC16_INIT                  ((uint16_t)-1l)
-void memcpy_with_crc16(uint8_t *dest, const uint8_t *src, size_t len, uint16_t *crc16);
-
-extern uint16_t adc_samples_raw[8];
-extern uint32_t adc_samples_smooth_accum[8];
-extern uint16_t adc_samples_smoothed[8];
-extern uint32_t adc_samples_variance_accum[8];
-extern uint16_t adc_samples_variance[8];
-extern millis_t adc_samples_millis[8];
-
-
-
 
 
 // should this go?
@@ -247,10 +235,12 @@ void bms_tick() {
                 printf("\n");
             }
         }
-        printf("Total: %lu mV | Temps: %ddC - %ddC | Delta: %d mV\n\n", 
+        printf("Total: %lu mV | Temps: %ddC - %ddC | Delta: %d mV%s%s\n\n", 
             total, 
             model.temperature_min_dC, model.temperature_max_dC, 
-            model.cell_voltage_max_mV - model.cell_voltage_min_mV
+            model.cell_voltage_max_mV - model.cell_voltage_min_mV,
+            model.cell_voltage_slow_mode ? " | Slow" : "",
+            model.balancing_active ? " | Balancing" : ""
         );
 
         //printf("Bal mask: %02X %02X\n", bitmap_set[14], bitmap_set[15]);
@@ -287,6 +277,10 @@ void bms_tick() {
             model.soc_voltage_based / 100.0f,
             model.soc_basic_count / 100.0f,
             model.soc_fancy_count / 100.0f
+        );
+        printf("DUART0 RX: %lu, crcfail %lu | DUART1 RX: %lu, crcfail %lu\n",
+            debug_counters.uart0_packets_received, debug_counters.uart0_crc_errors,
+            debug_counters.uart1_packets_received, debug_counters.uart1_crc_errors
         );
     }
 

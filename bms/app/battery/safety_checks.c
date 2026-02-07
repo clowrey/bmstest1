@@ -15,21 +15,21 @@ void confirm_battery_safety(bms_model_t *model) {
         ERR_BATTERY_VOLTAGE_STALE,
         0x1000000000000000
     )) {
-        confirm(
-            model->battery_voltage_mV <= BATTERY_VOLTAGE_SOFT_MAX_mV,
-            ERR_BATTERY_VOLTAGE_HIGH,
-            model->battery_voltage_mV
-        );
+        // confirm(
+        //     model->battery_voltage_mV <= BATTERY_VOLTAGE_SOFT_MAX_mV,
+        //     ERR_BATTERY_VOLTAGE_HIGH,
+        //     model->battery_voltage_mV
+        // );
         confirm(
             model->battery_voltage_mV <= BATTERY_VOLTAGE_HARD_MAX_mV,
             ERR_BATTERY_VOLTAGE_VERY_HIGH,
             model->battery_voltage_mV
         );
-        confirm(
-            model->battery_voltage_mV >= BATTERY_VOLTAGE_SOFT_MIN_mV,
-            ERR_BATTERY_VOLTAGE_LOW,
-            model->battery_voltage_mV
-        );
+        // confirm(
+        //     model->battery_voltage_mV >= BATTERY_VOLTAGE_SOFT_MIN_mV,
+        //     ERR_BATTERY_VOLTAGE_LOW,
+        //     model->battery_voltage_mV
+        // );
         confirm(
             model->battery_voltage_mV >= BATTERY_VOLTAGE_HARD_MIN_mV,
             ERR_BATTERY_VOLTAGE_VERY_LOW,
@@ -49,7 +49,7 @@ void confirm_battery_safety(bms_model_t *model) {
         0x1000000000000000
     )) {
         confirm(
-            model->cell_voltage_max_mV <= CELL_VOLTAGE_SOFT_MAX_mV,
+            model->cell_voltage_max_mV <= get_cell_voltage_soft_max_mV(model),
             ERR_CELL_VOLTAGE_HIGH,
             model->cell_voltage_max_mV
         );
@@ -59,7 +59,7 @@ void confirm_battery_safety(bms_model_t *model) {
             model->cell_voltage_max_mV
         );
         confirm(
-            model->cell_voltage_min_mV >= CELL_VOLTAGE_SOFT_MIN_mV,
+            model->cell_voltage_min_mV >= get_cell_voltage_soft_min_mV(model),
             ERR_CELL_VOLTAGE_LOW,
             model->cell_voltage_min_mV
         );

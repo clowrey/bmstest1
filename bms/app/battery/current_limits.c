@@ -1,25 +1,26 @@
-#include "../../config/limits.h"
+#include "config/limits.h"
+#include "app/model.h"
 
 #include <stdint.h>
 #include <stdio.h>
 
-uint16_t calculate_cell_voltage_charge_current_limit(uint32_t cell_voltage_min_mV, uint32_t cell_voltage_max_mV) {
+uint16_t calculate_cell_voltage_charge_current_limit(bms_model_t *model) {
     uint16_t charge_limit = 0xFFFF;
 
 #if CHEMISTRY == LFP
-    if(cell_voltage_max_mV >= 3570) {
+    if(model->cell_voltage_max_mV >= 3570) {
         charge_limit = 0;
-    } else if(cell_voltage_max_mV > 3350) {
+    } else if(model->cell_voltage_max_mV > 3350) {
         // The LFP knee is very sharp - use a quadratic curve to model it
-        uint32_t delta_from_top = 3570 - cell_voltage_max_mV;
+        uint32_t delta_from_top = 3570 - model->cell_voltage_max_mV;
         charge_limit = (((71*CHARGE_MAX_CURRENT_dA)/500) * delta_from_top * delta_from_top + ((3014*CHARGE_MAX_CURRENT_dA)/500) * delta_from_top) / 8192;
     }
 #elif CHEMISTRY == NMC
-    if(cell_voltage_max_mV >= 4200) {
+    if(model->cell_voltage_max_mV >= 4200) {
         charge_limit = 0;
     } else {
         // Linear derate using CHARGE_VOLTAGE_DERATE_dA_PER_mV
-        int32_t delta_from_max_mV = 4200 - cell_voltage_max_mV;
+        int32_t delta_from_max_mV = 4200 - model->cell_voltage_max_mV;
         int32_t derate_dA = delta_from_max_mV * CHARGE_VOLTAGE_DERATE_dA_PER_mV;
         if(derate_dA >= 0) {
             charge_limit = derate_dA;
@@ -27,32 +28,46 @@ uint16_t calculate_cell_voltage_charge_current_limit(uint32_t cell_voltage_min_m
     }
 #endif
 
-    if(cell_voltage_max_mV > CELL_VOLTAGE_SOFT_MAX_mV) {
+    if(model->cell_voltage_max_mV > get_cell_voltage_soft_max_mV(model)) {
         // Above max cell voltage, stop charging
         charge_limit = 0;
     }
-    if(cell_voltage_min_mV < CELL_VOLTAGE_HARD_MIN_mV) {
+    if(model->cell_voltage_min_mV < CELL_VOLTAGE_HARD_MIN_mV) {
         // Below hard min cell voltage, stop charging
         charge_limit = 0;
     }
-    if(cell_voltage_min_mV < CELL_VOLTAGE_SOFT_MIN_mV) {
+    if(model->cell_voltage_min_mV < get_cell_voltage_soft_min_mV(model)) {
         // Below min cell voltage, limit charge current
         if(charge_limit > OVERDISCHARGE_CHARGE_CURRENT_LIMIT_dA) {
             charge_limit = OVERDISCHARGE_CHARGE_CURRENT_LIMIT_dA;
         }
     }
 
+    // Working range limits
+    int32_t guessed_ocv_uV = model->cell_voltage_max_mV*1000 - (model->current_mA * WORKING_LIMIT_INTERNAL_RESISTANCE_uR) / 1000;
+    if(guessed_ocv_uV > (get_cell_voltage_working_max_mV(model) * 1000)) {
+        charge_limit = 0;
+    } else {
+        int32_t delta_from_working_max_uV = (get_cell_voltage_working_max_mV(model) * 1000) - guessed_ocv_uV;
+        int32_t max_delta_uV = (CHARGE_MAX_CURRENT_dA * WORKING_LIMIT_INTERNAL_RESISTANCE_uR) / 10;
+        // Derate from max down to zero as guessed OCV approaches the working max
+        int32_t derate_dA = (delta_from_working_max_uV * CHARGE_MAX_CURRENT_dA) / max_delta_uV;
+        if(derate_dA >= 0 && derate_dA < charge_limit) {
+            charge_limit = derate_dA;
+        }
+    }
+
     return charge_limit;
 }
 
-uint16_t calculate_cell_voltage_discharge_current_limit(uint32_t cell_voltage_min_mV, uint32_t cell_voltage_max_mV) {
+uint16_t calculate_cell_voltage_discharge_current_limit(bms_model_t *model) {
     uint16_t discharge_limit = 0xFFFF;
 
 #if CHEMISTRY == LFP
-    if(cell_voltage_min_mV <= 2770) {
+    if(model->cell_voltage_min_mV <= 2770) {
         discharge_limit = 0;
-    } else if(cell_voltage_min_mV < 3300) {
-        int32_t delta_from_min_mV = cell_voltage_min_mV - 2700;
+    } else if(model->cell_voltage_min_mV < 3300) {
+        int32_t delta_from_min_mV = model->cell_voltage_min_mV - 2700;
         int32_t numerator = delta_from_min_mV * (((1545*DISCHARGE_MAX_CURRENT_dA)/500) * delta_from_min_mV - ((112537*DISCHARGE_MAX_CURRENT_dA)/500));
 
         if (numerator < 0) {
@@ -62,11 +77,11 @@ uint16_t calculate_cell_voltage_discharge_current_limit(uint32_t cell_voltage_mi
         }
     }
 #elif CHEMISTRY == NMC
-    if(cell_voltage_min_mV <= 2900) {
+    if(model->cell_voltage_min_mV <= 2900) {
         discharge_limit = 0;
     } else {
         // Linear derate using DISCHARGE_VOLTAGE_DERATE_dA_PER_mV
-        int32_t delta_from_min_mV = cell_voltage_min_mV - 2900;
+        int32_t delta_from_min_mV = model->cell_voltage_min_mV - 2900;
         int32_t derate_dA = delta_from_min_mV * DISCHARGE_VOLTAGE_DERATE_dA_PER_mV;
         if(derate_dA >= 0) {
             discharge_limit = derate_dA;
@@ -74,14 +89,28 @@ uint16_t calculate_cell_voltage_discharge_current_limit(uint32_t cell_voltage_mi
     }
 #endif
 
-    if(cell_voltage_min_mV < CELL_VOLTAGE_SOFT_MIN_mV) {
+    if(model->cell_voltage_min_mV < get_cell_voltage_soft_min_mV(model)) {
         // Hit min cell voltage, stop discharging
         discharge_limit = 0;
     }
-    if(cell_voltage_max_mV > CELL_VOLTAGE_SOFT_MAX_mV) {
+    if(model->cell_voltage_max_mV > get_cell_voltage_soft_max_mV(model)) {
         // Above max cell voltage, limit discharge current
         if(discharge_limit > OVERCHARGE_DISCHARGE_CURRENT_LIMIT_dA) {
             discharge_limit = OVERCHARGE_DISCHARGE_CURRENT_LIMIT_dA;
+        }
+    }
+
+    // Working range limits
+    int32_t guessed_ocv_uV = model->cell_voltage_min_mV*1000 - (model->current_mA * WORKING_LIMIT_INTERNAL_RESISTANCE_uR) / 1000;
+    if(guessed_ocv_uV < (get_cell_voltage_working_min_mV(model) * 1000)) {
+        discharge_limit = 0;
+    } else {
+        int32_t delta_from_working_min_uV = guessed_ocv_uV - (get_cell_voltage_working_min_mV(model) * 1000);
+        int32_t max_delta_uV = (DISCHARGE_MAX_CURRENT_dA * WORKING_LIMIT_INTERNAL_RESISTANCE_uR) / 10;
+        // Derate from max down to zero as guessed OCV approaches the working min
+        int32_t derate_dA = (delta_from_working_min_uV * DISCHARGE_MAX_CURRENT_dA) / max_delta_uV;
+        if(derate_dA >= 0 && derate_dA < discharge_limit) {
+            discharge_limit = derate_dA;
         }
     }
 

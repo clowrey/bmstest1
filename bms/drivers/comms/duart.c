@@ -216,15 +216,15 @@ bool duart_send_blocking(duart *u, const uint8_t *data, size_t len) {
 }
 
 size_t duart_peek(duart *u, uint8_t **buf, size_t *all_available) {
+    // Updates buf to point to the next available data in the receive buffer,
+    // and returns the number of bytes available contiguously from that point.
+
+    // Also updates all_available to the total number of bytes available (which
+    // may be more than the contiguous amount, if the data wraps around the end
+    // of the buffer).
+
     dma_channel_hw_t *dma_chan = dma_channel_hw_addr(u->rx_dma_channel);
     size_t available = (dma_chan->write_addr - u->rx_pointer) & ((1<<DUART_RX_BUFFER_BITS)-1);
-
-    // if(available > (1<<(DUART_RX_BUFFER_BITS-1))) {
-    //     // Buffer is more than half full!
-
-
-    //     return 0;
-    // }
 
     *all_available = available;
     size_t remaining_to_end = (1<<DUART_RX_BUFFER_BITS) - u->rx_pointer;
@@ -235,7 +235,6 @@ size_t duart_peek(duart *u, uint8_t **buf, size_t *all_available) {
         }
         
         *buf = &u->rx_buffer[u->rx_pointer];
-        //printf("{p%d %d}", available, *all_available);
         return available;
     }
 
@@ -243,17 +242,6 @@ size_t duart_peek(duart *u, uint8_t **buf, size_t *all_available) {
 }
 
 void duart_flush(duart *u, size_t len) {
-    // Zero out len bytes from the receive buffer
-    // size_t remaining_to_end = (1<<DUART_RX_BUFFER_BITS) - u->rx_pointer;
-    // if(len <= remaining_to_end) {
-    //     memset(&u->rx_buffer[u->rx_pointer], 0, len);
-    // } else {
-    //     memset(&u->rx_buffer[u->rx_pointer], 0, remaining_to_end);
-    //     memset(u->rx_buffer, 0, len - remaining_to_end);
-    // }
-
-
-    //printf("{f%d %d}", u->rx_pointer, len);
     u->rx_pointer = (u->rx_pointer + len) & ((1<<DUART_RX_BUFFER_BITS)-1);
 }
 
@@ -275,7 +263,7 @@ void memcpy_with_crc16_slow(uint8_t *dest, const uint8_t *src, size_t len, uint1
     }
 }
 
-void memcpy_with_crc16(uint8_t *dest, const uint8_t *src, size_t len, uint16_t *crc16) {
+static void memcpy_with_crc16(uint8_t *dest, const uint8_t *src, size_t len, uint16_t *crc16) {
     static const uint16_t crc_table[] = {
         0x0000, 0xC0C1, 0xC181, 0x0140, 0xC301, 0x03C0, 0x0280, 0xC241,
         0xC601, 0x06C0, 0x0780, 0xC741, 0x0500, 0xC5C1, 0xC481, 0x0440,
@@ -320,7 +308,13 @@ void memcpy_with_crc16(uint8_t *dest, const uint8_t *src, size_t len, uint16_t *
     }
 }
 
+static uint8_t duart_roll_buffer_byte(uint8_t **data) {
+    // Given a pointer into the receive buffer, rolls it forward by one byte,
+    // wrapping if necessary, and returns the byte at the new position.
 
+    *data = (uint8_t*)(((uintptr_t)(*data) & ~((1<<DUART_RX_BUFFER_BITS)-1)) + ((uintptr_t)((*data)+1) % (1<<DUART_RX_BUFFER_BITS)));
+    return **data;
+}
 
 size_t duart_read_packet(duart *u, uint8_t *buf, size_t buf_size) {
     // Reads a full packet from the receive buffer. Returns the number of bytes
@@ -335,16 +329,20 @@ size_t duart_read_packet(duart *u, uint8_t *buf, size_t buf_size) {
     // The initial sync allows quicker recovery from transmission errors, both
     // if byte synchronisation is lost (in which case the receiver will search
     // for the next 0xff byte before continuing), and if bit synchronisation is
-    // lost (since 0xFF is sent as a series of low levels on the line, so the
+    // lost (since 0xFF is sent as a series of high levels on the line, so the
     // receiver can re-lock its bit timing on the next start bit).
-
 
     while(true) {
         size_t available;
         uint8_t *data;
+
+        // Grab a pointer to the start of the received data, and how much is in
+        // the buffer in total (available) and how much is contiguous from the
+        // pointer (len).
         size_t len = duart_peek(u, &data, &available);
+
+        // A full packet is at least 5 bytes.
         if(available < 5) {
-            //printf("rx: not enough data\n");
             return 0;
         }
         if(data[0] != 0xff) {
@@ -353,13 +351,12 @@ size_t duart_read_packet(duart *u, uint8_t *buf, size_t buf_size) {
             continue;
         }
 
-        // Pop the sync byte, wrapping if necessary
-        data = (uint8_t*)(((uintptr_t)data & ~((1<<DUART_RX_BUFFER_BITS)-1)) + ((uintptr_t)(data+1) % (1<<DUART_RX_BUFFER_BITS)));
-
-        size_t payload_len = data[0] + 1;
+        // We now read the payload length and determine whether we have enough
+        // available for a full packet read. If not we can bail, as we haven't
+        // consumed anything from the buffer yet.
+        size_t payload_len = duart_roll_buffer_byte(&data) + 1;
         if((payload_len + 4) > available) {
             // Message not fully available yet
-            //printf("rx: unfinished msg\n");
             return 0;
         }
         if(payload_len > buf_size) {
@@ -368,34 +365,28 @@ size_t duart_read_packet(duart *u, uint8_t *buf, size_t buf_size) {
             continue;
         }
 
-        // Pop the length byte, wrapping if necessary
-        data = (uint8_t*)(((uintptr_t)data & ~((1<<DUART_RX_BUFFER_BITS)-1)) + ((uintptr_t)(data+1) % (1<<DUART_RX_BUFFER_BITS)));
-        
-        if(len<=2) {
-            // We will have already wrapped, so whole message is now at start of buffer
+        // Consume the length byte, so that data now points to the start of the
+        // payload.
+        duart_roll_buffer_byte(&data);
+
+        if(len <= 2) {
+            // Only two contiguous bytes were available, but we've now popped
+            // them both, so act like we had the full packet available.
             len = available;
         }
 
-        // printf("rx: len %d avail %d payload %d\n", len, available, payload_len);
-        // duart_flush(u, payload_len + 4);
-        // return 0;
-
         uint16_t crc16 = CRC16_INIT;
+
+        // Recreate the first two bytes (sync and length) to prime the CRC.
         uint8_t first_two_bytes[2];
         first_two_bytes[0] = 0xff;
         first_two_bytes[1] = payload_len - 1;
         memcpy_with_crc16(&buf[0], &first_two_bytes[0], 2, &crc16);
 
         if((payload_len + 4) <= len) {
-            // We have a full contiguous message
+            // The full payload and the CRCs are available contiguously so we can
+            // read in one go.
             memcpy_with_crc16(&buf[0], &data[0], payload_len, &crc16);
-
-            //printf("DUART rx1: FF %02X ", payload_len - 1);
-            // for(size_t i=0; i<payload_len; i++) {
-            //     printf("%02X ", buf[i]);
-            // }
-            //printf("%02X %02X", data[payload_len], data[payload_len + 1]);
-            //printf("\n");
 
             // Read CRC16 from message
             uint16_t msg_crc16 = data[payload_len] | (data[payload_len + 1] << 8);
@@ -409,49 +400,45 @@ size_t duart_read_packet(duart *u, uint8_t *buf, size_t buf_size) {
                     debug_counters.uart1_crc_errors++;
                 }
                 continue;
-                //return 0;
             }
         } else {
+            // The message wraps around the end of the buffer, either during the
+            // payload or the CRC.
 
-            // We have a full message, but it wraps around the end of the buffer
+            // Work out how much of the payload is in the first chunk (the
+            // contiguous length minus the two header bytes we've already
+            // popped).
             size_t first_part = len - 2;
 
-            // Maybe it's just the CRC that wraps?
             if(first_part > payload_len) {
+                // We actually have the entire payload in the first part, must
+                // be the CRC that wraps.
                 first_part = payload_len;
             }
 
-            // if(first_part > payload_len) {
-            //     printf("blah: first_part %d payload_len %d\n", first_part, payload_len);
-            // }
-
-
-            // duart_flush(u, payload_len + 4);
-            // return 0;
-
-
+            // Copy the first part of the payload, calculating the CRC as we go.
             memcpy_with_crc16(&buf[0], &data[0], first_part, &crc16);
+            // Flush the first part of the payload (and the two header bytes).
             duart_flush(u, first_part + 2);
 
+            // And do the second part (which may be nothing if it's just the CRC
+            // that wraps).
             size_t second_part = payload_len - first_part;
+            if(second_part > 0) {
+                duart_peek(u, &data, &available);
+                memcpy_with_crc16(&buf[first_part], &data[0], second_part, &crc16);
+                duart_flush(u, second_part);
+            }
+
+            uint16_t msg_crc16;
+            // Peek so that data points to the first byte of the CRC16
             duart_peek(u, &data, &available);
-            memcpy_with_crc16(&buf[first_part], &data[0], second_part, &crc16);
-
-            // print message bytes
-            // printf("DUART rx2: FF %02X ", payload_len - 1);
-            // for(size_t i=0; i<payload_len; i++) {
-            //     printf("%02X ", buf[i]);
-            // }
-
-            // printf("%02X %02X second_part is %d", data[second_part], data[second_part + 1], second_part);
-            // printf("%02X %02X", data[second_part], data[second_part + 1]);
-            // printf("\n");
-
-            // Read CRC16 from message
-            uint16_t msg_crc16 = data[second_part] | (data[second_part + 1] << 8);
-            duart_flush(u, second_part + 2);
-
-
+            // Read the first byte
+            msg_crc16 = data[0];
+            // Read the second byte
+            msg_crc16 |= (duart_roll_buffer_byte(&data) << 8);
+            // And flush both CRC bytes
+            duart_flush(u, 2);
 
             if(crc16 != msg_crc16) {
                 // CRC mismatch
@@ -462,7 +449,6 @@ size_t duart_read_packet(duart *u, uint8_t *buf, size_t buf_size) {
                     debug_counters.uart1_crc_errors++;
                 }
                 continue;
-                //return 0;
             }
         }
         if(u==&duart0) {

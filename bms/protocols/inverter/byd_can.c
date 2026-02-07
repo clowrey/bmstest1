@@ -213,27 +213,10 @@ static int send_110(bms_model_t *model) {
     msg.id = 0x110;
     msg.dlc = 8;
 
-    uint16_t cell_voltage_working_max_mV = model->cell_voltage_working_max_mV;
-    if(cell_voltage_working_max_mV == 0) {
-        cell_voltage_working_max_mV = CELL_VOLTAGE_WORKING_MAX_mV;
-    }
-    uint16_t cell_voltage_working_min_mV = model->cell_voltage_working_min_mV;
-    if(cell_voltage_working_min_mV == 0) {
-        cell_voltage_working_min_mV = CELL_VOLTAGE_WORKING_MIN_mV;
-    }
-
-    uint32_t max_voltage_limit_dV = cell_voltage_working_max_mV * NUM_CELLS / 1000; // in 0.1V units
-    uint32_t min_voltage_limit_dV = cell_voltage_working_min_mV * NUM_CELLS / 1000; // in 0.1V units
-    
-    max_voltage_limit_dV += model->pack_voltage_limit_upper_offset_dV;
-    min_voltage_limit_dV += model->pack_voltage_limit_lower_offset_dV;  
-
-    // TODO - nudge voltage limits to account for some cells nearing the top or bottom quicker, and also inverter voltage error?
-
-    msg.data[0] = (max_voltage_limit_dV >> 8) & 0xFF;
-    msg.data[1] = max_voltage_limit_dV & 0xFF;
-    msg.data[2] = (min_voltage_limit_dV >> 8) & 0xFF;
-    msg.data[3] = min_voltage_limit_dV & 0xFF;
+    msg.data[0] = (model->inverter_max_voltage_limit_dV >> 8) & 0xFF;
+    msg.data[1] = model->inverter_max_voltage_limit_dV & 0xFF;
+    msg.data[2] = (model->inverter_min_voltage_limit_dV >> 8) & 0xFF;
+    msg.data[3] = model->inverter_min_voltage_limit_dV & 0xFF;
     msg.data[4] = (model->discharge_current_limit_dA >> 8) & 0xFF;
     msg.data[5] = model->discharge_current_limit_dA & 0xFF;
     msg.data[6] = (model->charge_current_limit_dA >> 8) & 0xFF;
@@ -367,8 +350,8 @@ static uint8_t transmit_cycle = 0;
 void inverter_tick(bms_model_t *model) {
     // This should get called every 100ms
 
-    inverter_present = true; // for testing
-    inverter_initialized = true; // for testing
+    // inverter_present = true; // for testing
+    // inverter_initialized = true; // for testing
 
     if(!inverter_present) {
         // We haven't received any CAN messages from the inverter yet
@@ -376,10 +359,10 @@ void inverter_tick(bms_model_t *model) {
     }
 
     if(!inverter_initialized) {
-        if(!model->contactor_sm.enable_current) {
-            // Don't initialize until first contactor close
-            return;
-        }
+        // if(!model->contactor_sm.enable_current) {
+        //     // Don't initialize until first contactor close
+        //     return;
+        // }
         
         // We haven't done the inverter init sequence yet
         send_inverter_init_messages();

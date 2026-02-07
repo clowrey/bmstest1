@@ -52,22 +52,15 @@ static void model_process_cell_voltages(bms_model_t *model) {
 static void model_calculate_cell_current_limits(bms_model_t *model) {
     model->cell_voltage_charge_current_limit_dA =calculate_cell_voltage_charge_current_limit(
         model->cell_voltage_min_mV,
-        model->cell_voltage_max_mV
+        model->cell_voltage_max_mV,
+        model->current_mA
     );
     model->cell_voltage_discharge_current_limit_dA = calculate_cell_voltage_discharge_current_limit(
         model->cell_voltage_min_mV,
-        model->cell_voltage_max_mV
+        model->cell_voltage_max_mV,
+        model->current_mA
     );
 }
-
-static void model_calculate_voltage_limits(bms_model_t *model) {
-    // Calculate pack voltage limits based on cell voltages
-
-    // TODO - add error compensation based on measured current?
-
-}
-
-
 
 static void model_apply_current_limits(bms_model_t *model) {
     uint16_t charge_limit = CHARGE_MAX_CURRENT_dA;
@@ -150,8 +143,8 @@ static void model_accumulate_overcurrent(bms_model_t *model) {
 // the battery if it continues for too long. This is to protect the battery from
 // overcharge/overdischarge.
 static void model_accumulate_soft_limit_overcurrent(bms_model_t *model) {
-    if(model->cell_voltage_max_mV < CELL_VOLTAGE_SOFT_MAX_mV &&
-       model->cell_voltage_min_mV > CELL_VOLTAGE_SOFT_MIN_mV) {
+    if(model->cell_voltage_max_mV < get_cell_voltage_soft_max_mV(model) &&
+       model->cell_voltage_min_mV > get_cell_voltage_soft_min_mV(model)) {
         // Not in soft limit region, reset buffer
         model->soft_limit_charge_buffer_dC = 0;
         return;
@@ -191,6 +184,44 @@ static void model_calculate_temperature_current_limits(bms_model_t *model) {
     );
 }
 
+static void model_calculate_inverter_voltage_limits(bms_model_t *model) {
+    // For inverters that allow absorption charging to continue at the voltage
+    // limit.
+
+    uint16_t cell_voltage_working_max_mV = get_cell_voltage_working_max_mV(model);
+    uint16_t cell_voltage_working_min_mV = get_cell_voltage_working_min_mV(model);
+
+    uint32_t max_voltage_limit_dV = (cell_voltage_working_max_mV * NUM_CELLS) / 100; // in 0.1V units
+    uint32_t min_voltage_limit_dV = (cell_voltage_working_min_mV * NUM_CELLS) / 100; // in 0.1V units
+    
+    int32_t mean_cell_voltage_mV = model->cell_voltage_total_mV / NUM_CELLS;
+
+    // How far is the highest cell above the mean?
+    int32_t deviation_max_mV = model->cell_voltage_max_mV - mean_cell_voltage_mV;
+    // Calculate how much to reduce the voltage limit by to account for this
+    // deviation, to avoid overcharging the highest cell.
+    int32_t deviation_reduction_mV = deviation_max_mV * NUM_CELLS;
+    if(deviation_reduction_mV > 0) {
+        max_voltage_limit_dV -= deviation_reduction_mV / 100;
+    }
+
+    // How far is the lowest cell below the mean?
+    int32_t deviation_min_mV = mean_cell_voltage_mV - model->cell_voltage_min_mV;
+    // Calculate how much to increase the voltage limit by to account for this
+    // deviation, to avoid overdischarging the lowest cell.
+    int32_t deviation_increase_mV = deviation_min_mV * NUM_CELLS;
+    if(deviation_increase_mV > 0) {
+        min_voltage_limit_dV += deviation_increase_mV / 100;
+    }
+
+    // Apply user-configured offsets to account for errors in the inverter
+    // voltage reading.
+    max_voltage_limit_dV += model->pack_voltage_limit_upper_offset_dV;
+    min_voltage_limit_dV += model->pack_voltage_limit_lower_offset_dV;  
+
+    model->inverter_max_voltage_limit_dV = max_voltage_limit_dV;
+    model->inverter_min_voltage_limit_dV = min_voltage_limit_dV;
+}
 
 
 void model_tick(bms_model_t *model) {
@@ -199,7 +230,7 @@ void model_tick(bms_model_t *model) {
 
     model_calculate_cell_current_limits(model);
     model_calculate_temperature_current_limits(model);
-    model_calculate_voltage_limits(model);
+    model_calculate_inverter_voltage_limits(model);
 
     model_apply_current_limits(model);
     model_accumulate_overcurrent(model);

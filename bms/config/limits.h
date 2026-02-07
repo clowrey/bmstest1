@@ -7,7 +7,7 @@
 #define BMS_DESK 1
 #define BMS_BLUETESLA 2
 
-#define BMS_PROFILE BMS_BLUETESLA
+#define BMS_PROFILE BMS_DESK
 
 // TODO - derate voltage limits based on temperature
 
@@ -19,12 +19,12 @@
     #define CELL_VOLTAGE_HARD_MAX_mV 3650
     // Soft voltage limits, beyond which the battery will only allow a low-current
     // restoration charge/discharge
-    #define CELL_VOLTAGE_SOFT_MIN_mV 2800
-    #define CELL_VOLTAGE_SOFT_MAX_mV 3400
+    #define DEFAULT_CELL_VOLTAGE_SOFT_MIN_mV 2800
+    #define DEFAULT_CELL_VOLTAGE_SOFT_MAX_mV 3400
     // Working voltage range, which defines 0% and 100% SoC. This may be
     // overridden by user settings.
-    #define CELL_VOLTAGE_WORKING_MIN_mV 2900
-    #define CELL_VOLTAGE_WORKING_MAX_mV 3350
+    #define DEFAULT_CELL_VOLTAGE_WORKING_MIN_mV 2900
+    #define DEFAULT_CELL_VOLTAGE_WORKING_MAX_mV 3350
 
 
     #define CHARGE_MAX_CURRENT_dA 500 // 50A
@@ -54,21 +54,21 @@
 #elif CHEMISTRY == NMC
     // Hard voltage limits, beyond which the battery will be cut off
     #define CELL_VOLTAGE_HARD_MIN_mV 2700
-    #define CELL_VOLTAGE_HARD_MAX_mV 4250
+    #define CELL_VOLTAGE_HARD_MAX_mV 4200
     // Soft voltage limits, beyond which the battery will only allow a low-current
     // restoration charge/discharge.
-    #define CELL_VOLTAGE_SOFT_MIN_mV 3000
-    #define CELL_VOLTAGE_SOFT_MAX_mV 4200
+    #define DEFAULT_CELL_VOLTAGE_SOFT_MIN_mV 3000
+    #define DEFAULT_CELL_VOLTAGE_SOFT_MAX_mV 4200
     // Working voltage range, which defines 0% and 100% SoC. This may be
     // overridden by user settings.
-    #define CELL_VOLTAGE_WORKING_MIN_mV 3300
-    #define CELL_VOLTAGE_WORKING_MAX_mV 4150
+    #define DEFAULT_CELL_VOLTAGE_WORKING_MIN_mV 3300
+    #define DEFAULT_CELL_VOLTAGE_WORKING_MAX_mV 4050
 
 
 
     // Absolute maximum current limits
-    #define CHARGE_MAX_CURRENT_dA 500 // 50A
-    #define DISCHARGE_MAX_CURRENT_dA 500 // 50A
+    #define CHARGE_MAX_CURRENT_dA 300 // 30A
+    #define DISCHARGE_MAX_CURRENT_dA 300 // 30A
 
     #define CHARGE_CELL_VOLTAGE_DERATE_dA_PER_SoC 40 // in 0.1A per percent SoC
     #define DISCHARGE_CELL_VOLTAGE_DERATE_dA_PER_SoC 20 // in 0.1A per percent SoC
@@ -129,6 +129,9 @@
 // #define NAMEPLATE_CAPACITY_AH 163
 
 
+// A deliberate overestimate of internal resistance of an individual cell, for working current limits
+#define WORKING_LIMIT_INTERNAL_RESISTANCE_uR 50
+
 
 // Options: 
 // - we could load in the cellvoltages as they come in, and use the presence mask for decoding
@@ -138,15 +141,13 @@
 
 #define BATTERY_VOLTAGE_HARD_MAX_mV (NUM_CELLS * CELL_VOLTAGE_HARD_MAX_mV)
 #define BATTERY_VOLTAGE_HARD_MIN_mV (NUM_CELLS * CELL_VOLTAGE_HARD_MIN_mV)
-#define BATTERY_VOLTAGE_SOFT_MAX_mV (NUM_CELLS * CELL_VOLTAGE_SOFT_MAX_mV)
-#define BATTERY_VOLTAGE_SOFT_MIN_mV (NUM_CELLS * CELL_VOLTAGE_SOFT_MIN_mV)
 
 // Max discrepancy between BMB cell voltages and measured terminal voltage
 // (which should be calibrated away at zero current). If in slow mode there
 // could be a considerable time delay between cellvoltage and pack samples.
 #define VOLTAGE_MISMATCH_THRESHOLD_mV 10000
 
-#define MINIMUM_BALANCE_VOLTAGE_mV 3000
+#define DEFAULT_MINIMUM_BALANCING_VOLTAGE_mV 3770
 //3830
 
 // Is voltage derating of current limits feasible, given the steepness of the

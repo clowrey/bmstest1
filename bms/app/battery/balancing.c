@@ -6,9 +6,9 @@
 
 #include "pico/stdlib.h"
 
-#define AUTO_BALANCING_PERIOD_MS 30000 // how long to wait between auto-balancing sessions
-#define PERIODS_PER_MV 1 //50 // how many balancing periods per mV above minimum
-#define BALANCE_MIN_OFFSET_MV 50 // minimum voltage difference to balance
+//#define AUTO_BALANCING_PERIOD_MS 30000 // how long to wait between auto-balancing sessions
+#define PERIODS_PER_MV 5 //50 // how many balancing periods per mV above minimum
+#define BALANCE_MIN_OFFSET_MV 2 // minimum voltage difference to balance
 #define PAUSE_AFTER_N_PERIODS 4 // pause balancing for a shortened period after N periods to get a good voltage reading
 
 static bool good_conditions_for_balancing(bms_model_t *model) {
@@ -25,7 +25,7 @@ static bool good_conditions_for_balancing(bms_model_t *model) {
         return false;
     }
 
-    if(model->cell_voltage_max_mV > CELL_VOLTAGE_SOFT_MAX_mV) {
+    if(model->cell_voltage_max_mV > get_cell_voltage_soft_max_mV(model)) {
         // Don't balance if any cell is above the soft max voltage
 
         // TODO - maybe only restrict this if we're also charging? The balancing
@@ -36,7 +36,7 @@ static bool good_conditions_for_balancing(bms_model_t *model) {
         return false;
     }
 
-    if(model->cell_voltage_min_mV < MINIMUM_BALANCE_VOLTAGE_mV) {
+    if(model->cell_voltage_min_mV < get_minimum_balancing_voltage_mV(model)) {
         // Don't balance if any cell is below the minimum balancing voltage
         return false;
     }
@@ -46,8 +46,8 @@ static bool good_conditions_for_balancing(bms_model_t *model) {
         return false;
     }
 
-    return true;
-    return model->balancing_enabled;
+    return model->auto_balancing_period_ms > 0; // Only balance if auto-balancing is enabled
+    
     //return true;
 }
 
@@ -115,18 +115,18 @@ static void update_balance_requests(balancing_sm_t *balancing_sm, int16_t decrem
 
 // Calculate how long to balance a cell for, based on its voltage above the
 // minimum cell voltage, in BMB update periods.
-int16_t calculate_balance_time(int16_t voltage_mV, int16_t min_voltage_mV) {
+int16_t calculate_balance_time(int16_t voltage_mV, int16_t min_voltage_mV, bms_model_t *model) {
     // Calculate balance time in BMB-update-periods based on voltage difference
 
     // TODO - figure out multiplier, and base on SoC/OCV curve
 
     //return 10;
 
-    int16_t diff = voltage_mV - min_voltage_mV - BALANCE_MIN_OFFSET_MV;
+    int16_t diff = voltage_mV - min_voltage_mV - model->balance_min_offset_mV;
     if(diff < 0) {
         return 0;
     }
-    return diff*PERIODS_PER_MV;
+    return diff * model->balancing_periods_per_mV;
 }
 
 // Start the balancing process by determining which cells need balancing and for
@@ -141,8 +141,8 @@ static bool start_balancing(bms_model_t *model) {
     int16_t min_cell_voltage = 0x7FFF;
   
     int16_t threshold = model->balancing_voltage_threshold_mV;
-    if(threshold < MINIMUM_BALANCE_VOLTAGE_mV) {
-        threshold = MINIMUM_BALANCE_VOLTAGE_mV;
+    if(threshold < get_minimum_balancing_voltage_mV(model)) {
+        threshold = get_minimum_balancing_voltage_mV(model);
     }
 
     for(int cell=0; cell<NUM_CELLS; cell++) {
@@ -155,7 +155,7 @@ static bool start_balancing(bms_model_t *model) {
     
     for(int cell=0; cell<NUM_CELLS; cell++) {
         int16_t voltage = model->cell_voltages_mV[cell];
-        model->balancing_sm.balance_time_remaining[cell] = calculate_balance_time(voltage, min_cell_voltage);
+        model->balancing_sm.balance_time_remaining[cell] = calculate_balance_time(voltage, min_cell_voltage, model);
         // if(model->balancing_sm.balance_time_remaining[cell] > 0) {
         //     printf("Cell %d voltage %d mV, balancing for %d periods\n",
         //         cell, voltage, model->balancing_sm.balance_time_remaining[cell]);
@@ -210,7 +210,7 @@ void balancing_sm_tick(bms_model_t *model) {
 
     switch(balancing_sm->state) {
         case BALANCING_STATE_IDLE:
-            if(state_timeout((sm_t*)balancing_sm, AUTO_BALANCING_PERIOD_MS) && good_conditions_for_balancing(model)) {
+            if(state_timeout((sm_t*)balancing_sm, model->auto_balancing_period_ms) && good_conditions_for_balancing(model)) {
                 // Start balancing
                 if(start_balancing(model)) {
                     state_transition((sm_t*)balancing_sm, BALANCING_STATE_ACTIVE);

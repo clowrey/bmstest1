@@ -520,14 +520,9 @@ static bool should_stop(bms_model_t *model) {
 static bool should_use_slow_mode(bms_model_t *model) {
     // Determine whether we should enter slow mode to reduce battery self-discharge.
 
-    // FIXME - if we enter slow mode after a long time inactive, we consistently
-    // fail to ever perform a snapshot (although we can read the old stale
-    // readings, for some reaso#n)
-    return false;
-
     if(model->system_sm.state == SYSTEM_STATE_INACTIVE && 
        state_time(&model->system_sm) > 60000 && 
-       (model->cell_voltages_millis > 0 && model->cell_voltage_min_mV < MINIMUM_BALANCE_VOLTAGE_mV)) {
+       (model->cell_voltages_millis > 0 && model->cell_voltage_min_mV < get_minimum_balancing_voltage_mV(model))) {
         // Inactive (contactors open) for a minute, and too low to balance, enter slow mode
         return true;
     }
@@ -544,17 +539,14 @@ static bool should_use_slow_mode(bms_model_t *model) {
 
 int bmb3y_timestep_offset = 0;
 // Cut balancing pause cycles short so we can get back to balancing sooner.
-const int PAUSE_CYCLE_LENGTH = 10;
+const int PAUSE_CYCLE_LENGTH = 10; // (min 10)
 bool crc_failed = false;
 bool started = false;
 
 void bmb3y_tick(bms_model_t *model) {
     int period_mask = 0x3f;
 
-    // if(timestep() < 50*300) {
-    //     return;
-    // }
-
+    const int slow_mode_period_mask = 0x7ff;
 
     if(should_stop(model)) {
         // Stop talking to the BMBs to save power
@@ -565,64 +557,53 @@ void bmb3y_tick(bms_model_t *model) {
             printf("BMB3Y entering slow mode\n");
             model->cell_voltage_slow_mode = true;
         }
-        period_mask = 0x7ff;
+        period_mask = slow_mode_period_mask;
     }
 
     // Derive a step number which loops every 'period' timesteps
-    int step = ((timestep() + bmb3y_timestep_offset) & period_mask) - 5;
-
-    if(!started) {
-        printf("first step is %d\n", step);
-        started = true;
-
-    }
-
-    //uint32_t start = time_us_32();
-    // if(step >= 0 && step <= 8) {
-    //     printf("BMB3Y step %d\n", step);
-    // }
-    // return;
+    int step = ((timestep() + bmb3y_timestep_offset + period_mask - 5) & period_mask);
 
     if(step == 0) {
-        // Wake up BMBs, take snapshot
-        // Takes about 90us
         bmb3y_send_wakeup_cs_blocking();
-        // bmb3y_send_wakeup_cs_blocking();
-        // bmb3y_send_command_blocking(BMB3Y_CMD_IDLE_WAKE);
-        // bmb3y_send_command_blocking(BMB3Y_CMD_IDLE_WAKE);
-        // bmb3y_send_command_blocking(BMB3Y_CMD_IDLE_WAKE);
+        bmb3y_send_command_blocking(BMB3Y_CMD_HELLO);
+    } else if(step == 1) {
+    //if(step == 0 || step == 1) {
+        // Wake up BMBs, take snapshot. We do this twice, since if we've been
+        // asleep for a while, the one snapshot seems to not be enough.
+        
+        bmb3y_send_wakeup_cs_blocking();
         bmb3y_send_command_blocking(BMB3Y_CMD_SNAPSHOT);
 
-        // Update balancing_active to indicate whether the preceding cycle's
-        // voltages are unstable.
+        // Record whether the past cycle has had balancing active (so we can
+        // ignore the unstable voltage readings)
         bmb3y_update_balancing_active(model);
-    } else if(step == 1) {
+    } else if(step == 2) {
         // Wake up, resume balancing (if active). Our voltage/temp snapshot
         // will remain readable even while balancing.
+
         bmb3y_send_wakeup_cs_blocking();
-
-        crc_failed = false;
-
         balancing_sm_tick(model);
         bmb3y_send_balancing_blocking(model);
-    } else if(step >= 2 && step <= 6) {
+
+        crc_failed = false;
+    } else if(step >= 3 && step <= 7) {
         // Wake up and read a voltage bank
 
         bmb3y_send_wakeup_cs_blocking();
 
-        if(!bmb3y_read_cell_voltage_bank_blocking(model, step - 2)) {
+        if(!bmb3y_read_cell_voltage_bank_blocking(model, step - 3)) {
             crc_failed = true;
         }
 
-        if(step == 6 && !crc_failed && !model->balancing_active) {
+        if(step == 7 && !crc_failed && !model->balancing_active) {
             // All banks read successfully
             model->cell_voltages_millis = millis();
         }
-    } else if(step == 7) {
+    } else if(step == 8) {
         // Wake up, read temperatures
         bmb3y_send_wakeup_cs_blocking();
         bmb3y_read_temperatures_blocking(model);
-    } else if(step == 8) {
+    } else if(step == 9) {
         // Wake up, read more temps
         bmb3y_send_wakeup_cs_blocking();
         bmb3y_read_more_temps_blocking(model);
@@ -637,7 +618,7 @@ void bmb3y_tick(bms_model_t *model) {
         // offset. This allows us to get back to balancing sooner, we just need
         // to have left enough time for voltages to settle.
         bmb3y_timestep_offset = (bmb3y_timestep_offset + (period_mask + 1) - PAUSE_CYCLE_LENGTH - 1) & period_mask;
-    } 
+    }
 }
 
 
