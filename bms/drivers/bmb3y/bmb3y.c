@@ -80,37 +80,6 @@ void bmb3y_send_wakeup_cs_blocking() {
     isospi_send_wakeup_cs_blocking();
 }
 
-// Higher level functions
-
-// bool bmb3y_set_balancing(uint8_t bitmap[16], bool even) {
-//     uint8_t tx_buf[50] = {0};
-    
-//     tx_buf[0] = (BMB3Y_CMD_WRITE_CONFIG >> 8) & 0xFF;
-//     tx_buf[1] = BMB3Y_CMD_WRITE_CONFIG & 0xFF;
-
-//     uint8_t balance_mask = even ? 0xAA : 0x55;
-
-//     for(int module=0; module<8; module++) {
-//         // was f3
-//         tx_buf[2 + module*6] = 0xf3;
-//         // was 00
-//         tx_buf[3 + module*6] = 0;
-
-//         tx_buf[4 + module*6] = bitmap[module*2 + 1] & balance_mask;
-//         tx_buf[5 + module*6] = bitmap[module*2] & balance_mask;
-
-//         uint16_t calc_crc = crc14(&tx_buf[2 + module*6], 4, 0x0010);
-
-//         tx_buf[6 + module*6] = (calc_crc >> 8) & 0xFF;
-//         tx_buf[7 + module*6] = calc_crc & 0xFF;
-//     }
-
-//     // We skip all of the response bytes
-//     isospi_write_read_blocking(tx_buf, NULL, 50, 50);
-
-//     return true;
-// }
-
 void bmb3y_send_balancing_blocking(bms_model_t *model) {
     balancing_sm_t *balancing_sm = &model->balancing_sm;
 
@@ -133,9 +102,12 @@ void bmb3y_send_balancing_blocking(bms_model_t *model) {
     for (int word_idx = 0; word_idx < 4; word_idx++) {
         uint32_t presence = cell_presence_mask[word_idx];
         while (presence) {
+            // Find the index of the next cell in the balance mask
             int bit_in_word = __builtin_ctz(presence);
+            // Clear that bit so the next iteration will find the next cell
             presence &= ~(1U << bit_in_word);
 
+            // Are we requesting to balance this cell?
             if (balancing_sm->balance_request_mask[logical_index / 32] & (1U << (logical_index & 0x1F))) {
                 int physical_index = (word_idx * 32) | bit_in_word;
 
@@ -151,27 +123,25 @@ void bmb3y_send_balancing_blocking(bms_model_t *model) {
         }
     }
 
-    //printf("Balancing sent: ");
-
     // Fill in config bytes and calculate CRCs
     for(int module=0; module<8; module++) {
         tx_buf[2 + 0 + module*6] = 0xf3;
         tx_buf[2 + 1 + module*6] = 0;
 
         // bytes 2, 3 are already filled in by the loop above
-        //printf("%02X%02X ", tx_buf[2 + 2 + module*6], tx_buf[2 + 3 + module*6]);
 
         uint16_t calc_crc = crc14(&tx_buf[2 + 0 + module*6], 4, 0x0010, 0);
 
         tx_buf[2 + 4 + module*6] = (calc_crc >> 8) & 0xFF;
         tx_buf[2 + 5 + module*6] = calc_crc & 0xFF;
     }
-    //printf("\n");
-
 
     // Write only - we skip all of the response bytes
     isospi_write_read_blocking(tx_buf, NULL, 50, 50);
 }
+
+
+// Higher level functions
 
 static void bmb3y_update_balancing_active(bms_model_t *model) {
     balancing_sm_t *balancing_sm = &model->balancing_sm;
@@ -201,35 +171,6 @@ static const uint16_t SHORT_READ_COMMANDS[] = {
     BMB3Y_CMD_READ_E_SHORT
 };
 
-// For some reason, the returned BMB3Y CRCs often seem to be XORed with one of
-// three different patterns. It is unclear whether this is by design or not, and
-// it doesn't seem possible to predict which pattern will be used when it
-// happens. However this totally resolves all CRC mismatch issues and sequencing
-// workarounds.
-bool crc_matches(uint16_t received_crc, uint16_t calculated_crc) {
-    if((received_crc&0x3fff) == calculated_crc) {
-        //printf("CRC matched directly\n");
-        return true;
-    }
-    // This is the CRC14 polynomial (with the 15th bit set)
-    if((received_crc ^ 0x425b) == calculated_crc) {
-        printf("CRC matched with 0x425b xor\n");
-        return true;
-    }
-    // This is the above, left shifted by 1
-    if((received_crc ^ 0x84b6) == calculated_crc) {
-        printf("CRC matched with 0x84b6 xor\n");
-        return true;
-    }
-    // This is the two previous patterns xored together
-    if((received_crc ^ 0xc6ed) == calculated_crc) {
-        printf("CRC matched with 0xc6ed xor\n");
-        return true;
-    }
-    printf("CRC mismatch, xor: %04X\n", received_crc ^ calculated_crc);
-    return false;
-}
-
 bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
     uint8_t rx_buf[72];
     uint32_t cmd = READ_COMMANDS[bank_index];
@@ -256,7 +197,6 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
         uint16_t calc_crc = crc14(&rx_buf[module * 9], 6, 0x1000, module_crc);
 
         if((module_crc & 0x3fff) != calc_crc) {
-        //if(!crc_matches(module_crc, calc_crc)) {
             printf("CRC: %s %d %02X %02X %02X %02X %02X %02X %02X %02X %02X calc %04X xor %04X or %04X\n",
                 module_crc == calc_crc ? "OK" : "FAIL",
                 bank_index,
@@ -280,19 +220,30 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
 
         // Go through each cell (three per bank)
         for(int cell=0; cell<3; cell++) {
-            int raw_cell_index = (module * 15) + cell_offset + cell;
+            int physical_index = (module * 15) + cell_offset + cell;
 
-            uint8_t cell_index = 0;
-            // TODO, do this better
-            for(int bit=0;bit<128;bit++) {
-                uint32_t mask_word = cell_presence_mask[bit / 32];
-                if(mask_word & (1 << (bit % 32))) {
-                    if(bit == raw_cell_index) {
-                        break;
-                    }
-                    cell_index++;
-                }
+            // Physical index is the channel number of the cell on the BMBs,
+            // however not every channel is populated.
+
+            // Logical index is the actual cell number (with no gaps).
+
+            // To calculate logical from physical, we need to count how many
+            // bits are set in the cell presence mask up to the physical index.
+
+            uint8_t logical_index = 0;
+            // Calculate which presence mask word the physical index is in
+            int word_offset = physical_index / 32;
+            // Is this cell actually present according to the presence mask?
+            if((cell_presence_mask[word_offset] & (1U << (physical_index % 32))) == 0) {
+                // Not present, skip
+                continue;
             }
+            // Count all the bits in previous presence mask words
+            for(int word=0; word<word_offset; word++) {
+                logical_index += __builtin_popcount(cell_presence_mask[word]);
+            }
+            // Count the bits in the presence mask word up to the physical index
+            logical_index += __builtin_popcount(cell_presence_mask[word_offset] & ((1 << (physical_index % 32)) - 1));
 
             uint16_t voltage = 
                 (uint16_t)(rx_buf[module * 9 + cell * 2]) |
@@ -310,14 +261,12 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
                 converted = (voltage * 2) / 25;
             }
 
-            model->raw_cell_voltages_mV[cell_index] = converted;
+            model->raw_cell_voltages_mV[logical_index] = converted;
 
             // Don't store voltages during balancing, as they are unstable
             if(!model->balancing_active) {
-                model->cell_voltages_mV[cell_index] = converted;
+                model->cell_voltages_mV[logical_index] = converted;
             }
-            
-            cell_index++;
         }
     }
     return crc_ok;

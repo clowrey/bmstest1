@@ -244,7 +244,7 @@ static int send_150(bms_model_t *model) {
         divisor = 10000; // default to no scaling
     }
     
-    int16_t scaled_soc = (int32_t)(model->soc - model->soc_scaling_min) * 10000 / divisor;
+    int32_t scaled_soc = (int32_t)(model->soc - model->soc_scaling_min) * 10000 / divisor;
     if(scaled_soc > 10000) scaled_soc = 10000;
     if(scaled_soc < 0) scaled_soc = 0;
 

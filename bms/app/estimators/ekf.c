@@ -480,16 +480,22 @@ uint32_t ekf_tick(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV) {
     if (!initialized && voltage_mV > 0.0f) {
         float initial_capacity_ah = model.nameplate_capacity_mC / 3600000; // in Ah
 
+        float estimated_soc = 1.0;
+        for(int i=0; i<10; i++) {
+            estimated_soc += (voltage_volts - soc_to_ocv(estimated_soc)); // Simple convergence
+        }
+
         float initial_soc = 1.0f;
         // TODO: is zero charge_used_Ah a valid indicator of uninitialized?
         if(model.charge_used_Ah != 0.0f && model.charge_used_Ah < initial_capacity_ah) {
             // Use stored charge_used if available
             initial_soc = 1.0f - (model.charge_used_Ah / initial_capacity_ah);
-        } else {
-            // Estimate initial SOC from voltage
-            for(int i=0; i<10; i++) {
-                initial_soc += (voltage_volts - soc_to_ocv(initial_soc)); // Simple convergence
+            if(fabsf(initial_soc - estimated_soc) > 0.2f) {
+                // Unrealistic, use voltage-based estimate instead
+                initial_soc = estimated_soc;
             }
+        } else {
+            initial_soc = estimated_soc;
         }
 
         //printf("EKF Initial SOC Estimate: %2.2f %% | Voltage: %2.3f V | Charge Used: %f Ah\n",
@@ -511,8 +517,8 @@ uint32_t ekf_tick(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV) {
 
     float soc = ekf_get_soc(&ekf_instance);
 
-    uint16_t cell_voltage_working_min_mV = model.cell_voltage_working_min_mV;
-    uint16_t cell_voltage_working_max_mV = model.cell_voltage_working_max_mV;
+    uint16_t cell_voltage_working_min_mV = get_cell_voltage_working_min_mV(&model);
+    uint16_t cell_voltage_working_max_mV = get_cell_voltage_working_max_mV(&model);
 
     // Scale soc according to voltage limits
     if(cell_voltage_working_min_mV != prev_min || cell_voltage_working_max_mV != prev_max) {

@@ -50,6 +50,7 @@ uint16_t calculate_cell_voltage_charge_current_limit(bms_model_t *model) {
     } else {
         int32_t delta_from_working_max_uV = (get_cell_voltage_working_max_mV(model) * 1000) - guessed_ocv_uV;
         int32_t max_delta_uV = (CHARGE_MAX_CURRENT_dA * WORKING_LIMIT_INTERNAL_RESISTANCE_uR) / 10;
+        //printf("charge %ld %ld\n", delta_from_working_max_uV, max_delta_uV);
         // Derate from max down to zero as guessed OCV approaches the working max
         int32_t derate_dA = (delta_from_working_max_uV * CHARGE_MAX_CURRENT_dA) / max_delta_uV;
         if(derate_dA >= 0 && derate_dA < charge_limit) {
@@ -107,6 +108,7 @@ uint16_t calculate_cell_voltage_discharge_current_limit(bms_model_t *model) {
     } else {
         int32_t delta_from_working_min_uV = guessed_ocv_uV - (get_cell_voltage_working_min_mV(model) * 1000);
         int32_t max_delta_uV = (DISCHARGE_MAX_CURRENT_dA * WORKING_LIMIT_INTERNAL_RESISTANCE_uR) / 10;
+        //printf("discharge %ld %ld\n", delta_from_working_min_uV, max_delta_uV);
         // Derate from max down to zero as guessed OCV approaches the working min
         int32_t derate_dA = (delta_from_working_min_uV * DISCHARGE_MAX_CURRENT_dA) / max_delta_uV;
         if(derate_dA >= 0 && derate_dA < discharge_limit) {

@@ -51,14 +51,10 @@ static void model_process_cell_voltages(bms_model_t *model) {
 
 static void model_calculate_cell_current_limits(bms_model_t *model) {
     model->cell_voltage_charge_current_limit_dA =calculate_cell_voltage_charge_current_limit(
-        model->cell_voltage_min_mV,
-        model->cell_voltage_max_mV,
-        model->current_mA
+        model
     );
     model->cell_voltage_discharge_current_limit_dA = calculate_cell_voltage_discharge_current_limit(
-        model->cell_voltage_min_mV,
-        model->cell_voltage_max_mV,
-        model->current_mA
+        model
     );
 }
 

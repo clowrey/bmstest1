@@ -209,11 +209,11 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
             break;
         case HMI_REG_CELL_VOLTAGE_WORKING_MIN:
             buf[idx++] = HMI_TYPE_UINT16;
-            idx += hmi_buf_append_uint16(&buf[idx], model->cell_voltage_working_min_mV);
+            idx += hmi_buf_append_uint16(&buf[idx], get_cell_voltage_working_min_mV(model));
             break;
         case HMI_REG_CELL_VOLTAGE_WORKING_MAX:
             buf[idx++] = HMI_TYPE_UINT16;
-            idx += hmi_buf_append_uint16(&buf[idx], model->cell_voltage_working_max_mV);
+            idx += hmi_buf_append_uint16(&buf[idx], get_cell_voltage_working_max_mV(model));
             break;
         case HMI_REG_SOC_SCALING_MIN:
             buf[idx++] = HMI_TYPE_INT16;
@@ -233,11 +233,11 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
             break;
         case HMI_REG_CELL_VOLTAGE_SOFT_MIN:
             buf[idx++] = HMI_TYPE_UINT16;
-            idx += hmi_buf_append_uint16(&buf[idx], model->cell_voltage_soft_min_mV);
+            idx += hmi_buf_append_uint16(&buf[idx], get_cell_voltage_soft_min_mV(model));
             break;
         case HMI_REG_CELL_VOLTAGE_SOFT_MAX:
             buf[idx++] = HMI_TYPE_UINT16;
-            idx += hmi_buf_append_uint16(&buf[idx], model->cell_voltage_soft_max_mV);
+            idx += hmi_buf_append_uint16(&buf[idx], get_cell_voltage_soft_max_mV(model));
             break;
         case HMI_REG_AUTO_BALANCING_PERIOD_MS:
             buf[idx++] = HMI_TYPE_UINT32;
@@ -253,7 +253,7 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
             break;
         case HMI_REG_MINIMUM_BALANCING_VOLTAGE_MV:
             buf[idx++] = HMI_TYPE_UINT16;
-            idx += hmi_buf_append_uint16(&buf[idx], model->minimum_balancing_voltage_mV);
+            idx += hmi_buf_append_uint16(&buf[idx], get_minimum_balancing_voltage_mV(model));
             break;
 
         default:
@@ -369,6 +369,8 @@ static void hmi_handle_write_registers(const uint8_t *rx_buf, size_t len, bms_mo
     tx_buf[tx_idx++] = HMI_MSG_READ_REGISTERS_RESPONSE;
     tx_buf[tx_idx++] = device_address;
 
+    bool needs_flashing = false;
+
     while (((unsigned)rx_idx + 2) < len) {
         uint16_t reg_id = hmi_buf_get_uint16(&rx_buf[rx_idx]);
         rx_idx += 2;
@@ -384,51 +386,93 @@ static void hmi_handle_write_registers(const uint8_t *rx_buf, size_t len, bms_mo
                     break;
             }
         } else if(type == HMI_TYPE_UINT16) {
+            uint16_t v = hmi_buf_get_uint16(&rx_buf[rx_idx]);
             switch(reg_id) {
                 case HMI_REG_CELL_VOLTAGE_WORKING_MIN:
-                    model->cell_voltage_working_min_mV = hmi_buf_get_uint16(&rx_buf[rx_idx]);
+                    if(get_cell_voltage_working_min_mV(model) != v) {
+                        model->cell_voltage_working_min_mV = v;
+                        needs_flashing = true;
+                    }
                     break;
                 case HMI_REG_CELL_VOLTAGE_WORKING_MAX:
-                    model->cell_voltage_working_max_mV = hmi_buf_get_uint16(&rx_buf[rx_idx]);
+                    if(get_cell_voltage_working_max_mV(model) != v) {
+                        model->cell_voltage_working_max_mV = v;
+                        needs_flashing = true;
+                    }
                     break;
                 case HMI_REG_CELL_VOLTAGE_SOFT_MIN:
-                    model->cell_voltage_soft_min_mV = hmi_buf_get_uint16(&rx_buf[rx_idx]);
+                    if(get_cell_voltage_soft_min_mV(model) != v) {
+                        model->cell_voltage_soft_min_mV = v;
+                        needs_flashing = true;
+                    }
                     break;
                 case HMI_REG_CELL_VOLTAGE_SOFT_MAX:
-                    model->cell_voltage_soft_max_mV = hmi_buf_get_uint16(&rx_buf[rx_idx]);
+                    if(get_cell_voltage_soft_max_mV(model) != v) {
+                        model->cell_voltage_soft_max_mV = v;
+                        needs_flashing = true;
+                    }
                     break;
                 case HMI_REG_BALANCING_PERIODS_PER_MV:
-                    model->balancing_periods_per_mV = hmi_buf_get_uint16(&rx_buf[rx_idx]);
+                    if(model->balancing_periods_per_mV != v) {
+                        model->balancing_periods_per_mV = v;
+                        needs_flashing = true;
+                    }
                     break;
                 case HMI_REG_BALANCE_MIN_OFFSET_MV:
-                    model->balance_min_offset_mV = hmi_buf_get_uint16(&rx_buf[rx_idx]);
+                    if(model->balance_min_offset_mV != v) {
+                        model->balance_min_offset_mV = v;
+                        needs_flashing = true;
+                    }
                     break;
                 case HMI_REG_MINIMUM_BALANCING_VOLTAGE_MV:
-                    model->minimum_balancing_voltage_mV = hmi_buf_get_uint16(&rx_buf[rx_idx]);
+                    if(get_minimum_balancing_voltage_mV(model) != v) {
+                        model->minimum_balancing_voltage_mV = v;
+                        needs_flashing = true;
+                    }
                     break;
             }
         } else if(type == HMI_TYPE_INT16) {
+            int16_t v = (int16_t)hmi_buf_get_uint16(&rx_buf[rx_idx]);
             switch(reg_id) {
                 case HMI_REG_SOC_SCALING_MIN:
-                    model->soc_scaling_min = (int16_t)hmi_buf_get_uint16(&rx_buf[rx_idx]);
+                    if(model->soc_scaling_min != v) {
+                        model->soc_scaling_min = v;
+                        needs_flashing = true;
+                    }
                     break;
                 case HMI_REG_SOC_SCALING_MAX:
-                    model->soc_scaling_max = (int16_t)hmi_buf_get_uint16(&rx_buf[rx_idx]);
+                    if(model->soc_scaling_max != v) {
+                        model->soc_scaling_max = v;
+                        needs_flashing = true;
+                    }
                     break;
                 case HMI_REG_VOLTAGE_LIMIT_OFFSET_LOWER:
-                    model->pack_voltage_limit_lower_offset_dV = (int16_t)hmi_buf_get_uint16(&rx_buf[rx_idx]);
+                    if(model->pack_voltage_limit_lower_offset_dV != v) {
+                        model->pack_voltage_limit_lower_offset_dV = v;
+                        needs_flashing = true;
+                    }
                     break;
                 case HMI_REG_VOLTAGE_LIMIT_OFFSET_UPPER:
-                    model->pack_voltage_limit_upper_offset_dV = (int16_t)hmi_buf_get_uint16(&rx_buf[rx_idx]);
+                    if(model->pack_voltage_limit_upper_offset_dV != v) {
+                        model->pack_voltage_limit_upper_offset_dV = v;
+                        needs_flashing = true;
+                    }
                     break;
             }
         } else if(type == HMI_TYPE_UINT32) {
+            uint32_t v = hmi_buf_get_uint32(&rx_buf[rx_idx]);
             switch(reg_id) {
                 case HMI_REG_CAPACITY:
-                    model->nameplate_capacity_mC = hmi_buf_get_uint32(&rx_buf[rx_idx]);
+                    if(model->nameplate_capacity_mC != v) {
+                        model->nameplate_capacity_mC = v;
+                        // Don't need to flash since this gets saved automatically
+                    }
                     break;
                 case HMI_REG_AUTO_BALANCING_PERIOD_MS:
-                    model->auto_balancing_period_ms = hmi_buf_get_uint32(&rx_buf[rx_idx]);
+                    if(model->auto_balancing_period_ms != v) {
+                        model->auto_balancing_period_ms = v;
+                        needs_flashing = true;
+                    }
                     break;
             }
         }
@@ -440,9 +484,13 @@ static void hmi_handle_write_registers(const uint8_t *rx_buf, size_t len, bms_mo
     }
 
     duart_send_packet(&HMI_SERIAL_DUART, tx_buf, tx_idx);
+
+    if(needs_flashing) {
+        nvm_save_persistent_slow(model);
+    }
 }
 
-static void encode_int16_delta_array(uint8_t *buf, const int16_t *values, size_t count) {
+static size_t encode_int16_delta_array(uint8_t *buf, const int16_t *values, size_t count) {
     // Note: Delta coding for cell voltages
     //   Absolute values sent as two-byte big-endian signed integers, with the MSB set
     //   Delta values sent as single-byte signed integers in the range -64 to +63, with MSB clear
@@ -463,6 +511,7 @@ static void encode_int16_delta_array(uint8_t *buf, const int16_t *values, size_t
         }
         last_value = value;
     }
+    return idx;
 }
 
 static void hmi_handle_read_cell_voltages(const uint8_t *rx_buf, size_t len, bms_model_t *model) {
@@ -482,7 +531,7 @@ static void hmi_handle_read_cell_voltages(const uint8_t *rx_buf, size_t len, bms
     tx_buf[tx_idx++] = device_address;
     tx_buf[tx_idx++] = 120; // number of cell voltages
 
-    encode_int16_delta_array(&tx_buf[tx_idx], model->cell_voltages_mV, 120);
+    tx_idx += encode_int16_delta_array(&tx_buf[tx_idx], model->cell_voltages_mV, 120);
 
     duart_send_packet(&HMI_SERIAL_DUART, tx_buf, tx_idx);
 }
@@ -499,7 +548,7 @@ static void hmi_handle_read_balancing_times(const uint8_t *rx_buf, size_t len, b
     tx_buf[tx_idx++] = device_address;
     tx_buf[tx_idx++] = 120; // number of cell balancing times
 
-    encode_int16_delta_array(&tx_buf[tx_idx], model->balancing_sm.balance_time_remaining, 120);
+    tx_idx += encode_int16_delta_array(&tx_buf[tx_idx], model->balancing_sm.balance_time_remaining, 120);
 
     duart_send_packet(&HMI_SERIAL_DUART, tx_buf, tx_idx);
 }

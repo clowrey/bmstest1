@@ -71,7 +71,7 @@ bool check_current_is_below(bms_model_t *model, int32_t threshold_ma) {
     }
     
 //    if(abs_int32(model->current_mA) <= threshold_ma) {
-        printf("Checking current %d mA is below threshold %d mA\n", model->current_mA, threshold_ma);
+        printf("Checking current %d mA is below threshold %d mA\n", abs_int32(model->current_mA), threshold_ma);
     //}
 
     return abs_int32(model->current_mA) <= threshold_ma;
@@ -339,6 +339,7 @@ void contactor_sm_tick(bms_model_t *model) {
                 break;
             case CONTACTORS_STATE_OPEN:
             case CONTACTORS_STATE_CLOSED:
+            case CONTACTORS_STATE_AWAITING_OPEN:
             case CONTACTORS_STATE_PRECHARGE_FAILED:
             case CONTACTORS_STATE_TESTING_FAILED:
                 // let normal processing handle it
@@ -380,10 +381,21 @@ void contactor_sm_tick(bms_model_t *model) {
                 contactor_sm->enable_current = true;
             }
 
+            if(try_to_open) {
+                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_AWAITING_OPEN);
+            } else if(model->contactor_req == CONTACTORS_REQUEST_CLOSE) {
+                // cancel any close requests (we're already closed)
+                model->contactor_req = CONTACTORS_REQUEST_NULL;
+            }
+             
+            break;
+        case CONTACTORS_STATE_AWAITING_OPEN:
+            contactors_set_pos_pre_neg(true, false, true);
+
+            // Wait for current to fall before actually opening contactors.
             if((
-                try_to_open && (
                     check_current_is_below(model, CONTACTORS_INSTANT_OPEN_MA)
-                    || (check_current_is_below(model, CONTACTORS_DELAYED_OPEN_MA) && state_timeout((sm_t*)contactor_sm, CONTACTORS_OPEN_TIMEOUT_MS)))
+                    || (check_current_is_below(model, CONTACTORS_DELAYED_OPEN_MA) && state_timeout((sm_t*)contactor_sm, CONTACTORS_OPEN_TIMEOUT_MS))
             ) || (
                 model->contactor_req == CONTACTORS_REQUEST_FORCE_OPEN && (
                     check_current_is_below(model, CONTACTORS_INSTANT_OPEN_MA)
@@ -392,11 +404,7 @@ void contactor_sm_tick(bms_model_t *model) {
             )) {
                  model->contactor_req = CONTACTORS_REQUEST_NULL;
                  state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
-            } else if(model->contactor_req == CONTACTORS_REQUEST_CLOSE) {
-                // cancel any close requests (we're already closed)
-                model->contactor_req = CONTACTORS_REQUEST_NULL;
             }
-             
             break;
         case CONTACTORS_STATE_TESTING_PRE_CLOSED:
             contactors_test_pre(true);

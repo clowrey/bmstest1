@@ -149,6 +149,9 @@ void bms_tick() {
     // For debugging, prepare for restart (zero current) if 'R' received on USB stdio
 
     int c = stdio_getchar_timeout_us(0);
+    if(c != PICO_ERROR_TIMEOUT) {
+        printf("Received char '%c' on USB stdio\n", c);
+    }
     if(c == 'R') {
         printf("Preparing to restart due to 'R' on USB stdio\n");
         count_bms_event(ERR_RESTARTING, 1);
@@ -270,7 +273,7 @@ void bms_tick() {
             model.pos_contactor_voltage_range_mV
         );
         int64_t charge_mC = raw_charge_to_mC(model.charge_raw);
-        printf("Current: %6ld mA | Charge: %lld mC | SoC: %2.2f %% | SoC(VB): %2.2f %% | SoC(BC): %2.2f %% | SoC(FC): %2.2f %%\n\n",
+        printf("Current: %6ld mA | Charge: %lld mC | SoC: %2.2f %% | SoC(VB): %2.2f %% | SoC(BC): %2.2f %% | SoC(FC): %2.2f %%\n",
             model.current_mA,
             charge_mC,
             model.soc / 100.0f,
@@ -278,10 +281,18 @@ void bms_tick() {
             model.soc_basic_count / 100.0f,
             model.soc_fancy_count / 100.0f
         );
-        printf("DUART0 RX: %lu, crcfail %lu | DUART1 RX: %lu, crcfail %lu\n",
-            debug_counters.uart0_packets_received, debug_counters.uart0_crc_errors,
-            debug_counters.uart1_packets_received, debug_counters.uart1_crc_errors
+        printf("CV: %2.1f/%2.1f A | T: %2.1f/%2.1f A | Inv. min: %2.1f V | Inv. max: %2.1f V\n\n",
+            model.cell_voltage_charge_current_limit_dA / 10.0f,
+            model.cell_voltage_discharge_current_limit_dA / 10.0f,
+            model.temp_charge_current_limit_dA / 10.0f,
+            model.temp_discharge_current_limit_dA / 10.0f,
+            model.inverter_min_voltage_limit_dV / 10.0f,
+            model.inverter_max_voltage_limit_dV / 10.0f
         );
+        // printf("DUART0 RX: %lu, crcfail %lu | DUART1 RX: %lu, crcfail %lu\n",
+        //     debug_counters.uart0_packets_received, debug_counters.uart0_crc_errors,
+        //     debug_counters.uart1_packets_received, debug_counters.uart1_crc_errors
+        // );
     }
 
     timings[9] = time_us_32();
