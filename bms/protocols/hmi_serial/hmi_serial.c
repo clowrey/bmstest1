@@ -563,14 +563,13 @@ static void hmi_handle_read_log(const uint8_t *rx_buf, size_t len) {
     uint8_t addr = rx_buf[1];
     if (addr != device_address) return;
 
-    uint8_t tx_buf[258];
+    uint8_t tx_buf[256];
     uint16_t tx_idx = 0;
 
     tx_buf[tx_idx++] = HMI_MSG_READ_LOG_RESPONSE;
     tx_buf[tx_idx++] = device_address;
 
-    // Read up to 256 bytes using reader ID 1 (the second reader)
-    size_t read = logging_read(&tx_buf[tx_idx], 256);
+    size_t read = logging_read(&tx_buf[tx_idx], 254);
     tx_idx += (uint16_t)read;
 
     // Send even if zero bytes read, to acknowledge request
