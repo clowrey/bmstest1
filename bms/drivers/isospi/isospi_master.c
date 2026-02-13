@@ -113,6 +113,7 @@ void isospi_send_wakeup_cs_blocking() {
     // 0us = first BMB fine
     // 10/15us = first 6 BMBs ok, 7,8 partial
     // 20us = all 8 BMBs ok
+    //   although sometimes fails
 
-    sleep_us(20);
+    sleep_us(25);
 }

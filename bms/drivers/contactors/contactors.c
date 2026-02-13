@@ -56,20 +56,19 @@ static void set_with_pwm(unsigned int pin, bool enabled, uint32_t *level) {
     const unsigned int PWM_MIN_LEVEL = (uint32_t)(CONTACTOR_PWM_MIN * 0x1000);
 
     if(!enabled) {
+        // Disabled, go straight to zero
         *level = 0;
     } else if(enabled && *level==0) {
+        // Just enabled, start at initial level
         *level = PWM_INITIAL_LEVEL;
     } else if(enabled) {
+        // Subsequent sets decay down to the min level
         if(*level < (PWM_MIN_LEVEL + PWM_DECREMENT)) {
             *level = PWM_MIN_LEVEL;
         } else {
             *level -= PWM_DECREMENT;
         }
-        //if(*level<PWM_MIN_LEVEL) *level = PWM_MIN_LEVEL;
     }
-    // if(pin==PIN_CONTACTOR_NEG) {
-    //     printf("Contactor NEG PWM level: %d\n", *level);
-    // }
     pwm_set(pin, *level);
 }
 
@@ -89,7 +88,8 @@ void contactors_set_pos_pre_neg(bool pos, bool pre, bool neg) {
 
 void contactors_test_pre(bool closed) {
     // Independently close the precharge contactor for testing, which you can't
-    // normally do without also closing the positive contactor, but we do here.
+    // normally do without also closing the positive contactor, but we do here
+    // for test purposes.
 
     set_with_pwm(PIN_CONTACTOR_PRE, closed, &pre_level);
     set_with_pwm(PIN_CONTACTOR_POS, false, &pos_level);

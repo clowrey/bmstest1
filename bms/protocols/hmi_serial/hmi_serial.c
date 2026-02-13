@@ -1,11 +1,12 @@
 #include "hmi_serial.h"
-#include "../../drivers/comms/duart.h"
-#include "../../config/allocations.h"
-#include "../../config/pins.h"
-#include "../../sys/time/time.h"
-#include "../../drivers/sensors/ina228.h"
-#include "../../app/model.h"
-#include "../../sys/events/events.h"
+#include "drivers/comms/duart.h"
+#include "config/allocations.h"
+#include "config/pins.h"
+#include "sys/time/time.h"
+#include "drivers/sensors/ina228.h"
+#include "app/estimators/ekf.h"
+#include "app/model.h"
+#include "sys/events/events.h"
 
 #include "pico/stdlib.h"
 #include "pico/unique_id.h"
@@ -388,6 +389,9 @@ static void hmi_handle_write_registers(const uint8_t *rx_buf, size_t len, bms_mo
         } else if(type == HMI_TYPE_UINT16) {
             uint16_t v = hmi_buf_get_uint16(&rx_buf[rx_idx]);
             switch(reg_id) {
+                case HMI_REG_SOC:
+                    ekf_set_soc(model, v);
+                    break;
                 case HMI_REG_CELL_VOLTAGE_WORKING_MIN:
                     if(get_cell_voltage_working_min_mV(model) != v) {
                         model->cell_voltage_working_min_mV = v;

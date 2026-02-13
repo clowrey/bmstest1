@@ -101,19 +101,13 @@ uint16_t calculate_cell_voltage_discharge_current_limit(bms_model_t *model) {
         }
     }
 
-    // Working range limits
-    int32_t guessed_ocv_uV = model->cell_voltage_min_mV*1000 - (model->current_mA * WORKING_LIMIT_INTERNAL_RESISTANCE_uR) / 1000;
-    if(guessed_ocv_uV < (get_cell_voltage_working_min_mV(model) * 1000)) {
+    // Working range lower limit (simple 100mV hysteresis)
+    uint32_t working_min_with_hysteresis_mV = get_cell_voltage_working_min_mV(model) + ((model->below_working_min) ? 100 : 0);
+    if(model->cell_voltage_min_mV < working_min_with_hysteresis_mV) {
         discharge_limit = 0;
+        model->below_working_min = true;
     } else {
-        int32_t delta_from_working_min_uV = guessed_ocv_uV - (get_cell_voltage_working_min_mV(model) * 1000);
-        int32_t max_delta_uV = (DISCHARGE_MAX_CURRENT_dA * WORKING_LIMIT_INTERNAL_RESISTANCE_uR) / 10;
-        //printf("discharge %ld %ld\n", delta_from_working_min_uV, max_delta_uV);
-        // Derate from max down to zero as guessed OCV approaches the working min
-        int32_t derate_dA = (delta_from_working_min_uV * DISCHARGE_MAX_CURRENT_dA) / max_delta_uV;
-        if(derate_dA >= 0 && derate_dA < discharge_limit) {
-            discharge_limit = derate_dA;
-        }
+        model->below_working_min = false;
     }
 
     return discharge_limit;

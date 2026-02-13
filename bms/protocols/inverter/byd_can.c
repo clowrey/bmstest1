@@ -61,15 +61,20 @@ static void can2040_cb(struct can2040 *cd, uint32_t notify, struct can2040_msg *
 
     switch(msg->id) {
         case 0x151:
+            if (msg->data[0] & 0x01) { 
+                // Battery wants to reinitialize
+                printf("BYD_CAN: Reinitialization requested by battery\n");
+                inverter_initialized = false;
+            }
             // process brand name
             break;
         case 0x91:
             // process voltage/current/temp
-            printf("Got CAN 091: ");
-            for(int i=0; i<msg->dlc; i++) {
-                printf("%02X ", msg->data[i]);
-            }
-            printf("\n");
+            // printf("Got CAN 091: ");
+            // for(int i=0; i<msg->dlc; i++) {
+            //     printf("%02X ", msg->data[i]);
+            // }
+            // printf("\n");
 
             break;
         case 0xd1:
@@ -248,9 +253,16 @@ static int send_150(bms_model_t *model) {
     if(scaled_soc > 10000) scaled_soc = 10000;
     if(scaled_soc < 0) scaled_soc = 0;
 
+    if(model->discharge_current_limit_dA == 0) {
+        // Force to 0% to stop discharge
+        scaled_soc = 0;
+    } else if(model->charge_current_limit_dA == 0) {
+        // Force to 100% to stop charge
+        scaled_soc = 10000;
+    }
+
     msg.data[0] = (scaled_soc >> 8) & 0xFF;
     msg.data[1] = scaled_soc & 0xFF;
-    // TODO: workaround for Deye?
     //const uint16_t soh = 10000; // 100.00%
     const uint16_t soh = 9900; // 99.00%
     msg.data[2] = (soh >> 8) & 0xFF;
@@ -270,8 +282,8 @@ static int send_150(bms_model_t *model) {
     msg.data[6] = (full_capacity_dAh >> 8) & 0xFF;
     msg.data[7] = full_capacity_dAh & 0xFF;
 
-    printf("CAN 150 sent SOC %d RemCap %d FullCap %d\n",
-        scaled_soc, remaining_capacity_dAh, full_capacity_dAh);
+    // printf("CAN 150 sent SOC %d RemCap %d FullCap %d\n",
+    //     scaled_soc, remaining_capacity_dAh, full_capacity_dAh);
 
     return can2040_transmit(&cbus, &msg);
 }
@@ -359,12 +371,7 @@ void inverter_tick(bms_model_t *model) {
     }
 
     if(!inverter_initialized) {
-        // if(!model->contactor_sm.enable_current) {
-        //     // Don't initialize until first contactor close
-        //     return;
-        // }
-        
-        // We haven't done the inverter init sequence yet
+        // Send the inverter init sequence
         send_inverter_init_messages();
         return;
     }
@@ -373,8 +380,8 @@ void inverter_tick(bms_model_t *model) {
         // send regular messages every 100ms
         send_110(model);
     }
-    if(timestep_every_ms(10000, &timestep_2)) {
-        // send regular messages every 10s
+    if(timestep_every_ms(1000, &timestep_2)) {
+        // send regular messages every 1s (note: was 10s)
         send_150(model);
         send_1d0(model);
         send_210(model);

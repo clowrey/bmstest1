@@ -168,6 +168,8 @@ typedef struct bms_model {
     uint16_t charge_current_limit_dA; // in 0.1A units
     uint16_t discharge_current_limit_dA; // in 0.1A units
 
+    bool below_working_min; // Hysteresis flag
+
     // The amount of charge that has passed into the battery in excess of the
     // charge/discharge limits in the soft-limit region (slightly under or
     // overcharged). If this gets too large, we can cut off the battery to avoid

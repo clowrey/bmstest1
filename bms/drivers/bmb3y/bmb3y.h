@@ -137,12 +137,3 @@ print(list(((hex(n), hex(crc8_2f(bytes([n])))) for n in range(0, 0xFF))))
 
 
 void bmb3y_tick(bms_model_t *model);
-//void bmb3y_clear_balancing(bms_model_t *model);
-
-void bmb3y_send_command_blocking(uint16_t cmd_word);
-bool bmb3y_get_data_blocking(uint32_t cmd, uint8_t *buf, int len);
-
-void bmb3y_wakeup_blocking(void);
-void bmb3y_request_snapshot_blocking();
-bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index);
-void bmb3y_send_balancing_blocking(bms_model_t *model);

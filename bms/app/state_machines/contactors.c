@@ -278,6 +278,19 @@ bool confirm_contactor_pre_seems_open(bms_model_t *model) {
 
 bool confirm_contactors_staying_closed(bms_model_t *model) {
     bool ret = true;
+
+    // Check that the contactors still seem to be closed, and haven't opened due
+    // to a contactor supply glitch. If they have opened we will need to go
+    // through the checking/precharge sequence again.
+
+    // Note, we will return true if the readings are stale, as we don't want to
+    // immediately trigger contactor opening if there is a loop overrun. If it
+    // remains stale for too long then the events system will trigger a FATAL
+    // and open contactors anyway.
+
+    // (an alternative would be to have another state such that we only consider
+    // them open if another timeout passes)
+
     if(confirm(
         millis_recent_enough(model->pos_contactor_voltage_millis, CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS),
         ERR_CONTACTOR_POS_UNEXPECTED_OPEN,
@@ -289,8 +302,6 @@ bool confirm_contactors_staying_closed(bms_model_t *model) {
             ERR_CONTACTOR_POS_UNEXPECTED_OPEN,
             pos_voltage
         ) && ret;
-    } else {
-        ret = false;
     }
 
     if(confirm(
@@ -304,12 +315,10 @@ bool confirm_contactors_staying_closed(bms_model_t *model) {
             ERR_CONTACTOR_NEG_UNEXPECTED_OPEN,
             neg_voltage
         ) && ret;
-    } else {
-        ret = false;
     }
 
     // TODO - check for voltage diference between battery and output?
-    // also make sure current is actually zero?
+    // or check for voltage across precharge?
 
     return ret;
 }

@@ -48,32 +48,6 @@ static void _duart_send(duart *u, const uint8_t *data, size_t len) {
     );
 }
 
-// static void __isr __not_in_flash_func(on_uart0_rx)() {
-//     while (uart_is_readable(uart0)) {
-//         uint8_t ch = uart_getc(uart0);
-//         // Can we send it back?
-//         // if (uart_is_writable(INTERNAL_UART)) {
-//         //     // Change it slightly first!
-//         //     ch++;
-//         //     uart_putc(INTERNAL_UART, ch);
-//         // }
-//         chars_rxed++;
-//     }
-// }
-
-// static void __isr __not_in_flash_func(on_uart1_rx)() {
-//     while (uart_is_readable(uart1)) {
-//         uint8_t ch = uart_getc(uart1);
-//         // Can we send it back?
-//         // if (uart_is_writable(INTERNAL_UART)) {
-//         //     // Change it slightly first!
-//         //     ch++;
-//         //     uart_putc(INTERNAL_UART, ch);
-//         // }
-//         chars_rxed++;
-//     }
-// }
-
 int64_t disable_tx_callback(alarm_id_t id, void *user_data) {
     duart *u = (duart *)user_data;
 

@@ -80,6 +80,19 @@ void bmb3y_send_wakeup_cs_blocking() {
     isospi_send_wakeup_cs_blocking();
 }
 
+void bmb3y_send_super_wakeup() {
+    // First do the normal wakeup, which works most of the time
+    isospi_send_wakeup_cs_blocking();
+
+    // But also, as per the normal BMS, send 9 dummy commands, which will always
+    // wake all the BMSes (even if some were already awake and thus didn't
+    // propagate the CS wakeup)
+    for(int i=0; i<9; i++) {
+        bmb3y_send_command_blocking(0);
+        sleep_us(2);
+    }
+}
+
 void bmb3y_send_balancing_blocking(bms_model_t *model) {
     balancing_sm_t *balancing_sm = &model->balancing_sm;
 
@@ -174,6 +187,7 @@ static const uint16_t SHORT_READ_COMMANDS[] = {
 bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
     uint8_t rx_buf[72];
     uint32_t cmd = READ_COMMANDS[bank_index];
+    isosnoop_flush();
     if (!bmb3y_long_command_get_data_blocking(cmd, rx_buf, 72)) {
         printf("BMB3Y read failed for cmd 0x%02lX\n", cmd);
         count_bms_event(ERR_BMB_READ_ERROR, 0x0100000000000000 | bank_index);
@@ -197,7 +211,7 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
         uint16_t calc_crc = crc14(&rx_buf[module * 9], 6, 0x1000, module_crc);
 
         if((module_crc & 0x3fff) != calc_crc) {
-            printf("CRC: %s %d %02X %02X %02X %02X %02X %02X %02X %02X %02X calc %04X xor %04X or %04X\n",
+            printf("CRC: %s %d %02X %02X %02X %02X %02X %02X %02X %02X %02X calc %04X\n",
                 module_crc == calc_crc ? "OK" : "FAIL",
                 bank_index,
                 rx_buf[module * 9 + 0],
@@ -209,10 +223,9 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
                 rx_buf[module * 9 + 6],
                 rx_buf[module * 9 + 7],
                 rx_buf[module * 9 + 8],
-                calc_crc,
-                calc_crc ^ 0x425b,
-                calc_crc ^ 0xc6ed
+                calc_crc
             );
+            isosnoop_print_buffer();
             count_bms_event(ERR_BMB_CRC_MISMATCH, 0x0100000000000000 | ((uint64_t)bank_index << 48) | ((uint64_t)module << 40) | (module_crc << 16) | calc_crc);
             crc_ok = false;
             continue;
@@ -430,7 +443,6 @@ bool bmb3y_read_temperatures_blocking(bms_model_t *model) {
             (int16_t)(rx_buf[module * 8 + 4]) |
             (int16_t)(rx_buf[module * 8 + 5] << 8)
         );
-
     }
 
     if(crc_ok) {
@@ -487,7 +499,7 @@ static bool should_use_slow_mode(bms_model_t *model) {
 
 
 int bmb3y_timestep_offset = 0;
-// Cut balancing pause cycles short so we can get back to balancing sooner.
+// Use a shorter period when we're in a balancing pause cycle, to get back to balancing sooner.
 const int PAUSE_CYCLE_LENGTH = 10; // (min 10)
 bool crc_failed = false;
 bool started = false;
@@ -513,14 +525,14 @@ void bmb3y_tick(bms_model_t *model) {
     int step = ((timestep() + bmb3y_timestep_offset + period_mask - 5) & period_mask);
 
     if(step == 0) {
-        bmb3y_send_wakeup_cs_blocking();
+        // Wake up, send a hello (unclear what this actually does).
+
+        bmb3y_send_super_wakeup();
         bmb3y_send_command_blocking(BMB3Y_CMD_HELLO);
     } else if(step == 1) {
-    //if(step == 0 || step == 1) {
-        // Wake up BMBs, take snapshot. We do this twice, since if we've been
-        // asleep for a while, the one snapshot seems to not be enough.
+        // Wake up BMBs, take snapshot.
         
-        bmb3y_send_wakeup_cs_blocking();
+        bmb3y_send_super_wakeup();
         bmb3y_send_command_blocking(BMB3Y_CMD_SNAPSHOT);
 
         // Record whether the past cycle has had balancing active (so we can
@@ -530,7 +542,7 @@ void bmb3y_tick(bms_model_t *model) {
         // Wake up, resume balancing (if active). Our voltage/temp snapshot
         // will remain readable even while balancing.
 
-        bmb3y_send_wakeup_cs_blocking();
+        bmb3y_send_super_wakeup();
         balancing_sm_tick(model);
         bmb3y_send_balancing_blocking(model);
 
@@ -538,9 +550,10 @@ void bmb3y_tick(bms_model_t *model) {
     } else if(step >= 3 && step <= 7) {
         // Wake up and read a voltage bank
 
-        bmb3y_send_wakeup_cs_blocking();
+        bmb3y_send_super_wakeup();
 
         if(!bmb3y_read_cell_voltage_bank_blocking(model, step - 3)) {
+            // Uh oh, we didn't read successfully
             crc_failed = true;
         }
 
@@ -550,11 +563,13 @@ void bmb3y_tick(bms_model_t *model) {
         }
     } else if(step == 8) {
         // Wake up, read temperatures
-        bmb3y_send_wakeup_cs_blocking();
+
+        bmb3y_send_super_wakeup();
         bmb3y_read_temperatures_blocking(model);
     } else if(step == 9) {
         // Wake up, read more temps
-        bmb3y_send_wakeup_cs_blocking();
+
+        bmb3y_send_super_wakeup();
         bmb3y_read_more_temps_blocking(model);
 
         if(!crc_failed && !model->balancing_active && model->cell_voltage_slow_mode && !should_use_slow_mode(model)) {

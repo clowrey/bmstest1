@@ -3,6 +3,8 @@
 #include <math.h>
 #include <stdint.h>
 
+typedef struct bms_model bms_model_t;
+
 typedef struct {
     // --- State Vector x ---
     // x[0] = Ah_used (Consumed Charge in Ah)
@@ -33,5 +35,6 @@ void ekf_step(EKF *ekf, float charge_Ah, float current_amps, float voltage_measu
 
 // Helper to get current SOC
 float ekf_get_soc(EKF *ekf);
+void ekf_set_soc(bms_model_t *model, uint16_t soc);
 
 uint32_t ekf_tick(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV);

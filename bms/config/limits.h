@@ -7,7 +7,9 @@
 #define BMS_DESK 1
 #define BMS_BLUETESLA 2
 
-#define BMS_PROFILE BMS_DESK
+#ifndef BMS_PROFILE
+#define BMS_PROFILE BMS_BLUETESLA
+#endif
 
 // TODO - derate voltage limits based on temperature
 
@@ -114,7 +116,7 @@
 #define NUM_CELLS 96
 #define NUM_MODULE_VOLTAGES 8
 #define NUM_MODULE_TEMPS 8
-#define NAMEPLATE_CAPACITY_AH 200
+#define NAMEPLATE_CAPACITY_AH 147
 #define INA228_SHUNT_CAL 332
 
 #else
@@ -130,7 +132,7 @@
 
 
 // A deliberate overestimate of internal resistance of an individual cell, for working current limits
-#define WORKING_LIMIT_INTERNAL_RESISTANCE_uR 50
+#define WORKING_LIMIT_INTERNAL_RESISTANCE_uR 100
 
 
 // Options: 
