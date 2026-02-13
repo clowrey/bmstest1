@@ -2,6 +2,7 @@
 #include "config/limits.h"
 #include "app/model.h"
 #include "sys/events/events.h"
+#include "sys/logging/logging.h"
 #include "drivers/contactors/contactors.h"
 #include "sys/time/time.h"
 
@@ -71,7 +72,7 @@ bool check_current_is_below(bms_model_t *model, int32_t threshold_ma) {
     }
     
 //    if(abs_int32(model->current_mA) <= threshold_ma) {
-        printf("Checking current %d mA is below threshold %d mA\n", abs_int32(model->current_mA), threshold_ma);
+        debug_printf("Checking current %d mA is below threshold %d mA\n", abs_int32(model->current_mA), threshold_ma);
     //}
 
     return abs_int32(model->current_mA) <= threshold_ma;
@@ -485,7 +486,7 @@ void contactor_sm_tick(bms_model_t *model) {
             contactors_set_pos_pre_neg(true, true, false);
 
             int32_t voltage = abs_int32(model->pos_contactor_voltage_mV);
-            printf("Pos contactor voltage: %d mV\n", voltage);
+            debug_printf("Pos contactor voltage: %d mV\n", voltage);
 
             if(state_timeout((sm_t*)contactor_sm, CONTACTORS_TEST_WAIT_MS)) {
                 if(confirm_contactor_pos_seems_closed(model)) {
@@ -523,7 +524,7 @@ void contactor_sm_tick(bms_model_t *model) {
             // Now close precharge contactor (actually just the Bat+ one)
             contactors_set_pos_pre_neg(false, true, true);
 
-            printf("PRECHARGING: %d mV, %d mA\n", 
+            debug_printf("PRECHARGING: %d mV, %d mA\n", 
                 model->battery_voltage_mV - model->output_voltage_mV,
                 model->current_mA
             );
@@ -535,7 +536,7 @@ void contactor_sm_tick(bms_model_t *model) {
                 state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
             } else if(state_timeout((sm_t*)contactor_sm, 1000) && check_precharge_successful(model, false)) {
                 // Successful precharge
-                printf("Precharge successful after %u ms\n", state_time((sm_t*)contactor_sm));
+                info_printf("Precharge successful after %u ms\n", state_time((sm_t*)contactor_sm));
                 state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_CLOSED);
             } else if(state_timeout((sm_t*)contactor_sm, 10000)) {
                 // Failed to precharge!
@@ -580,12 +581,12 @@ void contactor_sm_tick(bms_model_t *model) {
                 // There should be no real precharging as nothing should be
                 // attached. We need a margin to accommodate for uncalibrated
                 // values however.
-                printf("[11] checking current\n");
+                debug_printf("[11] checking current\n");
                 if(check_current_is_below(model, 200)) {
-                    printf("[11] pass!\n");
+                    debug_printf("[11] pass!\n");
                     state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_CALIBRATING_CLOSED);
                 } else {
-                    printf("[11] fail!\n");
+                    debug_printf("[11] fail!\n");
                     // Error properly?
                     state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
                 }
@@ -603,7 +604,7 @@ void contactor_sm_tick(bms_model_t *model) {
             
         default:
             // panic instead?
-            printf("Invalid contactor state!");
+            error_printf("Invalid contactor state!");
             state_reset((sm_t*)contactor_sm);
             break;
     }

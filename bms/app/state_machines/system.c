@@ -3,6 +3,7 @@
 #include "drivers/chip/nvm.h"
 #include "drivers/sensors/ina228.h"
 #include "sys/events/events.h"
+#include "sys/logging/logging.h"
 #include "config/limits.h"
 #include "app/model.h"
 
@@ -80,7 +81,7 @@ void system_sm_tick(bms_model_t *model) {
                 state_transition((sm_t*)system_sm, SYSTEM_STATE_INACTIVE);
             } else if(state_timeout((sm_t*)system_sm, 120000)) {
                 // Calibration timeout
-                printf("System calibration timeout!\n");
+                error_printf("System calibration timeout!\n");
                 state_transition((sm_t*)system_sm, SYSTEM_STATE_FAULT);
             }
             break;

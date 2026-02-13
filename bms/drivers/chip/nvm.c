@@ -1,6 +1,7 @@
 #include "nvm.h"
 
 #include "../../app/model.h"
+#include "sys/logging/logging.h"
 
 #include "hardware/flash.h"
 #include "pico/flash.h"
@@ -236,6 +237,6 @@ void nvm_tick(bms_model_t *model) {
     if(timestep_every_ms(300000, &model->nvm_fast_saved_timestep)) {
         uint32_t start = time_us_32();
         nvm_save_persistent_fast(model);
-        printf("NVM: saved persistent fast data in %ld us\n", time_us_32() - start);
+        debug_printf("NVM: saved persistent fast data in %ld us\n", time_us_32() - start);
     }
 }

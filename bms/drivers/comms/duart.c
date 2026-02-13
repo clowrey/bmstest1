@@ -1,5 +1,6 @@
 #include "duart.h"
 #include "app/monitoring/counters.h"
+#include "sys/logging/logging.h"
 
 #include "hardware/gpio.h"
 #include "pico/time.h"
@@ -108,7 +109,7 @@ static void __not_in_flash_func(on_uart_tx_complete)(duart *u, uint irq_index) {
 
         atomic_flag_clear(&u->tx_active);
     } else {
-        printf("no tx irq?\n");
+        error_printf("no tx irq?\n");
     // if(dma_irqn_get_channel_status(irq_index, u->rx_dma_channel)) {
     //     dma_irqn_acknowledge_channel(irq_index, u->rx_dma_channel);
     }
@@ -367,7 +368,7 @@ size_t duart_read_packet(duart *u, uint8_t *buf, size_t buf_size) {
             duart_flush(u, payload_len + 4);
             if(crc16 != msg_crc16) {
                 // CRC mismatch
-                printf("DUART crc err1: %d calc %04x msg %04x\n", payload_len, crc16, msg_crc16);
+                error_printf("DUART crc err1: %d calc %04x msg %04x\n", payload_len, crc16, msg_crc16);
                 if(u==&duart0) {
                     debug_counters.uart0_crc_errors++;
                 } else {
@@ -416,7 +417,7 @@ size_t duart_read_packet(duart *u, uint8_t *buf, size_t buf_size) {
 
             if(crc16 != msg_crc16) {
                 // CRC mismatch
-                printf("DUART crc err2: %d calc %04x msg %04x sp %d\n", payload_len, crc16, msg_crc16, second_part);
+                error_printf("DUART crc err2: %d calc %04x msg %04x sp %d\n", payload_len, crc16, msg_crc16, second_part);
                 if(u==&duart0) {
                     debug_counters.uart0_crc_errors++;
                 } else {

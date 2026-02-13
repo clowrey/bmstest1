@@ -1,9 +1,10 @@
 #include "offline.h"
 
-#include "../../drivers/chip/nvm.h"
-#include "../../drivers/sensors/ads1115.h"
-#include "../../drivers/sensors/ina228.h"
-#include "../model.h"
+#include "drivers/chip/nvm.h"
+#include "drivers/sensors/ads1115.h"
+#include "drivers/sensors/ina228.h"
+#include "app/model.h"
+#include "sys/logging/logging.h"
 
 // TODO - move these somewhere
 extern ads1115_t ads1115_dev;
@@ -30,10 +31,10 @@ bool finish_calibration(bms_model_t *model) {
         batcal
     );
     if(mul > MIN_CALIBRATION_MUL && mul < MAX_CALIBRATION_MUL) {
-        printf("Calibration complete: cal0=%ld mul0=%lld cvt=%ld\n", batcal, mul, model->cell_voltage_total_mV);
+        info_printf("Calibration complete: cal0=%ld mul0=%lld cvt=%ld\n", batcal, mul, model->cell_voltage_total_mV);
         model->battery_voltage_mul = (int32_t)mul;
     } else {
-        printf("Battery voltage calibration out of range: %lld\n", mul);
+        error_printf("Battery voltage calibration out of range: %lld\n", mul);
         return false;
     }
 
@@ -43,10 +44,10 @@ bool finish_calibration(bms_model_t *model) {
         outcal
     );
     if(mul > MIN_CALIBRATION_MUL && mul < MAX_CALIBRATION_MUL) {
-        printf("Calibration complete: cal1=%ld mul1=%lld\n", outcal, mul);
+        info_printf("Calibration complete: cal1=%ld mul1=%lld\n", outcal, mul);
         model->output_voltage_mul = (int32_t)mul;
     } else {
-        printf("Output voltage calibration out of range: %lld\n", mul);
+        error_printf("Output voltage calibration out of range: %lld\n", mul);
         return false;
     }
 
@@ -64,10 +65,10 @@ bool finish_calibration(bms_model_t *model) {
     );
 
     if(neg_mV > MIN_NEG_CONTACTOR_OFFSET_MV && neg_mV < MAX_NEG_CONTACTOR_OFFSET_MV) {
-        printf("Neg contactor calibration complete: cal2=%ld neg_mV=%ld\n", negcal, neg_mV);
+        info_printf("Neg contactor calibration complete: cal2=%ld neg_mV=%ld\n", negcal, neg_mV);
         model->neg_contactor_offset_mV = -neg_mV;
     } else {
-        printf("Neg contactor calibration out of range: %ld mV\n", neg_mV);
+        error_printf("Neg contactor calibration out of range: %ld mV\n", neg_mV);
         return false;
     }
 
@@ -77,10 +78,10 @@ bool finish_calibration(bms_model_t *model) {
         bat_pos_to_out_neg_cal
     );
     if(mul > MIN_CALIBRATION_MUL && mul < MAX_CALIBRATION_MUL) {
-        printf("Pos contactor calibration complete: cal3=%ld mul3=%lld\n", bat_pos_to_out_neg_cal, mul);
+        info_printf("Pos contactor calibration complete: cal3=%ld mul3=%lld\n", bat_pos_to_out_neg_cal, mul);
         model->pos_contactor_mul = (int32_t)mul;
     } else {
-        printf("Pos contactor calibration out of range: %lld\n", mul);
+        error_printf("Pos contactor calibration out of range: %lld\n", mul);
         return false;
     }
 
@@ -89,10 +90,10 @@ bool finish_calibration(bms_model_t *model) {
         ina228_dev.null_counter
     );
     if(current_offset > MIN_CURRENT_OFFSET && current_offset < MAX_CURRENT_OFFSET) {
-        printf("Current calibration complete: offset=%ld\n", current_offset);
+        info_printf("Current calibration complete: offset=%ld\n", current_offset);
         model->current_offset = current_offset;
     } else {
-        printf("Current calibration out of range: %ld\n", current_offset);
+        error_printf("Current calibration out of range: %ld\n", current_offset);
         return false;
     }
 

@@ -2,6 +2,7 @@
 #include "config/limits.h"
 #include "config/pins.h"
 #include "sys/events/events.h"
+#include "sys/logging/logging.h"
 #include "app/model.h"
 
 #include "can2040.h"
@@ -63,7 +64,7 @@ static void can2040_cb(struct can2040 *cd, uint32_t notify, struct can2040_msg *
         case 0x151:
             if (msg->data[0] & 0x01) { 
                 // Battery wants to reinitialize
-                printf("BYD_CAN: Reinitialization requested by battery\n");
+                info_printf("BYD_CAN: Reinitialization requested by battery\n");
                 inverter_initialized = false;
             }
             // process brand name

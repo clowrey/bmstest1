@@ -52,6 +52,7 @@ add_executable(bms
     bms/app/estimators/voltage_based.c
     bms/app/monitoring/counters.c
     bms/sys/events/events.c
+    bms/sys/logging/logging.c
     bms/protocols/inverter/byd_can.c
     bms/drivers/isospi/isospi_master.c
     bms/drivers/isospi/isospi_master_async.c

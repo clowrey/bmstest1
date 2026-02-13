@@ -4,6 +4,7 @@
 #include "config/limits.h"
 #include "app/model.h"
 #include "sys/events/events.h"
+#include "sys/logging/logging.h"
 #include "drivers/isospi/isospi_master.h"
 
 #include "pico/stdlib.h"
@@ -189,14 +190,14 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
     uint32_t cmd = READ_COMMANDS[bank_index];
     isosnoop_flush();
     if (!bmb3y_long_command_get_data_blocking(cmd, rx_buf, 72)) {
-        printf("BMB3Y read failed for cmd 0x%02lX\n", cmd);
+        error_printf("BMB3Y read failed for cmd 0x%02lX\n", cmd);
         count_bms_event(ERR_BMB_READ_ERROR, 0x0100000000000000 | bank_index);
         return false;
     }
     // Short commands need different CRC handling
     // uint16_t cmd = SHORT_READ_COMMANDS[bank_index];
     // if (!bmb3y_short_command_get_data_blocking(cmd, rx_buf, 72)) {
-    //     printf("BMB3Y read failed for cmd 0x%02X\n", cmd);
+    //     error_printf("BMB3Y read failed for cmd 0x%02X\n", cmd);
     //     count_bms_event(ERR_BMB_READ_ERROR, 0x0100000000000000 | bank_index);
     //     return false;
     // }
@@ -211,7 +212,7 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
         uint16_t calc_crc = crc14(&rx_buf[module * 9], 6, 0x1000, module_crc);
 
         if((module_crc & 0x3fff) != calc_crc) {
-            printf("CRC: %s %d %02X %02X %02X %02X %02X %02X %02X %02X %02X calc %04X\n",
+            error_printf("CRC: %s %d %02X %02X %02X %02X %02X %02X %02X %02X %02X calc %04X\n",
                 module_crc == calc_crc ? "OK" : "FAIL",
                 bank_index,
                 rx_buf[module * 9 + 0],
@@ -336,7 +337,7 @@ bool bmb3y_read_more_temps_blocking(bms_model_t *model) {
     uint8_t rx_buf[90];
 
     if(!bmb3y_short_command_get_data_blocking(BMB3Y_CMD_READ_TEMPS3, rx_buf, 64)) {
-        printf("BMB3Y temperature3 read failed\n");
+        error_printf("BMB3Y temperature3 read failed\n");
         count_bms_event(ERR_BMB_READ_ERROR, 0x0200000000000000);
         return false;
     }
@@ -348,7 +349,7 @@ bool bmb3y_read_more_temps_blocking(bms_model_t *model) {
         uint16_t calc_crc = crc14(&rx_buf[module * 8], 6, 0x0010, module_crc);
         if((module_crc & 0x3fff) != calc_crc) {
         //if(!crc_matches(module_crc, calc_crc)) {
-            printf("Bad Temp CRC on module %d: msg 0x%04X calc 0x%04X xor %04x or %04x\n", 
+            error_printf("Bad Temp CRC on module %d: msg 0x%04X calc 0x%04X xor %04x or %04x\n", 
                 module, module_crc, calc_crc, calc_crc ^ 0x425b, calc_crc ^ 0xc6ed);
             crc_ok = false;
             if(millis64() > 2000) {
@@ -381,7 +382,7 @@ bool bmb3y_read_temperatures_blocking(bms_model_t *model) {
     // NMC seems to use TEMPS and 2:3 like D/T's code
 
     if(!bmb3y_short_command_get_data_blocking(BMB3Y_CMD_READ_TEMPS, rx_buf, 64)) {
-        printf("BMB3Y temperature read failed\n");
+        error_printf("BMB3Y temperature read failed\n");
         count_bms_event(ERR_BMB_READ_ERROR, 0x0200000000000000);
         return false;
     }
@@ -395,16 +396,16 @@ bool bmb3y_read_temperatures_blocking(bms_model_t *model) {
         //uint16_t calc_crc = crc14(&rx_buf[module * 8], 6, 0x0010);
         uint16_t calc_crc = crc14(&rx_buf[module * 8], 6, 0x0010, module_crc);
 
-        // printf("Temp hex: ");
+        // debug_printf("Temp hex: ");
         // for(int i=0;i<8;i++) {
-        //     printf("%02X ", rx_buf[module * 8 + i]);
+        //     debug_printf("%02X ", rx_buf[module * 8 + i]);
         // }
-        // printf("\n");
+        // debug_printf("\n");
         //isosnoop_print_buffer();
 
         if((module_crc & 0x3fff) != calc_crc) {
         //if(!crc_matches(module_crc, calc_crc)) {
-            printf("Bad Temp CRC on module %d: msg 0x%04X calc 0x%04X xor %04x or %04x\n", 
+            error_printf("Bad Temp CRC on module %d: msg 0x%04X calc 0x%04X xor %04x or %04x\n", 
                 module, module_crc, calc_crc, calc_crc ^ 0x425b, calc_crc ^ 0xc6ed);
             crc_ok = false;
             if(millis64() > 2000) {
@@ -515,7 +516,7 @@ void bmb3y_tick(bms_model_t *model) {
     } else if(should_use_slow_mode(model)) {
         // In slow mode, sample less frequently
         if(!model->cell_voltage_slow_mode) {
-            printf("BMB3Y entering slow mode\n");
+            info_printf("BMB3Y entering slow mode\n");
             model->cell_voltage_slow_mode = true;
         }
         period_mask = slow_mode_period_mask;
@@ -575,7 +576,7 @@ void bmb3y_tick(bms_model_t *model) {
         if(!crc_failed && !model->balancing_active && model->cell_voltage_slow_mode && !should_use_slow_mode(model)) {
             // Exit slow mode now that we have fresh readings (both voltage and temp)
             model->cell_voltage_slow_mode = false;
-            printf("BMB3Y exiting slow mode\n");
+            info_printf("BMB3Y exiting slow mode\n");
         }
     } else if(step == PAUSE_CYCLE_LENGTH && model->balancing_sm.is_pause_cycle) {
         // Cut the cycle short if we're in a pause cycle by adjusting the

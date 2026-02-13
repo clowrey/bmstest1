@@ -18,6 +18,7 @@
 #include "protocols/internal_serial/internal_serial.h"
 #include "protocols/inverter/inverter.h"
 #include "sys/events/events.h"
+#include "sys/logging/logging.h"
 #include "sys/time/time.h"
 #include "model.h"
 
@@ -150,22 +151,22 @@ void bms_tick() {
 
     int c = stdio_getchar_timeout_us(0);
     if(c != PICO_ERROR_TIMEOUT) {
-        printf("Received char '%c' on USB stdio\n", c);
+        debug_printf("Received char '%c' on USB stdio\n", c);
     }
     if(c == 'R') {
-        printf("Preparing to restart due to 'R' on USB stdio\n");
+        debug_printf("Preparing to restart due to 'R' on USB stdio\n");
         count_bms_event(ERR_RESTARTING, 1);
     } else if(c == 'T') {
         // Toggle system operational state
         if(model.system_sm.state == SYSTEM_STATE_INACTIVE) {
-            printf("Requesting operation mode\n");
+            debug_printf("Requesting operation mode\n");
             model.system_req = SYSTEM_REQUEST_RUN;
         } else if(model.system_sm.state == SYSTEM_STATE_OPERATING) {
-            printf("Requesting inactive mode\n");
+            debug_printf("Requesting inactive mode\n");
             model.system_req = SYSTEM_REQUEST_STOP;
         }
     } else if(c == 'C') {
-        printf("Requesting contactor calibration\n");
+        debug_printf("Requesting contactor calibration\n");
         model.system_req = SYSTEM_REQUEST_CALIBRATE;
     }
 
@@ -227,18 +228,18 @@ void bms_tick() {
     // Phase 6: Debug output
 
     if((timestep() & 0x3f) == 32) {
-        printf("\033[2J\033[H"); // Clear terminal
+        debug_printf("\033[2J\033[H"); // Clear terminal
 
         //isosnoop_print_buffer();
         uint32_t total = 0;
         for(int i=0; i<NUM_CELLS; i++) {
-            printf("[c%3d]: %4d mV | ", i, model.raw_cell_voltages_mV[i]);
+            debug_printf("[c%3d]: %4d mV | ", i, model.raw_cell_voltages_mV[i]);
             total += model.raw_cell_voltages_mV[i];
             if((i % 5) == 4) {
-                printf("\n");
+                debug_printf("\n");
             }
         }
-        printf("Total: %lu mV | Temps: %ddC - %ddC | Delta: %d mV%s%s\n\n", 
+        debug_printf("Total: %lu mV | Temps: %ddC - %ddC | Delta: %d mV%s%s\n\n", 
             total, 
             model.temperature_min_dC, model.temperature_max_dC, 
             model.cell_voltage_max_mV - model.cell_voltage_min_mV,
@@ -254,7 +255,7 @@ void bms_tick() {
         //isosnoop_print_buffer();
         print_bms_events();
 
-        printf("Temp: %3ld dC | 3V3: %4ld mV | 5V: %4ld mV | 12V: %5ld mV | CtrV: %5ld mV\n",
+        debug_printf("Temp: %3ld dC | 3V3: %4ld mV | 5V: %4ld mV | 12V: %5ld mV | CtrV: %5ld mV\n",
             get_temperature_c_times10(),
             model.supply_voltage_3V3_mV,
             model.supply_voltage_5V_mV,
@@ -262,7 +263,7 @@ void bms_tick() {
             model.supply_voltage_contactor_mV
         );
 
-        printf("Batt: %6ldmV (%3ldmV) | Out: %6ldmV (%3ldmV) | NegCtr: %6ldmV (%3ldmV) | PosCtr: %6ldmV (%3ldmV)\n",
+        debug_printf("Batt: %6ldmV (%3ldmV) | Out: %6ldmV (%3ldmV) | NegCtr: %6ldmV (%3ldmV) | PosCtr: %6ldmV (%3ldmV)\n",
             model.battery_voltage_mV,
             model.battery_voltage_range_mV,
             model.output_voltage_mV,
@@ -273,7 +274,7 @@ void bms_tick() {
             model.pos_contactor_voltage_range_mV
         );
         int64_t charge_mC = raw_charge_to_mC(model.charge_raw);
-        printf("Current: %6ld mA | Charge: %lld mC | SoC: %2.2f %% | SoC(VB): %2.2f %% | SoC(BC): %2.2f %% | SoC(FC): %2.2f %%\n",
+        debug_printf("Current: %6ld mA | Charge: %lld mC | SoC: %2.2f %% | SoC(VB): %2.2f %% | SoC(BC): %2.2f %% | SoC(FC): %2.2f %%\n",
             model.current_mA,
             charge_mC,
             model.soc / 100.0f,
@@ -281,7 +282,7 @@ void bms_tick() {
             model.soc_basic_count / 100.0f,
             model.soc_fancy_count / 100.0f
         );
-        printf("CV: %2.1f/%2.1f A | T: %2.1f/%2.1f A | Inv. min: %2.1f V | Inv. max: %2.1f V\n\n",
+        debug_printf("CV: %2.1f/%2.1f A | T: %2.1f/%2.1f A | Inv. min: %2.1f V | Inv. max: %2.1f V\n\n",
             model.cell_voltage_charge_current_limit_dA / 10.0f,
             model.cell_voltage_discharge_current_limit_dA / 10.0f,
             model.temp_charge_current_limit_dA / 10.0f,
@@ -305,13 +306,14 @@ void bms_tick() {
     }
 
     if((timestep() & 0x3ff) == 33) {
-        printf("Max timings (us): ");
+        debug_printf("Max timings (us): ");
         for(int i=0; i<9; i++) {
-            printf("%lu ", max_timings[i]);
+            debug_printf("%lu ", max_timings[i]);
             max_timings[i] = 0;
         }
-        printf("\n");
+        debug_printf("\n");
     }
+
 }
 
 uint32_t average_loop_time_256_ms = 0;
@@ -325,10 +327,10 @@ void synchronize_time() {
     if(delta <= 20) {
         sleep_ms(20 - delta);
     } else if(model.ignore_missed_deadline) {
-        printf("Notice: loop overran but ignored (%ld ms)\n", delta);
+        debug_printf("Notice: loop overran but ignored (%ld ms)\n", delta);
     } else {
         // took too long!
-        printf("Warning: loop overran (%ld ms)\n", delta);
+        debug_printf("Warning: loop overran (%ld ms)\n", delta);
         count_bms_event(ERR_LOOP_OVERRUN, delta);
     }
     model.ignore_missed_deadline = false;

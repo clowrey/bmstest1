@@ -2,6 +2,7 @@
 #include "config/limits.h"
 #include "sys/time/time.h"
 #include "app/model.h"
+#include "sys/logging/logging.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -498,7 +499,7 @@ uint32_t ekf_tick(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV) {
             initial_soc = estimated_soc;
         }
 
-        printf("EKF Initial SOC Estimate: %2.2f %% | Voltage: %2.3f V | Charge Used: %f Ah\n",
+        info_printf("EKF Initial SOC Estimate: %2.2f %% | Voltage: %2.3f V | Charge Used: %f Ah\n",
               initial_soc * 100.0f, voltage_volts, model.charge_used_Ah);
         ekf_init(&ekf_instance, initial_soc, initial_capacity_ah);
 
@@ -529,14 +530,14 @@ uint32_t ekf_tick(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV) {
         prev_min = cell_voltage_working_min_mV;
         prev_max = cell_voltage_working_max_mV;
 
-        printf("EKF OCV Scaling Updated: Min V=%d mV (SOC=%f), Max V=%d mV (SOC=%f), Mul=%f\n",
+        info_printf("EKF OCV Scaling Updated: Min V=%d mV (SOC=%f), Max V=%d mV (SOC=%f), Mul=%f\n",
                cell_voltage_working_min_mV, prev_soc_min,
                cell_voltage_working_max_mV, soc_max,
                prev_soc_mul);
 
         // TODO - put this somewhere else
         model.working_capacity_mC = (soc_max - prev_soc_min) * model.nameplate_capacity_mC;
-        printf("EKF Working Capacity Updated: %d mC\n", model.working_capacity_mC);
+        info_printf("EKF Working Capacity Updated: %d mC\n", model.working_capacity_mC);
     }
     soc = (soc - prev_soc_min) * prev_soc_mul;
 
@@ -585,6 +586,6 @@ void ekf_set_soc(bms_model_t *model, uint16_t soc) {
     // Update model as well
     model->charge_used_Ah = ekf_instance.x[0];
     
-    printf("EKF SOC Manually Set: %u (rel=%2.2f%%, abs=%2.2f%%) | Ah Used: %f Ah | Capacity: %f Ah\n", 
+    info_printf("EKF SOC Manually Set: %u (rel=%2.2f%%, abs=%2.2f%%) | Ah Used: %f Ah | Capacity: %f Ah\n", 
            soc, soc_rel * 100.0f, soc_abs * 100.0f, ekf_instance.x[0], ekf_instance.x[2]);
 }

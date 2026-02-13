@@ -5,6 +5,7 @@
 #include "config/pins.h"
 #include "app/model.h"
 #include "drivers/chip/i2c.h"
+#include "sys/logging/logging.h"
 
 #include "hardware/irq.h"
 #include "hardware/i2c.h"
@@ -126,33 +127,33 @@ bool ina228_init(ina228_t *dev, uint8_t i2c_addr, float shunt_resistor_ohms, flo
     // Read and verify manufacturer ID (should be 0x5449 = "TI")
     uint16_t mfg_id;
     if (!ina228_read_reg16(dev, INA228_REG_MANUFACTURER_ID, &mfg_id)) {
-        printf("INA228: Failed to read manufacturer ID\n");
+        error_printf("INA228: Failed to read manufacturer ID\n");
         return false;
     }
     
     if (mfg_id != 0x5449) {
-        printf("INA228: Invalid manufacturer ID: 0x%04X (expected 0x5449)\n", mfg_id);
+        error_printf("INA228: Invalid manufacturer ID: 0x%04X (expected 0x5449)\n", mfg_id);
         return false;
     }
     
     // Read device ID (should be 0x228)
     uint16_t dev_id;
     if (!ina228_read_reg16(dev, INA228_REG_DEVICE_ID, &dev_id)) {
-        printf("INA228: Failed to read device ID\n");
+        error_printf("INA228: Failed to read device ID\n");
         return false;
     }
     
     uint16_t expected_id = (0x228 << 4);  // Device ID is in upper 12 bits
     if ((dev_id & 0xFFF0) != expected_id) {
-        printf("INA228: Invalid device ID: 0x%04X (expected 0x%04X)\n", dev_id, expected_id);
+        error_printf("INA228: Invalid device ID: 0x%04X (expected 0x%04X)\n", dev_id, expected_id);
         return false;
     }
     
-    printf("INA228: Detected (MFG=0x%04X, DEV=0x%04X)\n", mfg_id, dev_id);
+    info_printf("INA228: Detected (MFG=0x%04X, DEV=0x%04X)\n", mfg_id, dev_id);
     
     // Perform a software reset
     if (!ina228_write_reg16(dev, INA228_REG_CONFIG, INA228_CONFIG_RST)) {
-        printf("INA228: Reset failed\n");
+        error_printf("INA228: Reset failed\n");
         return false;
     }
     
@@ -187,12 +188,12 @@ void ina228_configure(ina228_t *dev) {
     // 332 to read mA, *4 due to adcrange, /4 because we want in 0.25mA units instead
     shunt_cal = INA228_SHUNT_CAL*4/4;
     
-    printf("INA228: Current LSB = %.6f A/LSB\n", dev->current_lsb);
-    printf("INA228: SHUNT_CAL = %u (0x%04X)\n", shunt_cal, shunt_cal);
+    debug_printf("INA228: Current LSB = %.6f A/LSB\n", dev->current_lsb);
+    debug_printf("INA228: SHUNT_CAL = %u (0x%04X)\n", shunt_cal, shunt_cal);
     
     // Write SHUNT_CAL register
     if (!ina228_write_reg16(dev, INA228_REG_SHUNT_CAL, shunt_cal)) {
-        printf("INA228: Failed to write SHUNT_CAL\n");
+        error_printf("INA228: Failed to write SHUNT_CAL\n");
         return;
     }
     
@@ -206,7 +207,7 @@ void ina228_configure(ina228_t *dev) {
                           INA228_ADC_AVG(INA228_AVG_256);
     
     if (!ina228_write_reg16(dev, INA228_REG_ADC_CONFIG, adc_config)) {
-        printf("INA228: Failed to write ADC_CONFIG\n");
+        error_printf("INA228: Failed to write ADC_CONFIG\n");
         return;
     }
     
@@ -214,7 +215,7 @@ void ina228_configure(ina228_t *dev) {
     uint16_t config = 0x0010; 
     
     if (!ina228_write_reg16(dev, INA228_REG_CONFIG, config)) {
-        printf("INA228: Failed to write CONFIG\n");
+        error_printf("INA228: Failed to write CONFIG\n");
         return;
     }
 
@@ -225,7 +226,7 @@ void ina228_configure(ina228_t *dev) {
     //     return;
     // }
     
-    printf("INA228: Configuration complete\n");
+    info_printf("INA228: Configuration complete\n");
 }
 
 static int32_t div_round_closest(const int32_t n, const int32_t d)

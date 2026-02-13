@@ -12,9 +12,19 @@
 #include "../drivers/isospi/isospi_master.h"
 #include "state_machines/contactors.h"
 #include "model.h"
+#include "sys/logging/logging.h"
+#include "pico/stdlib.h"
 
 ina228_t ina228_dev = {0};
 ads1115_t ads1115_dev = {0};
+
+static struct repeating_timer logging_timer;
+
+bool logging_timer_callback(struct repeating_timer *t) {
+    (void)t;
+    logging_flush_to_stdout();
+    return true;
+}
 
 static void init_hw() {
     init_watchdog();
@@ -44,11 +54,11 @@ static void init_hw() {
     gpio_pull_down(PIN_AUX_CONTACTOR_PRE);
 
     if(!ina228_init(&ina228_dev, 0x40, 0.001, 100.0f)) {
-        printf("INA228 init failed!\n");
+        error_printf("INA228 init failed!\n");
     }
 
     if(!ads1115_init(&ads1115_dev, 0x48)) {
-        printf("ADS1115 init failed!\n");
+        error_printf("ADS1115 init failed!\n");
     }
 
     isospi_master_setup(
@@ -78,19 +88,19 @@ static void init_model() {
 
     // load calibration data from NVM
     // if(nvm_load_calibration(&model)) {
-    //     printf("Calibration data loaded from NVM\n");
+    //     info_printf("Calibration data loaded from NVM\n");
     // } else {
-    //     printf("No calibration data in NVM\n");
+    //     info_printf("No calibration data in NVM\n");
     // }
     if(nvm_load_persistent_slow(&model)) {
-        printf("Persistent slow data loaded from NVM\n");
+        info_printf("Persistent slow data loaded from NVM\n");
     } else {
-        printf("No persistent slow data in NVM\n");
+        info_printf("No persistent slow data in NVM\n");
     }
     if(nvm_load_persistent_fast(&model)) {
-        printf("Persistent fast data loaded from NVM\n");
+        info_printf("Persistent fast data loaded from NVM\n");
     } else {
-        printf("No persistent fast data in NVM\n");
+        info_printf("No persistent fast data in NVM\n");
     }
 
     // If NVM contained operating=true, resume operating
@@ -120,9 +130,10 @@ void bms_init() {
     // NVM operations can be slow, so allow a missed deadline
     model.ignore_missed_deadline = true;
     if (boot_count >= 0) {
-        printf("Boot count from LittleFS: %d\n", boot_count);
+        info_printf("Boot count from LittleFS: %d\n", boot_count);
     } else {
-        printf("Failed to update boot count in LittleFS\n");
+        error_printf("Failed to update boot count in LittleFS\n");
     }
 
+    add_repeating_timer_ms(10, logging_timer_callback, NULL, &logging_timer);
 }

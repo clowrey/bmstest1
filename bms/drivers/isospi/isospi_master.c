@@ -2,6 +2,7 @@
 #include "isospi_master.pio.h"
 
 #include "config/allocations.h"
+#include "sys/logging/logging.h"
 
 #include "pico/stdlib.h"
 
@@ -85,7 +86,7 @@ bool isospi_write_read_blocking(uint8_t* tx_buf, uint8_t* rx_buf, size_t len, si
                 byte = (byte << 1) | 0x0;
             } else {
                 // invalid
-                printf("Invalid isoSPI nibble 0x%X on byte %d bit %d\n", nibble, (int)i, r);
+                error_printf("Invalid isoSPI nibble 0x%X on byte %d bit %d\n", nibble, (int)i, r);
                 valid = false;
                 byte = (byte << 1) | 0x0;
             }

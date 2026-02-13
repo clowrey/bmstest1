@@ -1,6 +1,7 @@
 #include "balancing.h"
 
 #include "sys/events/events.h"
+#include "sys/logging/logging.h"
 #include "config/limits.h"
 #include "app/model.h"
 
@@ -95,7 +96,7 @@ static void update_balance_requests(balancing_sm_t *balancing_sm, int16_t decrem
     }
 
     uint32_t end = time_us_32();
-    printf("Updating balance requests took %zu us\n", (size_t)(end - start));
+    debug_printf("Updating balance requests took %zu us\n", (size_t)(end - start));
 
     // if(!any_balancing && !skipping) {
     //     // Nothing to balance on this cycle, skip to the next one
@@ -105,7 +106,7 @@ static void update_balance_requests(balancing_sm_t *balancing_sm, int16_t decrem
     // }
 
 
-    printf("Balance mask now: %08lX %08lX %08lX %08lX\n",
+    debug_printf("Balance mask now: %08lX %08lX %08lX %08lX\n",
         balancing_sm->balance_request_mask[3],
         balancing_sm->balance_request_mask[2],
         balancing_sm->balance_request_mask[1],

@@ -1,4 +1,5 @@
 #include "sys/events/events.h"
+#include "sys/logging/logging.h"
 
 #include "hardware/watchdog.h"
 #include "pico/stdlib.h"
@@ -16,10 +17,10 @@ void init_watchdog() {
     watchdog_enable(5000, 0); // second arg enables pause on debug
 
     if (was_watchdog) {
-        printf("Rebooted by Watchdog!\n");
+        warning_printf("Rebooted by Watchdog!\n");
         count_bms_event(ERR_BOOT_WATCHDOG, 0);
     } else {
-        printf("Clean boot\n");
+        info_printf("Clean boot\n");
         count_bms_event(ERR_BOOT_NORMAL, 0);
     }
 }

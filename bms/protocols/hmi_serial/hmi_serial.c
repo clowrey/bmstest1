@@ -7,6 +7,7 @@
 #include "app/estimators/ekf.h"
 #include "app/model.h"
 #include "sys/events/events.h"
+#include "sys/logging/logging.h"
 
 #include "pico/stdlib.h"
 #include "pico/unique_id.h"
@@ -557,6 +558,25 @@ static void hmi_handle_read_balancing_times(const uint8_t *rx_buf, size_t len, b
     duart_send_packet(&HMI_SERIAL_DUART, tx_buf, tx_idx);
 }
 
+static void hmi_handle_read_log(const uint8_t *rx_buf, size_t len) {
+    if (len < 2) return;
+    uint8_t addr = rx_buf[1];
+    if (addr != device_address) return;
+
+    uint8_t tx_buf[258];
+    uint16_t tx_idx = 0;
+
+    tx_buf[tx_idx++] = HMI_MSG_READ_LOG_RESPONSE;
+    tx_buf[tx_idx++] = device_address;
+
+    // Read up to 256 bytes using reader ID 1 (the second reader)
+    size_t read = logging_read(&tx_buf[tx_idx], 256);
+    tx_idx += (uint16_t)read;
+
+    // Send even if zero bytes read, to acknowledge request
+    duart_send_packet(&HMI_SERIAL_DUART, tx_buf, tx_idx);
+}
+
 static void hmi_handle_read_events(const uint8_t *rx_buf, size_t len, bms_model_t *model) {
     if (len < 4) return;
     uint8_t addr = rx_buf[1];
@@ -638,6 +658,9 @@ void hmi_serial_tick(bms_model_t *model) {
                 break;
             case HMI_MSG_READ_BALANCING_TIMES:
                 hmi_handle_read_balancing_times(rx_buf, len, model);
+                break;
+            case HMI_MSG_READ_LOG:
+                hmi_handle_read_log(rx_buf, len);
                 break;
             default:
                 // Ignore other messages (responses or unknown)
