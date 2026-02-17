@@ -14,15 +14,15 @@
 // Contactor testing constants
 
 // How long to wait for voltage to settle during contactor tests
-#define CONTACTORS_TEST_WAIT_MS 500
+#define CONTACTORS_TEST_WAIT_MS 1000
 // How long to wait after a failed precharge (for the PTCs to cool down)
 #define CONTACTORS_FAILED_PRECHARGE_TIMEOUT_MS 20000
 // How long to wait after a failed contactor test (to avoid rapid cycling)
 #define CONTACTORS_FAILED_TEST_TIMEOUT_MS 20000
 // Max voltage across a contactor to consider it closed
-#define CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV 3000
+#define CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV 2000
 // Min voltage across a contactor to consider it open
-#define CONTACTORS_OPEN_VOLTAGE_THRESHOLD_MV 4000 // was 5000
+#define CONTACTORS_OPEN_VOLTAGE_THRESHOLD_MV 3000 // was 5000
 // Pos contactor has wider tolerances due to the way it is measured
 #define CONTACTORS_POS_CLOSED_VOLTAGE_THRESHOLD_MV 5000
 #define CONTACTORS_POS_OPEN_VOLTAGE_THRESHOLD_MV 10000
@@ -71,9 +71,9 @@ bool check_current_is_below(bms_model_t *model, int32_t threshold_ma) {
         return false;
     }
     
-//    if(abs_int32(model->current_mA) <= threshold_ma) {
-        debug_printf("Checking current %d mA is below threshold %d mA\n", abs_int32(model->current_mA), threshold_ma);
-    //}
+    if(abs_int32(model->current_mA) > threshold_ma) {
+        debug_printf("Erk, current %d mA is above threshold %d mA\n", abs_int32(model->current_mA), threshold_ma);
+    }
 
     return abs_int32(model->current_mA) <= threshold_ma;
 
@@ -125,10 +125,10 @@ bool check_precharge_successful(bms_model_t *model, bool log_errors) {
     }
 
     if(!check_or_confirm(
-        abs_int32(model->neg_contactor_voltage_mV) <= CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV,
+        fabsf(model->neg_contactor_voltage) <= (CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV * 0.001f),
         log_errors,
         ERR_CONTACTOR_NEG_UNEXPECTED_OPEN,
-        model->neg_contactor_voltage_mV
+        (int32_t)(model->neg_contactor_voltage * 1000)
     )) {
         return false;
     }
@@ -145,32 +145,15 @@ bool check_precharge_successful(bms_model_t *model, bool log_errors) {
 
     // Is voltage difference low enough?
     return check_or_confirm(
-        abs_int32(model->battery_voltage_mV - model->output_voltage_mV) <= PRECHARGE_SUCCESS_MAX_MV,
+        fabsf(model->battery_voltage - model->output_voltage) <= (PRECHARGE_SUCCESS_MAX_MV * 0.001f),
         log_errors,
         ERR_CONTACTOR_PRECHARGE_VOLTAGE_TOO_HIGH,
-        ((uint64_t)model->battery_voltage_mV << 32) | (uint32_t)model->output_voltage_mV
+        ((uint64_t)(model->battery_voltage * 1000) << 32) | (uint32_t)(model->output_voltage * 1000)
     );
 }
 
 bool confirm_battery_is_healthy(bms_model_t *model) {
-    //check_result_t ret = {0};
-    // if(!millis_recent_enough(model->battery_voltage_millis, STALENESS_THRESHOLD_MS)) {
-    //     ret.event_type = ERR_BATTERY_VOLTAGE_STALE;
-    //     ret.data64 = model->battery_voltage_millis;
-    //     return ret;
-    // }
-
-    // if(!millis_recent_enough(model->cell_voltage_millis, STALENESS_THRESHOLD_MS)) {
-    //     ret.event_type = ERR_BATTERY_VOLTAGE_STALE;
-    //     ret.data64 = model->cell_voltage_millis;
-    //     return ret;
-    // }
-
-    // if(!millis_recent_enough(model->temperature_millis, STALENESS_THRESHOLD_MS)) {
-    //     ret.event_type = ERR_BATTERY_TEMPERATURE_STALE;
-    //     ret.data64 = model->temperature_millis;
-    //     return ret;
-    // }
+    // Do we need this as well as the events system?
 
     return true;
 }
@@ -185,9 +168,9 @@ bool confirm_contactor_neg_seems_closed(bms_model_t *model) {
     }
 
     return confirm(
-        abs_int32(model->neg_contactor_voltage_mV) <= CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV,
+        fabsf(model->neg_contactor_voltage) <= (CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV * 0.001f),
         ERR_CONTACTOR_NEG_STUCK_OPEN,
-        model->neg_contactor_voltage_mV
+        (int32_t)(model->neg_contactor_voltage * 1000)
     );
 }
 
@@ -200,14 +183,16 @@ bool confirm_contactor_neg_seems_open(bms_model_t *model) {
         return false;
     }
 
-    // FIXME testing
-    //return true;
+    float voltage = fabsf(model->neg_contactor_voltage);
 
-    int32_t voltage = abs_int32(model->neg_contactor_voltage_mV);
+    if(voltage < (CONTACTORS_OPEN_VOLTAGE_THRESHOLD_MV * 0.001f)) {
+        debug_printf("Erk, neg contactor voltage %1.3f V is below open threshold %d mV\n", model->neg_contactor_voltage, CONTACTORS_OPEN_VOLTAGE_THRESHOLD_MV);
+    }
+
     return confirm(
-        voltage >= CONTACTORS_OPEN_VOLTAGE_THRESHOLD_MV,
+        voltage >= (CONTACTORS_OPEN_VOLTAGE_THRESHOLD_MV * 0.001f),
         ERR_CONTACTOR_NEG_STUCK_CLOSED,
-        voltage
+        (int32_t)(voltage * 1000)
     );
 
     // TODO - also check for voltage difference between battery and output?
@@ -222,11 +207,11 @@ bool confirm_contactor_pos_seems_closed(bms_model_t *model) {
         return false;
     }
 
-    int32_t voltage = abs_int32(model->pos_contactor_voltage_mV);
+    float voltage = fabsf(model->pos_contactor_voltage);
     return confirm(
-        voltage <= CONTACTORS_POS_CLOSED_VOLTAGE_THRESHOLD_MV,
+        voltage <= (CONTACTORS_POS_CLOSED_VOLTAGE_THRESHOLD_MV * 0.001f),
         ERR_CONTACTOR_POS_STUCK_OPEN,
-        voltage
+        (int32_t)(voltage * 1000)
     );
 }
 
@@ -239,14 +224,16 @@ bool confirm_contactor_pos_seems_open(bms_model_t *model) {
         return false;
     }
 
-    // FIXME testing
-    //return true;
+    float voltage = fabsf(model->pos_contactor_voltage);
 
-    int32_t voltage = abs_int32(model->pos_contactor_voltage_mV);
+    if(voltage < (CONTACTORS_POS_OPEN_VOLTAGE_THRESHOLD_MV * 0.001f)) {
+        debug_printf("Erk, pos contactor voltage %1.3f V is below open threshold %d mV\n", model->pos_contactor_voltage, CONTACTORS_POS_OPEN_VOLTAGE_THRESHOLD_MV);
+    }
+
     return confirm(
-        voltage >= CONTACTORS_POS_OPEN_VOLTAGE_THRESHOLD_MV,
+        voltage >= (CONTACTORS_POS_OPEN_VOLTAGE_THRESHOLD_MV * 0.001f),
         ERR_CONTACTOR_POS_STUCK_CLOSED,
-        voltage
+        (int32_t)(voltage * 1000)
     );
 
     // TODO - also check for voltage difference between battery and output?
@@ -297,11 +284,11 @@ bool confirm_contactors_staying_closed(bms_model_t *model) {
         ERR_CONTACTOR_POS_UNEXPECTED_OPEN,
         0x1000000000000000
     )) {
-        int32_t pos_voltage = abs_int32(model->pos_contactor_voltage_mV);
+        float pos_voltage = fabsf(model->pos_contactor_voltage);
         ret = confirm(
-            pos_voltage <= CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV,
+            pos_voltage <= (CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV * 0.001f),
             ERR_CONTACTOR_POS_UNEXPECTED_OPEN,
-            pos_voltage
+            (int32_t)(pos_voltage * 1000)
         ) && ret;
     }
 
@@ -310,11 +297,11 @@ bool confirm_contactors_staying_closed(bms_model_t *model) {
         ERR_CONTACTOR_NEG_UNEXPECTED_OPEN,
         0x2000000000000000
     )) {
-        int32_t neg_voltage = abs_int32(model->neg_contactor_voltage_mV);
+        float neg_voltage = fabsf(model->neg_contactor_voltage);
         ret = confirm(
-            neg_voltage <= CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV,
+            neg_voltage <= (CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV * 0.001f),
             ERR_CONTACTOR_NEG_UNEXPECTED_OPEN,
-            neg_voltage
+            (int32_t)(neg_voltage * 1000)
         ) && ret;
     }
 
@@ -485,8 +472,8 @@ void contactor_sm_tick(bms_model_t *model) {
             // more than one contactor per state due to current draw)
             contactors_set_pos_pre_neg(true, true, false);
 
-            int32_t voltage = abs_int32(model->pos_contactor_voltage_mV);
-            debug_printf("Pos contactor voltage: %d mV\n", voltage);
+            float voltage = fabsf(model->pos_contactor_voltage);
+            debug_printf("Pos contactor voltage: %1.3f V\n", voltage);
 
             if(state_timeout((sm_t*)contactor_sm, CONTACTORS_TEST_WAIT_MS)) {
                 if(confirm_contactor_pos_seems_closed(model)) {
@@ -524,8 +511,8 @@ void contactor_sm_tick(bms_model_t *model) {
             // Now close precharge contactor (actually just the Bat+ one)
             contactors_set_pos_pre_neg(false, true, true);
 
-            debug_printf("PRECHARGING: %d mV, %d mA\n", 
-                model->battery_voltage_mV - model->output_voltage_mV,
+            debug_printf("PRECHARGING: %1.3f V, %d mA\n", 
+                model->battery_voltage - model->output_voltage,
                 model->current_mA
             );
 

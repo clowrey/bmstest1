@@ -10,11 +10,11 @@
 extern ads1115_t ads1115_dev;
 extern ina228_t ina228_dev;
 
-#define VOLTAGE_CALIBRATION_SAMPLES 2048
+#define VOLTAGE_CALIBRATION_SAMPLES 1024
 
-// cal mul value should be around 54500
-#define MIN_CALIBRATION_MUL 40000
-#define MAX_CALIBRATION_MUL 70000
+// cal mul value should be around 0.013 Volts/count
+#define MIN_CALIBRATION_MUL 0.008f
+#define MAX_CALIBRATION_MUL 0.018f
 
 // offset should be within a few volts
 #define MIN_NEG_CONTACTOR_OFFSET_MV -5000
@@ -26,62 +26,52 @@ extern ina228_t ina228_dev;
 
 bool finish_calibration(bms_model_t *model) {
     int32_t batcal = ads1115_get_calibration(&ads1115_dev, 0);
-    int64_t mul = div_round_closest(
-        (int64_t)model->cell_voltage_total_mV * 4096LL * VOLTAGE_CALIBRATION_SAMPLES,
-        batcal
-    );
+    float mul = (float)model->cell_voltage_total_mV * 0.001f * (float)VOLTAGE_CALIBRATION_SAMPLES / (float)batcal;
+
     if(mul > MIN_CALIBRATION_MUL && mul < MAX_CALIBRATION_MUL) {
-        info_printf("Calibration complete: cal0=%ld mul0=%lld cvt=%ld\n", batcal, mul, model->cell_voltage_total_mV);
-        model->battery_voltage_mul = (int32_t)mul;
+        info_printf("Calibration complete: cal0=%ld mul0=%f cvt=%ld\n", batcal, mul, model->cell_voltage_total_mV);
+        model->battery_voltage_mul = mul;
     } else {
-        error_printf("Battery voltage calibration out of range: %lld\n", mul);
+        error_printf("Battery voltage calibration out of range: %f\n", mul);
         return false;
     }
 
     int32_t outcal = ads1115_get_calibration(&ads1115_dev, 1);
-    mul = div_round_closest(
-        (int64_t)model->cell_voltage_total_mV * 4096LL * VOLTAGE_CALIBRATION_SAMPLES,
-        outcal
-    );
+    mul = (float)model->cell_voltage_total_mV * 0.001f * (float)VOLTAGE_CALIBRATION_SAMPLES / (float)outcal;
+
     if(mul > MIN_CALIBRATION_MUL && mul < MAX_CALIBRATION_MUL) {
-        info_printf("Calibration complete: cal1=%ld mul1=%lld\n", outcal, mul);
-        model->output_voltage_mul = (int32_t)mul;
+        info_printf("Calibration complete: cal1=%ld mul1=%f\n", outcal, mul);
+        model->output_voltage_mul = mul;
     } else {
-        error_printf("Output voltage calibration out of range: %lld\n", mul);
+        error_printf("Output voltage calibration out of range: %f\n", mul);
         return false;
     }
 
     // lazily split the difference for now, not quite right but it'll do
-    model->neg_contactor_mul = div_round_closest(
-        (model->battery_voltage_mul + model->output_voltage_mul),
-        2
-    );
+    model->neg_contactor_mul = (model->battery_voltage_mul + model->output_voltage_mul) / 2.0f;
 
     // calculate the offset
     int32_t negcal = ads1115_get_calibration(&ads1115_dev, 2);
-    int32_t neg_mV = div_round_closest(
-        (int64_t)negcal * model->neg_contactor_mul,
-        4096 * VOLTAGE_CALIBRATION_SAMPLES
-    );
+    float neg_mV = (float)negcal * model->neg_contactor_mul * 1000.0f / (float)VOLTAGE_CALIBRATION_SAMPLES;
+
+    debug_printf("Raw negcal=%ld neg_mV=%f, neg_contactor_mul=%f\n", negcal, neg_mV, model->neg_contactor_mul);
 
     if(neg_mV > MIN_NEG_CONTACTOR_OFFSET_MV && neg_mV < MAX_NEG_CONTACTOR_OFFSET_MV) {
-        info_printf("Neg contactor calibration complete: cal2=%ld neg_mV=%ld\n", negcal, neg_mV);
+        info_printf("Neg contactor calibration complete: cal2=%ld neg_mV=%f\n", negcal, neg_mV);
         model->neg_contactor_offset_mV = -neg_mV;
     } else {
-        error_printf("Neg contactor calibration out of range: %ld mV\n", neg_mV);
+        error_printf("Neg contactor calibration out of range: %f mV\n", neg_mV);
         return false;
     }
 
     int32_t bat_pos_to_out_neg_cal = ads1115_get_calibration(&ads1115_dev, 3);
-    mul = div_round_closest(
-        (int64_t)model->cell_voltage_total_mV * 4096LL * VOLTAGE_CALIBRATION_SAMPLES,
-        bat_pos_to_out_neg_cal
-    );
+    mul = (float)model->cell_voltage_total_mV * 0.001f * (float)VOLTAGE_CALIBRATION_SAMPLES / (float)bat_pos_to_out_neg_cal;
+
     if(mul > MIN_CALIBRATION_MUL && mul < MAX_CALIBRATION_MUL) {
-        info_printf("Pos contactor calibration complete: cal3=%ld mul3=%lld\n", bat_pos_to_out_neg_cal, mul);
-        model->pos_contactor_mul = (int32_t)mul;
+        info_printf("Pos contactor calibration complete: cal3=%ld mul3=%f\n", bat_pos_to_out_neg_cal, mul);
+        model->pos_contactor_mul = mul;
     } else {
-        error_printf("Pos contactor calibration out of range: %lld\n", mul);
+        error_printf("Pos contactor calibration out of range: %f\n", mul);
         return false;
     }
 

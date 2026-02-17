@@ -16,24 +16,24 @@ void confirm_battery_safety(bms_model_t *model) {
         0x1000000000000000
     )) {
         // confirm(
-        //     model->battery_voltage_mV <= BATTERY_VOLTAGE_SOFT_MAX_mV,
+        //     model->battery_voltage <= (BATTERY_VOLTAGE_SOFT_MAX_mV * 0.001f),
         //     ERR_BATTERY_VOLTAGE_HIGH,
-        //     model->battery_voltage_mV
+        //     (int32_t)(model->battery_voltage * 1000)
         // );
         confirm(
-            model->battery_voltage_mV <= BATTERY_VOLTAGE_HARD_MAX_mV,
+            model->battery_voltage <= (BATTERY_VOLTAGE_HARD_MAX_mV * 0.001f),
             ERR_BATTERY_VOLTAGE_VERY_HIGH,
-            model->battery_voltage_mV
+            (int32_t)(model->battery_voltage * 1000)
         );
         // confirm(
-        //     model->battery_voltage_mV >= BATTERY_VOLTAGE_SOFT_MIN_mV,
+        //     model->battery_voltage >= (BATTERY_VOLTAGE_SOFT_MIN_mV * 0.001f),
         //     ERR_BATTERY_VOLTAGE_LOW,
-        //     model->battery_voltage_mV
+        //     (int32_t)(model->battery_voltage * 1000)
         // );
         confirm(
-            model->battery_voltage_mV >= BATTERY_VOLTAGE_HARD_MIN_mV,
+            model->battery_voltage >= (BATTERY_VOLTAGE_HARD_MIN_mV * 0.001f),
             ERR_BATTERY_VOLTAGE_VERY_LOW,
-            model->battery_voltage_mV
+            (int32_t)(model->battery_voltage * 1000)
         );
     }
 
@@ -116,12 +116,12 @@ void confirm_battery_safety(bms_model_t *model) {
         // If we have a recent cell voltage reading, compare total to battery
         // voltage. We may be sampling the cell voltages very infrequently, so
         // only do this check if the voltage readings are close in time.
-        int32_t expected_total = model->battery_voltage_mV;
-        int32_t voltage_diff = model->cell_voltage_total_mV - expected_total;
+        float expected_total = model->battery_voltage;
+        float voltage_diff = model->cell_voltage_total_mV*0.001f - expected_total;
         confirm(
-            voltage_diff > -VOLTAGE_MISMATCH_THRESHOLD_mV && voltage_diff < VOLTAGE_MISMATCH_THRESHOLD_mV,
+            voltage_diff > -(VOLTAGE_MISMATCH_THRESHOLD_mV * 0.001f) && voltage_diff < (VOLTAGE_MISMATCH_THRESHOLD_mV * 0.001f),
             ERR_VOLTAGE_MISMATCH,
-            ((uint64_t)model->cell_voltage_total_mV << 32) | (uint32_t)expected_total
+            ((uint64_t)model->cell_voltage_total_mV << 32) | (uint32_t)(expected_total * 1000)
         );
     }
 

@@ -143,19 +143,19 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
             break;
         case HMI_REG_BATTERY_VOLTAGE:
             buf[idx++] = HMI_TYPE_INT32;
-            idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)model->battery_voltage_mV);
+            idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)(model->battery_voltage * 1000));
             break;
         case HMI_REG_OUTPUT_VOLTAGE:
             buf[idx++] = HMI_TYPE_INT32;
-            idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)model->output_voltage_mV);
+            idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)(model->output_voltage * 1000));
             break;
         case HMI_REG_POS_CONTACTOR_VOLTAGE:
             buf[idx++] = HMI_TYPE_INT32;
-            idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)model->pos_contactor_voltage_mV);
+            idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)(model->pos_contactor_voltage * 1000));
             break;
         case HMI_REG_NEG_CONTACTOR_VOLTAGE:
             buf[idx++] = HMI_TYPE_INT32;
-            idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)model->neg_contactor_voltage_mV);
+            idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)(model->neg_contactor_voltage * 1000));
             break;
         case HMI_REG_TEMPERATURE_MIN:
             buf[idx++] = HMI_TYPE_INT16;
@@ -263,7 +263,7 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
                 uint16_t cell_idx = reg_id - HMI_REG_CELL_VOLTAGES_START;
                 if (cell_idx < 120) {
                     buf[idx++] = HMI_TYPE_INT16;
-                    idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->cell_voltages_mV[cell_idx]);
+                    idx += hmi_buf_append_uint16(&buf[idx], model->cell_voltages_mV[cell_idx]);
                 } else {
                     // Unknown cell
                     idx -= 2; // rollback reg_id

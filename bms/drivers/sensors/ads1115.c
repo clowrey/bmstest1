@@ -1,8 +1,10 @@
 #include "ads1115.h"
-#include "../../config/allocations.h"
-#include "../../config/pins.h"
-#include "../../app/model.h"
+#include "config/allocations.h"
+#include "config/pins.h"
+#include "app/model.h"
 #include "drivers/chip/i2c.h"
+#include "sys/logging/logging.h"
+#include "lib/aema.h"
 
 #include "hardware/irq.h"
 #include "hardware/i2c.h"
@@ -13,14 +15,14 @@
 // With floating inputs, higher sample rates lead to larger readings - eg, 350mV
 // at 128SPS, but 1000mV at 250SPS, it is not clear why.
 
-// How often we do a full sampling cycle
-static const int ADS1115_SAMPLING_PERIOD = 25; // ms
 // How fast to sample (data rate setting)
-static const int ADS1115_SAMPLE_RATE_SETTING = ADS1115_CONFIG_DR_250SPS;
+static const int ADS1115_SAMPLE_RATE_SETTING = ADS1115_CONFIG_DR_128SPS;
 // How long each conversion takes
-static const int ADS1115_CONVERSION_TIME_MS = 4;
+static const int ADS1115_CONVERSION_TIME_MS = 8;
 // How long extra to wait to be safe before reading conversion result
 static const int ADS1115_CONVERSION_TIME_EXTRA_MS = 1;
+// How often we do a full sampling cycle
+static const int ADS1115_SAMPLING_PERIOD = (ADS1115_CONVERSION_TIME_MS + ADS1115_CONVERSION_TIME_EXTRA_MS) * ADS1115_CHANNEL_COUNT + 10;
 // I2C timeout for blocking calls
 static const uint32_t ADS1115_I2C_TIMEOUT_US = 10000;
 
@@ -30,7 +32,9 @@ static void ads1115_i2c_callback(i2c_inst_t *i2c, bool success, void *user_data)
 static int64_t ads1115_conversion_timer_callback(alarm_id_t id, void *user_data);
 static bool ads1115_periodic_timer_callback(struct repeating_timer *t);
 
-sampler_t samples[5] = {0};
+sampler_t samples[ADS1115_CHANNEL_COUNT] = {0};
+float filtered_samples[ADS1115_CHANNEL_COUNT] = { [0 ... (ADS1115_CHANNEL_COUNT-1)] = NAN };
+float sample_deviations[ADS1115_CHANNEL_COUNT] = { [0 ... (ADS1115_CHANNEL_COUNT-1)] = NAN };
 
 bool ads1115_init(ads1115_t *dev, uint8_t addr) {
     dev->i2c = ADS1115_I2C; // Based on pins 18, 19
@@ -57,7 +61,6 @@ bool ads1115_init(ads1115_t *dev, uint8_t addr) {
 
 static void ads1115_start_conversion(ads1115_t *dev, int channel) {
     uint16_t config = ADS1115_CONFIG_OS_SINGLE | 
-                      ADS1115_CONFIG_PGA_1_024V |
                       ADS1115_CONFIG_MODE_SINGLE | 
                       ADS1115_SAMPLE_RATE_SETTING | 
                       ADS1115_CONFIG_COMP_QUE_NONE;
@@ -65,19 +68,34 @@ static void ads1115_start_conversion(ads1115_t *dev, int channel) {
     switch (channel) {
         case 0: 
             // ADC0 - ADC1 (battery voltage)
-            config |= ADS1115_CONFIG_MUX_DIFF_0_1; 
+            config |= ADS1115_CONFIG_MUX_DIFF_0_1
+                      | ADS1115_CONFIG_PGA_1_024V;
             break;
         case 1: 
             // ADC2 - ADC3 (output voltage)
-            config |= ADS1115_CONFIG_MUX_DIFF_2_3; 
+            config |= ADS1115_CONFIG_MUX_DIFF_2_3 
+                      | ADS1115_CONFIG_PGA_1_024V;
             break;
         case 2: 
             // ADC1 - ADC3 (voltage across negative contactor)
-            config |= ADS1115_CONFIG_MUX_DIFF_1_3; 
+            config |= ADS1115_CONFIG_MUX_DIFF_1_3 
+                      | ADS1115_CONFIG_PGA_1_024V;
             break;
         case 3: 
             // ADC0 - ADC3 (voltage between battery positive and negative output)
-            config |= ADS1115_CONFIG_MUX_DIFF_0_3;
+            config |= ADS1115_CONFIG_MUX_DIFF_0_3
+                      | ADS1115_CONFIG_PGA_1_024V;
+            break;
+
+        case 4:
+            // ADC0 - GND (battery pos)
+            config |= ADS1115_CONFIG_MUX_SINGLE_0
+                      | ADS1115_CONFIG_PGA_4_096V;
+            break;
+        case 5:
+            // ADC1 - GND (battery neg)
+            config |= ADS1115_CONFIG_MUX_SINGLE_1
+                      | ADS1115_CONFIG_PGA_4_096V;
             break;
     }
 
@@ -117,16 +135,28 @@ static void ads1115_i2c_callback(i2c_inst_t *i2c, bool success, void *user_data)
     } else if (dev->state == ADS1115_STATE_READING_CONVERSION) {
         // Conversion data read complete
         const int16_t sample = (int16_t)((dev->async_buf[0] << 8) | dev->async_buf[1]);
+
+        // Raw res is 13mV per bit?
         
         sampler_add(&samples[dev->current_channel], (int32_t)sample, ADS1115_OVERSAMPLING, 0);
+
+        aema_update(
+            &filtered_samples[dev->current_channel], 
+            &sample_deviations[dev->current_channel],
+            (float)sample, 
+            0.001f, 0.25f, 15.0f, 150.0f
+        );
 
         if (dev->cal_samples_left[dev->current_channel] > 0) {
             dev->cal_accumulator[dev->current_channel] += sample;
             dev->cal_samples_left[dev->current_channel]--;
+            if(dev->current_channel==0) {
+                debug_printf("Cal remaining: %d\n", dev->cal_samples_left[0]);
+            }
         }
         
         dev->current_channel++;
-        if (dev->current_channel < 4) {
+        if (dev->current_channel < ADS1115_CHANNEL_COUNT) {
             ads1115_start_conversion(dev, dev->current_channel);
         } else {
             dev->busy = false;
@@ -152,6 +182,7 @@ static bool ads1115_periodic_timer_callback(struct repeating_timer *t) {
 void ads1115_start_calibration(ads1115_t *dev, uint16_t num_samples) {
     for (int ch = 0; ch < 4; ch++) {
         dev->cal_accumulator[ch] = 0;
+        debug_printf("Starting calibration for channel %d, num_samples=%d\n", ch, num_samples);
         dev->cal_samples_left[ch] = num_samples;
     }
 }

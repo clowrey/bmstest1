@@ -7,7 +7,7 @@
 #include <stdbool.h>
 
 // should be a power of 2
-#define DUART_TX_BUFFER_LEN 256
+#define DUART_TX_BUFFER_LEN 512
 #define DUART_RX_BUFFER_BITS 9
 
 typedef struct {

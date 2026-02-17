@@ -443,7 +443,7 @@ bool duart_send_packet(duart *u, const uint8_t *payload, size_t payload_len) {
         return false;
     }
 
-    uint8_t buf[DUART_TX_BUFFER_LEN];
+    uint8_t buf[256 + 4];
     buf[0] = 0xff; // sync byte
     buf[1] = payload_len - 1; // length byte
 

@@ -38,54 +38,35 @@ void read_inputs(bms_model_t *model) {
     // ADS1115 voltage readings
 
     // For differential readings, full scale should be 436V
-    const int32_t full_scale_mv = 436000;
+    // const int32_t full_scale_mv = 436000;
 
-    int32_t battery_voltage_mul = model->battery_voltage_mul ? model->battery_voltage_mul : 54500;
+    float battery_voltage_mul = model->battery_voltage_mul != 0.0f ? model->battery_voltage_mul : 0.013f;
     model->battery_voltage_millis = ads1115_get_sample_millis(0);
-    model->battery_voltage_mV = ads1115_scaled_sample(0, battery_voltage_mul);//(int32_t)((float)full_scale_mv * 1.0011809966896306f));
-    model->battery_voltage_range_mV = ads1115_scaled_sample_range(0, full_scale_mv);
+    model->battery_voltage = ads1115_float_sample(0, battery_voltage_mul);
+    model->battery_voltage_deviation = ads1115_float_deviation(0, battery_voltage_mul);
 
-    int32_t output_voltage_mul = model->output_voltage_mul ? model->output_voltage_mul : 54500;
-    millis_t output_voltage_millis = ads1115_get_sample_millis(1);
-    int32_t output_voltage_mV = ads1115_scaled_sample(1, output_voltage_mul);//(int32_t)((float)full_scale_mv  * 0.99217974180734856007f));
+    float output_voltage_mul = model->output_voltage_mul != 0.0f ? model->output_voltage_mul : 0.013f;
+    model->output_voltage_millis = ads1115_get_sample_millis(1);
+    model->output_voltage = ads1115_float_sample(1, output_voltage_mul);
+    model->output_voltage_deviation = ads1115_float_deviation(1, output_voltage_mul);
 
-    // arbitrary scaling to remove error 
-    //output_voltage_mV = (output_voltage_mV * 58721) / 59496;
-
-    model->output_voltage_millis = output_voltage_millis;
-    model->output_voltage_mV = output_voltage_mV;
-    model->output_voltage_range_mV = ads1115_scaled_sample_range(1, full_scale_mv);
-
-    int32_t neg_contactor_mul = model->neg_contactor_mul ? model->neg_contactor_mul : 54500;
+    float neg_contactor_mul = model->neg_contactor_mul != 0.0f ? model->neg_contactor_mul : 0.013f;
     model->neg_contactor_voltage_millis = ads1115_get_sample_millis(2);
-    model->neg_contactor_voltage_mV = ads1115_scaled_sample(2, neg_contactor_mul) + model->neg_contactor_offset_mV;
-    model->neg_contactor_voltage_range_mV = ads1115_scaled_sample_range(2, full_scale_mv);
+    //debug_printf("read samp=%f, offset=%f\n", ads1115_float_sample(2, neg_contactor_mul), model->neg_contactor_offset_mV);
+    model->neg_contactor_voltage = ads1115_float_sample(2, neg_contactor_mul) + (0.001f * model->neg_contactor_offset_mV);
+    model->neg_contactor_voltage_deviation = ads1115_float_deviation(2, neg_contactor_mul);
 
     // Positive contactor voltage has to be derived from the difference between (battery+
     // to output-) and (output+ to output-), since we can't sample relative to battery+.
 
-    int32_t pos_contactor_mul = model->pos_contactor_mul ? model->pos_contactor_mul : 54500;
+    float pos_contactor_mul = model->pos_contactor_mul != 0.0f ? model->pos_contactor_mul : 0.013f;
     millis_t raw_bat_pos_to_out_neg_millis = ads1115_get_sample_millis(3);
-    int32_t raw_bat_plus_to_out_neg_mV = ads1115_scaled_sample(3, pos_contactor_mul);
-    model->pos_contactor_voltage_millis = raw_bat_pos_to_out_neg_millis < output_voltage_millis ? raw_bat_pos_to_out_neg_millis : output_voltage_millis;
-    model->pos_contactor_voltage_mV = raw_bat_plus_to_out_neg_mV - output_voltage_mV;
-    model->pos_contactor_voltage_range_mV = ads1115_scaled_sample_range(3, full_scale_mv)/2 + ads1115_scaled_sample_range(1, full_scale_mv)/2;
-
-        
-    //     * 436000 / 32768 / 8;
-    // model->pos_contactor_voltage_range_m
-    // e
-
-    // For absolute readings, full scale should be 1745V
-
-    // int16_t raw_bat_plus = ads1115_get_sample(3);
-    // millis_t raw_bat_plus_millis = ads1115_get_sample_millis(3);
-    // int16_t raw_out_plus = ads1115_get_sample(4);
-    // millis_t raw_out_plus_millis = ads1115_get_sample_millis(4);
-    // model->pos_contactor_voltage_mV = (raw_bat_plus - raw_out_plus) * 1745000 / 32768 / 8;
-    // model->pos_contactor_voltage_range_mV = (ads1115_get_sample_range(3) * 1745000 / 32768)/2 + (ads1115_get_sample_range(4) * 1745000 / 32768)/2;
-    // model->pos_contactor_voltage_millis = raw_bat_plus_millis < raw_out_plus_millis ? raw_bat_plus_millis : raw_out_plus_millis; // Use older value
-
+    float raw_bat_plus_to_out_neg = ads1115_float_sample(3, pos_contactor_mul);
+    
+    model->pos_contactor_voltage_millis = raw_bat_pos_to_out_neg_millis < model->output_voltage_millis ? raw_bat_pos_to_out_neg_millis : model->output_voltage_millis;
+    model->pos_contactor_voltage = raw_bat_plus_to_out_neg - model->output_voltage;
+    model->pos_contactor_voltage_deviation = ads1115_float_deviation(3, pos_contactor_mul) + model->output_voltage_deviation;
+    
     // INA228 current and charge readings
     
     //if((timestep() & 0x7) == 0) {
@@ -233,16 +214,16 @@ void bms_tick() {
         //isosnoop_print_buffer();
         uint32_t total = 0;
         for(int i=0; i<NUM_CELLS; i++) {
-            debug_printf("[c%3d]: %4d mV | ", i, model.raw_cell_voltages_mV[i]);
+            debug_printf("[c%3d]: %4d mV | ", i, (uint32_t)model.raw_cell_voltages_mV[i]);
             total += model.raw_cell_voltages_mV[i];
             if((i % 5) == 4) {
                 debug_printf("\n");
             }
         }
-        debug_printf("Total: %lu mV | Temps: %ddC - %ddC | Delta: %d mV%s%s\n\n", 
+        debug_printf("Total: %dmV | Temps: %ddC - %ddC | Delta: %d mV %s%s\n\n", 
             total, 
             model.temperature_min_dC, model.temperature_max_dC, 
-            model.cell_voltage_max_mV - model.cell_voltage_min_mV,
+            (int)(model.cell_voltage_max_mV - model.cell_voltage_min_mV),
             model.cell_voltage_slow_mode ? " | Slow" : "",
             model.balancing_active ? " | Balancing" : ""
         );
@@ -263,15 +244,15 @@ void bms_tick() {
             model.supply_voltage_contactor_mV
         );
 
-        debug_printf("Batt: %6ldmV (%3ldmV) | Out: %6ldmV (%3ldmV) | NegCtr: %6ldmV (%3ldmV) | PosCtr: %6ldmV (%3ldmV)\n",
-            model.battery_voltage_mV,
-            model.battery_voltage_range_mV,
-            model.output_voltage_mV,
-            model.output_voltage_range_mV,
-            model.neg_contactor_voltage_mV,
-            model.neg_contactor_voltage_range_mV,
-            model.pos_contactor_voltage_mV,
-            model.pos_contactor_voltage_range_mV
+        debug_printf("Batt: %6.3fV (%3.3f) | Out: %6.3fV (%3.3f) | NegCtr: %6.3fV (%3.3f) | PosCtr: %6.3fV (%3.3f)\n",
+            model.battery_voltage,
+            model.battery_voltage_deviation,
+            model.output_voltage,
+            model.output_voltage_deviation,
+            model.neg_contactor_voltage,
+            model.neg_contactor_voltage_deviation,
+            model.pos_contactor_voltage,
+            model.pos_contactor_voltage_deviation
         );
         int64_t charge_mC = raw_charge_to_mC(model.charge_raw);
         debug_printf("Current: %6ld mA | Charge: %lld mC | SoC: %2.2f %% | SoC(VB): %2.2f %% | SoC(BC): %2.2f %% | SoC(FC): %2.2f %%\n",
@@ -294,6 +275,26 @@ void bms_tick() {
         //     debug_counters.uart0_packets_received, debug_counters.uart0_crc_errors,
         //     debug_counters.uart1_packets_received, debug_counters.uart1_crc_errors
         // );
+
+        float cal_midpoint = 22496.4f;
+        float cal_midpoint_temp_dC = 285.0f;
+
+        cal_midpoint += (get_temperature_c_times10() - cal_midpoint_temp_dC) * 0.28f; //compensate for temp drift
+
+        float vp = ads1115_float_sample(4, 1.0f);
+        float vn = ads1115_float_sample(5, 1.0f);
+        debug_printf("midpoint is %1.1f | ", (vp + vn)/2.0f);
+
+        float vpos = (vp - cal_midpoint) * (4.096f/32768);
+        float vneg = (cal_midpoint - vn) * (4.096f/32768);
+        float r = vpos / vneg;
+        // Cap at 1Gohm
+        float r_iso = 10000000 * fminf(r / fmaxf(fabsf(1.0f - r), 0.009f), 100.0f);
+
+        debug_printf("Vpos: %1.3f V | Vneg: %1.3f V | Riso: %1.2f Mohm\n",
+            vpos, vneg, r_iso/1000000
+        );
+
     }
 
     timings[9] = time_us_32();

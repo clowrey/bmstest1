@@ -28,11 +28,11 @@ static const uint32_t BMS_MODEL_PERSISTENT_FAST_VERSION = 1;
 
 typedef struct {
     // ADS1115 voltage calibration
-    int32_t battery_voltage_mul;
-    int32_t output_voltage_mul;
-    int32_t neg_contactor_mul;
-    int32_t neg_contactor_offset_mV;
-    int32_t pos_contactor_mul;
+    float battery_voltage_mul;
+    float output_voltage_mul;
+    float neg_contactor_mul;
+    float neg_contactor_offset_mV;
+    float pos_contactor_mul;
 
     // Current calibration
     int32_t current_offset;
@@ -68,7 +68,7 @@ typedef struct {
 
 } bms_model_persistent_slow_t;
 
-static const uint32_t BMS_MODEL_PERSISTENT_SLOW_VERSION = 1;
+static const uint32_t BMS_MODEL_PERSISTENT_SLOW_VERSION = 2;
 
 // This entire structure will be zero-initialized at startup
 typedef struct bms_model {
@@ -82,19 +82,21 @@ typedef struct bms_model {
     int16_t temperature_max_dC;
     millis_t temperature_millis;
 
-    int32_t battery_voltage_mV;
+    float battery_voltage;
     millis_t battery_voltage_millis;
-    int32_t battery_voltage_range_mV;
-    int32_t output_voltage_mV;
-    millis_t output_voltage_millis;
-    int32_t output_voltage_range_mV;
+    float battery_voltage_deviation;
 
-    int32_t pos_contactor_voltage_mV;
+    float output_voltage;
+    millis_t output_voltage_millis;
+    float output_voltage_deviation;
+
+    float pos_contactor_voltage;
     millis_t pos_contactor_voltage_millis;
-    int32_t pos_contactor_voltage_range_mV;
-    int32_t neg_contactor_voltage_mV;
+    float pos_contactor_voltage_deviation;
+
+    float neg_contactor_voltage;
     millis_t neg_contactor_voltage_millis;
-    int32_t neg_contactor_voltage_range_mV;
+    float neg_contactor_voltage_deviation;
 
     uint16_t soc; // state of charge in 0.01% units (0=0%, 10000=100.00%)
     millis_t soc_millis;

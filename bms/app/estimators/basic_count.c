@@ -30,9 +30,9 @@ uint16_t basic_count_soc_estimate(bms_model_t *model) {
     }
     last_charge_raw = model->charge_raw;
 
-    if(!initialized && timestep() > 200 && model->battery_voltage_mV > 0) {
+    if(!initialized && timestep() > 200 && model->battery_voltage > 0) {
         // Initialize SOC estimate based on OCV
-        float soc = ocv_to_soc((float)model->battery_voltage_mV / (NUM_CELLS * 1000.0f));
+        float soc = ocv_to_soc(model->battery_voltage / NUM_CELLS);
 
         charge_counter_mC = (1.0f - soc) * model->nameplate_capacity_mC;
 

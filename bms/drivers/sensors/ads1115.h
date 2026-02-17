@@ -34,7 +34,13 @@
 #define ADS1115_CONFIG_DR_250SPS    (0x5 << 5)
 #define ADS1115_CONFIG_COMP_QUE_NONE (0x3)
 
-extern sampler_t samples[5];
+#define ADS1115_CHANNEL_COUNT 6
+
+
+
+extern sampler_t samples[ADS1115_CHANNEL_COUNT];
+extern float filtered_samples[ADS1115_CHANNEL_COUNT];
+extern float sample_deviations[ADS1115_CHANNEL_COUNT];
 
 typedef struct {
     i2c_inst_t *i2c;
@@ -42,8 +48,8 @@ typedef struct {
     int current_channel;
     bool busy;
 
-    int32_t cal_accumulator[4];
-    uint16_t cal_samples_left[4];
+    int32_t cal_accumulator[ADS1115_CHANNEL_COUNT];
+    uint32_t cal_samples_left[ADS1115_CHANNEL_COUNT];
     
     // Async state
     enum {
@@ -94,4 +100,12 @@ static inline int32_t ads1115_scaled_sample_range(int channel, int32_t full_scal
     return (int32_t)(
         (int64_t)(samples[channel].max_value - samples[channel].min_value) * full_scale_mv / 32768
     );
+}
+
+static inline float ads1115_float_sample(int channel, float multiplier) {
+    return filtered_samples[channel] * multiplier;
+}
+
+static inline float ads1115_float_deviation(int channel, float multiplier) {
+    return sample_deviations[channel] * multiplier;
 }

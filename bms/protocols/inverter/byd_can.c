@@ -13,7 +13,6 @@ static const int battery_capacity_Wh = 60000;
 static const int FW_MAJOR_VERSION = 0x03;
 static const int FW_MINOR_VERSION = 0x29;
   
-static struct can2040 cbus;
 static bool inverter_present = false;
 static bool inverter_initialized = false;
 static int inverter_init_state = 0;
@@ -43,11 +42,6 @@ static const struct can2040_msg byd_2d0 = {
     .dlc = 8,
     .data = {0x00, 'B', 'Y', 'D', 0x00, 0x00, 0x00, 0x00}
 };
-
-static void PIOx_IRQHandler(void)
-{
-    can2040_pio_irq_handler(&cbus);
-}
 
 static void can2040_cb(struct can2040 *cd, uint32_t notify, struct can2040_msg *msg)
 {
@@ -99,25 +93,14 @@ static void can2040_cb(struct can2040 *cd, uint32_t notify, struct can2040_msg *
 }
 
 void init_inverter() {
-    const int can_bitrate = 500000; // 500 kbps
-
-    can2040_setup(&cbus, CAN2040_PIO_NUM);
-    can2040_callback_config(&cbus, can2040_cb);
-
-    // Enable irqs
-    irq_set_exclusive_handler(CAN2040_PIO_IRQ0, PIOx_IRQHandler);
-    irq_set_priority(CAN2040_PIO_IRQ0, 1);
-    irq_set_enabled(CAN2040_PIO_IRQ0, 1);
-
-    // Start canbus
-    can2040_start(&cbus, SYS_CLK_HZ, can_bitrate, PIN_CAN_RX, PIN_CAN_TX);
+    init_inverter_can(can2040_cb);
 }
 
 static void send_inverter_init_messages() {
     struct can2040_msg msg;
 
     if(inverter_init_state == 0) {
-        if(can2040_transmit(&cbus, &byd_250)<0) {
+        if(inverter_can_transmit(&byd_250)<0) {
             // failed to send
             return;
         }
@@ -125,7 +108,7 @@ static void send_inverter_init_messages() {
     }
 
     if(inverter_init_state == 1) {
-        if(can2040_transmit(&cbus, &byd_290)<0) {
+        if(inverter_can_transmit(&byd_290)<0) {
             // failed to send
             return;
         }
@@ -133,7 +116,7 @@ static void send_inverter_init_messages() {
     }
 
     if(inverter_init_state == 2) {
-        if(can2040_transmit(&cbus, &byd_2d0)<0) {
+        if(inverter_can_transmit(&byd_2d0)<0) {
             // failed to send
             return;
         }
@@ -152,7 +135,7 @@ static void send_inverter_init_messages() {
         msg.data[5] = 'e';
         msg.data[6] = 'r';
         msg.data[7] = 'y';
-        if(can2040_transmit(&cbus, &msg)<0) {
+        if(inverter_can_transmit(&msg)<0) {
             // failed to send
             return;
         }
@@ -168,7 +151,7 @@ static void send_inverter_init_messages() {
         msg.data[5] = ' ';
         msg.data[6] = 'P';
         msg.data[7] = 'r';
-        if(can2040_transmit(&cbus, &msg)<0) {
+        if(inverter_can_transmit(&msg)<0) {
             // failed to send
             return;
         }
@@ -184,7 +167,7 @@ static void send_inverter_init_messages() {
         msg.data[5] = 'm';
         msg.data[6] = ' ';
         msg.data[7] = 'H';
-        if(can2040_transmit(&cbus, &msg)<0) {
+        if(inverter_can_transmit(&msg)<0) {
             // failed to send
             return;
         }
@@ -200,7 +183,7 @@ static void send_inverter_init_messages() {
         msg.data[5] = 0x00;
         msg.data[6] = 0x00;
         msg.data[7] = 0x00;
-        if(can2040_transmit(&cbus, &msg)<0) {
+        if(inverter_can_transmit(&msg)<0) {
             // failed to send
             return;
         }
@@ -232,7 +215,7 @@ static int send_110(bms_model_t *model) {
     //     msg.data[0], msg.data[1], msg.data[2], msg.data[3],
     //     msg.data[4], msg.data[5], msg.data[6], msg.data[7]);
 
-    return can2040_transmit(&cbus, &msg);
+    return inverter_can_transmit(&msg);
 }
 
 static int send_150(bms_model_t *model) {
@@ -286,7 +269,7 @@ static int send_150(bms_model_t *model) {
     // printf("CAN 150 sent SOC %d RemCap %d FullCap %d\n",
     //     scaled_soc, remaining_capacity_dAh, full_capacity_dAh);
 
-    return can2040_transmit(&cbus, &msg);
+    return inverter_can_transmit(&msg);
 }
 
 static int send_1d0(bms_model_t *model) {
@@ -300,7 +283,7 @@ static int send_1d0(bms_model_t *model) {
     msg.dlc = 8;
 
     // TODO: battery voltage or cell voltage total?
-    const uint16_t pack_voltage_dV = model->battery_voltage_mV / 100; // in 0.1V units
+    const uint16_t pack_voltage_dV = (uint16_t)(model->battery_voltage * 10.0f); // in 0.1V units
     msg.data[0] = (pack_voltage_dV >> 8) & 0xFF;
     msg.data[1] = pack_voltage_dV & 0xFF;
     // TODO: check current direction
@@ -312,7 +295,7 @@ static int send_1d0(bms_model_t *model) {
     msg.data[5] = temperature_midpoint_dC & 0xFF;
     msg.data[6] = 0x03;
     msg.data[7] = 0x08;
-    return can2040_transmit(&cbus, &msg);
+    return inverter_can_transmit(&msg);
 }
 
 static int send_210(bms_model_t *model) {
@@ -337,7 +320,7 @@ static int send_210(bms_model_t *model) {
     msg.data[5] = 0x00;
     msg.data[6] = 0x00;
     msg.data[7] = 0x00;
-    return can2040_transmit(&cbus, &msg);
+    return inverter_can_transmit(&msg);
 }
 
 static int send_190(bms_model_t *model) {
@@ -355,7 +338,7 @@ static int send_190(bms_model_t *model) {
     msg.data[5] = 0x00;
     msg.data[6] = 0x00;
     msg.data[7] = 0x00;
-    return can2040_transmit(&cbus, &msg);
+    return inverter_can_transmit(&msg);
 }
 
 static uint8_t transmit_cycle = 0;

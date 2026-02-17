@@ -195,13 +195,12 @@
 
 
 
-// How recent a reading must be to be considered valid. The slowest sensors are 10Hz so this should be fine.
-#define STALENESS_THRESHOLD_MS 200
+// How recent readings must be to be considered valid.
 
-// Battery voltage samples every 200ms (plus jitter)
-#define BATTERY_VOLTAGE_STALE_THRESHOLD_MS 300
-#define OUTPUT_VOLTAGE_STALE_THRESHOLD_MS 300
-#define CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS 300
+// Battery voltage samples every 320ms (plus jitter)
+#define BATTERY_VOLTAGE_STALE_THRESHOLD_MS 1000
+#define OUTPUT_VOLTAGE_STALE_THRESHOLD_MS 1000
+#define CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS 1000
 
 // The current samples every ~530ms, so this should be sufficient
 #define CURRENT_STALE_THRESHOLD_MS 1000
