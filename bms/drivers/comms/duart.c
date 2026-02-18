@@ -468,6 +468,10 @@ bool duart_send_packet(duart *u, const uint8_t *payload, size_t payload_len) {
     return ret;
 }
 
+size_t duart_get_tx_free_space(duart *u) {
+    return ringbuf_free_space(&u->tx_ringbuf);
+}
+
 bool init_duart(duart *u, uint baud_rate, uint tx_pin, uint rx_pin, bool deassert_tx_when_idle) {
     if(u==&duart0) {
         u->uart = uart0;

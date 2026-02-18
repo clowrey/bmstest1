@@ -219,6 +219,38 @@ static void model_calculate_inverter_voltage_limits(bms_model_t *model) {
     model->inverter_min_voltage_limit_dV = min_voltage_limit_dV;
 }
 
+static void model_calculate_inverter_soc_and_capacity(bms_model_t *model) {
+    // Calculate the SoC and capacity to send to the inverter, applying scaling and limits.
+
+    int16_t divisor = model->soc_scaling_max - model->soc_scaling_min;
+    if(divisor <= 0) {
+        divisor = 10000; // default to no scaling
+    }
+
+    int32_t scaled_soc = (int32_t)(model->soc - model->soc_scaling_min) * 10000 / divisor;
+    if(scaled_soc > 10000) scaled_soc = 10000;
+    if(scaled_soc < 0) scaled_soc = 0;
+
+    if(model->discharge_current_limit_dA == 0) {
+        // Force to 0% to stop discharge
+        scaled_soc = 0;
+    } else if(model->charge_current_limit_dA == 0) {
+        // Force to 100% to stop charge
+        scaled_soc = 10000;
+    }
+
+    model->inverter_soc = scaled_soc;
+
+    // TODO - use floating point instead of the int64_t math here?
+
+    // so if scaling min/max is 50 to 75, we're only using 25% of the working capacity
+
+    uint32_t scaled_working_capacity_mC = ((uint64_t)model->working_capacity_mC * divisor) / 10000;
+
+    model->inverter_remaining_capacity_dAh = ((uint64_t)scaled_working_capacity_mC * scaled_soc) / ((uint64_t)10000 * 3600 * 100);
+    model->inverter_full_capacity_dAh = (scaled_working_capacity_mC / (3600 * 100));
+}
+
 
 void model_tick(bms_model_t *model) {
     model_process_temperatures(model);
@@ -226,11 +258,13 @@ void model_tick(bms_model_t *model) {
 
     model_calculate_cell_current_limits(model);
     model_calculate_temperature_current_limits(model);
-    model_calculate_inverter_voltage_limits(model);
 
     model_apply_current_limits(model);
     model_accumulate_overcurrent(model);
     model_accumulate_soft_limit_overcurrent(model);
 
     model_check_overcurrent_accumulation(model);
+
+    model_calculate_inverter_voltage_limits(model);
+    model_calculate_inverter_soc_and_capacity(model);
 }

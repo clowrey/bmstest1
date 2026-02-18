@@ -7,7 +7,7 @@
 #include <stdbool.h>
 
 // should be a power of 2
-#define DUART_TX_BUFFER_LEN 512
+#define DUART_TX_BUFFER_LEN 8192
 #define DUART_RX_BUFFER_BITS 9
 
 typedef struct {
@@ -42,3 +42,4 @@ size_t duart_read_packet(duart *u, uint8_t *buf, size_t buf_size);
 bool duart_send(duart *u, const uint8_t *data, size_t len);
 bool duart_send_blocking(duart *u, const uint8_t *data, size_t len);
 bool duart_send_packet(duart *u, const uint8_t *payload, size_t payload_len);
+size_t duart_get_tx_free_space(duart *u);

@@ -107,6 +107,12 @@ static bool hmi_register_is_available(uint16_t reg_id, bms_model_t *model) {
             return model->supply_voltage_12V_millis > 0;
         case HMI_REG_SUPPLY_VOLTAGE_CTR:
             return model->supply_voltage_contactor_millis > 0;
+        case HMI_REG_INVERTER_SOC:
+        case HMI_REG_INVERTER_FULL_CAPACITY_DAH:
+        case HMI_REG_INVERTER_REMAINING_CAPACITY_DAH:
+        case HMI_REG_INVERTER_MIN_VOLTAGE_LIMIT_DV:
+        case HMI_REG_INVERTER_MAX_VOLTAGE_LIMIT_DV:
+            return model->soc_millis > 0;
     }
     return true;
 }
@@ -256,6 +262,26 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
         case HMI_REG_MINIMUM_BALANCING_VOLTAGE_MV:
             buf[idx++] = HMI_TYPE_UINT16;
             idx += hmi_buf_append_uint16(&buf[idx], get_minimum_balancing_voltage_mV(model));
+            break;
+        case HMI_REG_INVERTER_SOC:
+            buf[idx++] = HMI_TYPE_INT16;
+            idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->inverter_soc);
+            break;
+        case HMI_REG_INVERTER_FULL_CAPACITY_DAH:
+            buf[idx++] = HMI_TYPE_INT16;
+            idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->inverter_full_capacity_dAh);
+            break;
+        case HMI_REG_INVERTER_REMAINING_CAPACITY_DAH:
+            buf[idx++] = HMI_TYPE_INT16;
+            idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->inverter_remaining_capacity_dAh);
+            break;
+        case HMI_REG_INVERTER_MIN_VOLTAGE_LIMIT_DV:
+            buf[idx++] = HMI_TYPE_INT16;
+            idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->inverter_min_voltage_limit_dV);
+            break;
+        case HMI_REG_INVERTER_MAX_VOLTAGE_LIMIT_DV:
+            buf[idx++] = HMI_TYPE_INT16;
+            idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->inverter_max_voltage_limit_dV);
             break;
 
         default:
@@ -563,17 +589,37 @@ static void hmi_handle_read_log(const uint8_t *rx_buf, size_t len) {
     uint8_t addr = rx_buf[1];
     if (addr != device_address) return;
 
-    uint8_t tx_buf[256];
-    uint16_t tx_idx = 0;
+    for (int i = 0; i < 20; i++) {
+        // Space check: each packet is (payload_len + 4) bytes. 
+        // Max payload is 256. 256 + 4 = 260 bytes.
+        if (duart_get_tx_free_space(&HMI_SERIAL_DUART) < 260) {
+            break;
+        }
 
-    tx_buf[tx_idx++] = HMI_MSG_READ_LOG_RESPONSE;
-    tx_buf[tx_idx++] = device_address;
+        uint8_t tx_buf[256];
+        uint16_t tx_idx = 0;
 
-    size_t read = logging_read(&tx_buf[tx_idx], 254);
-    tx_idx += (uint16_t)read;
+        tx_buf[tx_idx++] = HMI_MSG_READ_LOG_RESPONSE;
+        tx_buf[tx_idx++] = device_address;
 
-    // Send even if zero bytes read, to acknowledge request
-    duart_send_packet(&HMI_SERIAL_DUART, tx_buf, tx_idx);
+        size_t read = logging_read(&tx_buf[tx_idx], 254);
+        
+        if (read == 0) {
+            if (i == 0) {
+                // To acknowledge the request, we send an empty response if no data is available.
+                duart_send_packet(&HMI_SERIAL_DUART, tx_buf, tx_idx);
+            }
+            break;
+        }
+
+        tx_idx += (uint16_t)read;
+        duart_send_packet(&HMI_SERIAL_DUART, tx_buf, tx_idx);
+
+        if (read < 254) {
+            // Not enough data to fill another packet.
+            break;
+        }
+    }
 }
 
 static void hmi_handle_read_events(const uint8_t *rx_buf, size_t len, bms_model_t *model) {

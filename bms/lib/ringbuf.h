@@ -190,8 +190,18 @@ static size_t ringbuf_peek(struct ringbuf *rb, uint8_t **buf)
     return 0;
 }
 
+static inline size_t
+ringbuf_free_space(struct ringbuf *rb)
+{
+	size_t write_idx = atomic_load_explicit(&rb->write_idx, memory_order_relaxed);
+	size_t read_idx = atomic_load_explicit(&rb->read_idx, memory_order_acquire);
+	size_t size = _ringbuf_size(rb, read_idx, write_idx);
 
+	if (size >= rb->capacity)
+		return 0;
 
+	return rb->capacity - size;
+}
 
 /*!
  * \brief Free allocated ring buffer.

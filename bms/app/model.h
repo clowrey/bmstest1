@@ -158,6 +158,9 @@ typedef struct bms_model {
     // these.
     int16_t inverter_min_voltage_limit_dV; // in 0.1V units
     int16_t inverter_max_voltage_limit_dV; // in 0.1V units
+    int16_t inverter_soc; // in 0.01% units
+    int16_t inverter_full_capacity_dAh;
+    int16_t inverter_remaining_capacity_dAh;
 
     // Current limits (the lower of these limits will be used)
     uint16_t temp_charge_current_limit_dA; // in 0.1A units

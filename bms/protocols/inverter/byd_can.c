@@ -228,43 +228,18 @@ static int send_150(bms_model_t *model) {
     msg.id = 0x150;
     msg.dlc = 8;
 
-    int16_t divisor = model->soc_scaling_max - model->soc_scaling_min;
-    if(divisor <= 0) {
-        divisor = 10000; // default to no scaling
-    }
-    
-    int32_t scaled_soc = (int32_t)(model->soc - model->soc_scaling_min) * 10000 / divisor;
-    if(scaled_soc > 10000) scaled_soc = 10000;
-    if(scaled_soc < 0) scaled_soc = 0;
-
-    if(model->discharge_current_limit_dA == 0) {
-        // Force to 0% to stop discharge
-        scaled_soc = 0;
-    } else if(model->charge_current_limit_dA == 0) {
-        // Force to 100% to stop charge
-        scaled_soc = 10000;
-    }
-
-    msg.data[0] = (scaled_soc >> 8) & 0xFF;
-    msg.data[1] = scaled_soc & 0xFF;
+    msg.data[0] = (model->inverter_soc >> 8) & 0xFF;
+    msg.data[1] = model->inverter_soc & 0xFF;
     //const uint16_t soh = 10000; // 100.00%
     const uint16_t soh = 9900; // 99.00%
     msg.data[2] = (soh >> 8) & 0xFF;
     msg.data[3] = soh & 0xFF;
 
-    // TODO - use floating point instead of the int64_t math here?
-    
-    // so if scaling min/max is 50 to 75, we're only using 25% of the working capacity
+    msg.data[4] = (model->inverter_remaining_capacity_dAh >> 8) & 0xFF;
+    msg.data[5] = model->inverter_remaining_capacity_dAh & 0xFF;
 
-    uint32_t scaled_working_capacity_mC = ((uint64_t)model->working_capacity_mC * divisor) / 10000;
-
-    const uint16_t remaining_capacity_dAh = ((uint64_t)scaled_working_capacity_mC * scaled_soc) / ((uint64_t)10000 * 3600 * 100);
-    msg.data[4] = (remaining_capacity_dAh >> 8) & 0xFF;
-    msg.data[5] = remaining_capacity_dAh & 0xFF;
-
-    const uint16_t full_capacity_dAh = (scaled_working_capacity_mC / (3600 * 100));
-    msg.data[6] = (full_capacity_dAh >> 8) & 0xFF;
-    msg.data[7] = full_capacity_dAh & 0xFF;
+    msg.data[6] = (model->inverter_full_capacity_dAh >> 8) & 0xFF;
+    msg.data[7] = model->inverter_full_capacity_dAh & 0xFF;
 
     // printf("CAN 150 sent SOC %d RemCap %d FullCap %d\n",
     //     scaled_soc, remaining_capacity_dAh, full_capacity_dAh);
