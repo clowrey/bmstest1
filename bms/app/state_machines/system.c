@@ -91,11 +91,14 @@ void system_sm_tick(bms_model_t *model) {
                 model->operating = true;
                 nvm_schedule_save_persistent_fast(model);
                 state_transition((sm_t*)system_sm, SYSTEM_STATE_OPERATING);
-            } else if(model->system_req == SYSTEM_REQUEST_CALIBRATE) {
+            } else if(model->system_req == SYSTEM_REQUEST_CALIBRATE_OFFLINE) {
                 model->system_req = SYSTEM_REQUEST_NULL;
                 model->contactor_req = CONTACTORS_REQUEST_CALIBRATE;
                 model->offline_calibration_req = OFFLINE_CALIBRATION_REQUEST_START;
                 state_transition((sm_t*)system_sm, SYSTEM_STATE_CALIBRATING);
+            } else if(model->system_req == SYSTEM_REQUEST_CALIBRATE_ONLINE) {
+                model->system_req = SYSTEM_REQUEST_NULL;
+                model->online_calibration_req = ONLINE_CALIBRATION_REQUEST_START;
             }
             break;
         case SYSTEM_STATE_OPERATING:
@@ -109,6 +112,9 @@ void system_sm_tick(bms_model_t *model) {
                 model->operating = false;
                 nvm_schedule_save_persistent_fast(model);
                 state_transition((sm_t*)system_sm, SYSTEM_STATE_INACTIVE);
+            } else if(model->system_req == SYSTEM_REQUEST_CALIBRATE_ONLINE) {
+                model->system_req = SYSTEM_REQUEST_NULL;
+                model->online_calibration_req = ONLINE_CALIBRATION_REQUEST_START;
             }
             break;
         case SYSTEM_STATE_FAULT:

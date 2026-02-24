@@ -149,7 +149,7 @@ void bms_tick() {
     //     }
     // } else if(c == 'C') {
     //     debug_printf("Requesting contactor calibration\n");
-    //     model.system_req = SYSTEM_REQUEST_CALIBRATE;
+    //     model.system_req = SYSTEM_REQUEST_CALIBRATE_OFFLINE;
     // }
 
     cli_tick();
@@ -197,6 +197,7 @@ void bms_tick() {
     system_sm_tick(&model);
     contactor_sm_tick(&model);
     offline_calibration_sm_tick(&model);
+    online_calibration_sm_tick(&model);
 
     timings[7] = time_us_32();
 

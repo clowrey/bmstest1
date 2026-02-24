@@ -2,6 +2,7 @@
 
 #include "sys/time/time.h"
 #include "app/calibration/offline.h"
+#include "app/calibration/online.h"
 #include "app/battery/balancing.h"
 #include "app/state_machines/contactors.h"
 #include "app/state_machines/system.h"
@@ -131,6 +132,9 @@ typedef struct bms_model {
 
     offline_calibration_sm_t offline_calibration_sm;
     offline_calibration_requests_t offline_calibration_req;
+
+    online_calibration_sm_t online_calibration_sm;
+    online_calibration_requests_t online_calibration_req;
 
     // BATTERY DATA
 

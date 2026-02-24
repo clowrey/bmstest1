@@ -169,7 +169,7 @@ static void test_calibrate_request_from_inactive(void **state) {
     m.system_sm.state = SYSTEM_STATE_INACTIVE;
     m.system_sm.last_transition_time = stored_millis64;
     
-    m.system_req = SYSTEM_REQUEST_CALIBRATE;
+    m.system_req = SYSTEM_REQUEST_CALIBRATE_OFFLINE;
     system_sm_tick(&m);
     
     assert_int_equal(m.system_sm.state, SYSTEM_STATE_CALIBRATING);
