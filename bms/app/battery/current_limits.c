@@ -1,8 +1,10 @@
 #include "config/limits.h"
 #include "app/model.h"
+#include "lib/aema.h"
 
 #include <stdint.h>
 #include <stdio.h>
+#include <math.h>
 
 uint16_t calculate_cell_voltage_charge_current_limit(bms_model_t *model) {
     uint16_t charge_limit = 0xFFFF;
@@ -40,21 +42,6 @@ uint16_t calculate_cell_voltage_charge_current_limit(bms_model_t *model) {
         // Below min cell voltage, limit charge current
         if(charge_limit > OVERDISCHARGE_CHARGE_CURRENT_LIMIT_dA) {
             charge_limit = OVERDISCHARGE_CHARGE_CURRENT_LIMIT_dA;
-        }
-    }
-
-    // Working range limits
-    int32_t guessed_ocv_uV = model->cell_voltage_max_mV*1000 - (model->current_mA * WORKING_LIMIT_INTERNAL_RESISTANCE_uR) / 1000;
-    if(guessed_ocv_uV > (get_cell_voltage_working_max_mV(model) * 1000)) {
-        charge_limit = 0;
-    } else {
-        int32_t delta_from_working_max_uV = (get_cell_voltage_working_max_mV(model) * 1000) - guessed_ocv_uV;
-        int32_t max_delta_uV = (CHARGE_MAX_CURRENT_dA * WORKING_LIMIT_INTERNAL_RESISTANCE_uR) / 10;
-        //printf("charge %ld %ld\n", delta_from_working_max_uV, max_delta_uV);
-        // Derate from max down to zero as guessed OCV approaches the working max
-        int32_t derate_dA = (delta_from_working_max_uV * CHARGE_MAX_CURRENT_dA) / max_delta_uV;
-        if(derate_dA >= 0 && derate_dA < charge_limit) {
-            charge_limit = derate_dA;
         }
     }
 
@@ -135,3 +122,84 @@ uint16_t calculate_temperature_discharge_current_limit(int16_t temperature_min_d
     return 0xFFFF;
 }
 
+float working_charge_internal_resistance_uR = WORKING_LIMIT_INTERNAL_RESISTANCE_uR;
+float working_charge_ceiling_dA = 30.0f; // 3A tethered ceiling
+float working_charge_slow_alpha = 0.0005f; // ~10s time constant for approaching new target when far away
+float working_charge_fast_alpha = 0.005f; // ~1s time constant for approaching new target when close
+float working_charge_slow_threshold_dA = 15.0f; // 0.1A difference or less is considered close
+float working_charge_fast_threshold_dA = 20.0f; // 1A difference
+
+
+uint16_t calculate_working_charge_current_limit(bms_model_t *model) {
+    // Current in dA (0.1A units)
+    float current_dA = (float)model->current_mA / 100.0f;
+    uint16_t working_max_mV = get_cell_voltage_working_max_mV(model);
+    int32_t target_ocv_uV = (int32_t)working_max_mV * 1000;
+
+    // 1. Estimate current cell OCV
+    // V_ocv = V_meas - (I_mA * R_uR)/1000 (uV)
+    int32_t guessed_ocv_uV = (int32_t)model->cell_voltage_max_mV * 1000 - (model->current_mA * WORKING_LIMIT_INTERNAL_RESISTANCE_uR) / 1000;
+
+    // 2. Calculate target limit to maintain OCV at working max
+    // I_limit_dA = (V_target - V_ocv) / R * 10.
+    float target_limit_dA = 0.0f;
+    if (guessed_ocv_uV < target_ocv_uV) {
+        int32_t delta_uV = target_ocv_uV - guessed_ocv_uV;
+        target_limit_dA = (float)delta_uV * 10.0f / WORKING_LIMIT_INTERNAL_RESISTANCE_uR;
+    } else {
+        target_limit_dA = 0.0f;
+    }
+
+    // Clip to absolute max charge
+    if (target_limit_dA > CHARGE_MAX_CURRENT_dA) {
+        target_limit_dA = (float)CHARGE_MAX_CURRENT_dA;
+    }
+
+    // 3. Apply Tapered Tethered Ceiling
+    // To prevent rapid ramp-up of current when far from the target limit, we tether the 
+    // allowed limit to the current being drawn. This tether is tightest when near 
+    // the working voltage limit to prevent overshoot.
+    // In the "near-max" region (within 20mV of working max), we use the fixed cushion.
+    // Between 20mV and 100mV below max, the cushion tapers up to the global limit.
+    float current_clamped_dA = current_dA > 0.0f ? current_dA : 0.0f;
+    float delta_to_working_max_mV = (float)working_max_mV - (float)model->cell_voltage_max_mV;
+    float cushion_dA = (float)CHARGE_MAX_CURRENT_dA; // Default to NO tether
+
+    if (delta_to_working_max_mV <= 10.0f) {
+        // Flat cushion within 10mV of working max
+        cushion_dA = working_charge_ceiling_dA;
+    } else if (delta_to_working_max_mV < 50.0f) {
+        // Linear taper to CHARGE_MAX_CURRENT_dA (at 50mV delta)
+        float taper_factor = (delta_to_working_max_mV - 10.0f) / (50.0f - 10.0f);
+        cushion_dA = working_charge_ceiling_dA + taper_factor * ((float)CHARGE_MAX_CURRENT_dA - working_charge_ceiling_dA);
+    }
+
+    float tethered_ceiling_dA = current_clamped_dA + cushion_dA;
+    if (target_limit_dA > tethered_ceiling_dA) {
+        target_limit_dA = tethered_ceiling_dA;
+    }
+
+    if (target_limit_dA < 0.0f) {
+        target_limit_dA = 0.0f;
+    }
+
+    // 4. Update smoothed value via AEMA
+    // Use low smoothing (alpha_min) when close to the target, high smoothing (alpha_max) 
+    // for larger deviations.
+    // dA Units: alpha_min=0.01, alpha_max=0.2, noise_threshold=1 dA (0.1A), change_threshold=10 dA (1A)
+
+
+    // At 50 samples/sec, a=0.002 gives a time constant of ~10s
+
+    aema_update(
+        &model->working_charge_current_limit_filtered_dA,
+        NULL,
+        target_limit_dA,
+        working_charge_slow_alpha,
+        working_charge_fast_alpha,
+        working_charge_slow_threshold_dA,
+        working_charge_fast_threshold_dA
+    );
+
+    return (uint16_t)model->working_charge_current_limit_filtered_dA;
+}

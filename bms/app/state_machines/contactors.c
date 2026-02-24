@@ -24,7 +24,7 @@
 // Min voltage across a contactor to consider it open
 #define CONTACTORS_OPEN_VOLTAGE_THRESHOLD_MV 3000 // was 5000
 // Pos contactor has wider tolerances due to the way it is measured
-#define CONTACTORS_POS_CLOSED_VOLTAGE_THRESHOLD_MV 5000
+#define CONTACTORS_POS_CLOSED_VOLTAGE_THRESHOLD_MV 7000
 #define CONTACTORS_POS_OPEN_VOLTAGE_THRESHOLD_MV 10000
 
 

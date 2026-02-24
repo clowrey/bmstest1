@@ -1,6 +1,7 @@
 #pragma once
 
 #include <math.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 typedef struct bms_model bms_model_t;
@@ -23,18 +24,28 @@ typedef struct {
     float R0;      // Ohmic Resistance
     float R1;      // Polarization Resistance
     float C1;      // Polarization Capacitance
-} EKF;
+
+    // --- Output Scaling Cache ---
+    float prev_min;
+    float prev_max;
+    float prev_soc_min;
+    float prev_soc_mul;
+
+    bool initialized;
+} ekf_t;
 
 // Initialize the filter
-void ekf_init(EKF *ekf, float initial_soc, float initial_capacity);
+void ekf_init(ekf_t *ekf, float initial_soc, float initial_capacity);
 
 // Run one iteration of the filter
 // current_amps: Positive = Discharge, Negative = Charge
 // voltage_measured: Terminal voltage
-void ekf_step(EKF *ekf, float charge_Ah, float current_amps, float voltage_measured);
+void ekf_step(ekf_t *ekf, float charge_Ah, float current_amps, float voltage_measured);
 
 // Helper to get current SOC
-float ekf_get_soc(EKF *ekf);
+float ekf_get_soc(ekf_t *ekf);
 void ekf_set_soc(bms_model_t *model, uint16_t soc);
 
 uint32_t ekf_tick(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV);
+
+void ekf_print_state(ekf_t *ekf);

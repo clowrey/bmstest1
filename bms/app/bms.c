@@ -14,6 +14,7 @@
 #include "state_machines/contactors.h"
 #include "battery/balancing.h"
 #include "battery/safety_checks.h"
+#include "protocols/cli/cli.h"
 #include "protocols/hmi_serial/hmi_serial.h"
 #include "protocols/internal_serial/internal_serial.h"
 #include "protocols/inverter/inverter.h"
@@ -130,26 +131,28 @@ void bms_tick() {
 
     // For debugging, prepare for restart (zero current) if 'R' received on USB stdio
 
-    int c = stdio_getchar_timeout_us(0);
-    if(c != PICO_ERROR_TIMEOUT) {
-        debug_printf("Received char '%c' on USB stdio\n", c);
-    }
-    if(c == 'R') {
-        debug_printf("Preparing to restart due to 'R' on USB stdio\n");
-        count_bms_event(ERR_RESTARTING, 1);
-    } else if(c == 'T') {
-        // Toggle system operational state
-        if(model.system_sm.state == SYSTEM_STATE_INACTIVE) {
-            debug_printf("Requesting operation mode\n");
-            model.system_req = SYSTEM_REQUEST_RUN;
-        } else if(model.system_sm.state == SYSTEM_STATE_OPERATING) {
-            debug_printf("Requesting inactive mode\n");
-            model.system_req = SYSTEM_REQUEST_STOP;
-        }
-    } else if(c == 'C') {
-        debug_printf("Requesting contactor calibration\n");
-        model.system_req = SYSTEM_REQUEST_CALIBRATE;
-    }
+    // int c = stdio_getchar_timeout_us(0);
+    // if(c != PICO_ERROR_TIMEOUT) {
+    //     debug_printf("Received char '%c' on USB stdio\n", c);
+    // }
+    // if(c == 'R') {
+    //     debug_printf("Preparing to restart due to 'R' on USB stdio\n");
+    //     count_bms_event(ERR_RESTARTING, 1);
+    // } else if(c == 'T') {
+    //     // Toggle system operational state
+    //     if(model.system_sm.state == SYSTEM_STATE_INACTIVE) {
+    //         debug_printf("Requesting operation mode\n");
+    //         model.system_req = SYSTEM_REQUEST_RUN;
+    //     } else if(model.system_sm.state == SYSTEM_STATE_OPERATING) {
+    //         debug_printf("Requesting inactive mode\n");
+    //         model.system_req = SYSTEM_REQUEST_STOP;
+    //     }
+    // } else if(c == 'C') {
+    //     debug_printf("Requesting contactor calibration\n");
+    //     model.system_req = SYSTEM_REQUEST_CALIBRATE;
+    // }
+
+    cli_tick();
 
     timings[3] = time_us_32();
 
@@ -235,7 +238,7 @@ void bms_tick() {
         // every 64 ticks, output stuff
         //isosnoop_print_buffer();
         print_bms_events();
-
+        
         debug_printf("Temp: %3ld dC | 3V3: %4ld mV | 5V: %4ld mV | 12V: %5ld mV | CtrV: %5ld mV\n",
             get_temperature_c_times10(),
             model.supply_voltage_3V3_mV,
@@ -263,14 +266,26 @@ void bms_tick() {
             model.soc_basic_count / 100.0f,
             model.soc_fancy_count / 100.0f
         );
-        debug_printf("CV: %2.1f/%2.1f A | T: %2.1f/%2.1f A | Inv. min: %2.1f V | Inv. max: %2.1f V\n\n",
+        debug_printf("CV: %2.1f/%2.1f A | W: %2.1f A | T: %2.1f/%2.1f A | Inv. min: %2.1f V | Inv. max: %2.1f V\n\n",
             model.cell_voltage_charge_current_limit_dA / 10.0f,
             model.cell_voltage_discharge_current_limit_dA / 10.0f,
+            model.working_charge_current_limit_dA / 10.0f,
             model.temp_charge_current_limit_dA / 10.0f,
             model.temp_discharge_current_limit_dA / 10.0f,
             model.inverter_min_voltage_limit_dV / 10.0f,
             model.inverter_max_voltage_limit_dV / 10.0f
         );
+
+        /*
+        char ascii[127-33+1];
+        for(int i=33; i<=126; i++) {
+            ascii[i-33] = (char)i;
+        }
+        for(int i=0;i<30;i++) {
+            debug_printf("%.*s\n", 126-33+1, ascii);
+        }
+        */
+
         // printf("DUART0 RX: %lu, crcfail %lu | DUART1 RX: %lu, crcfail %lu\n",
         //     debug_counters.uart0_packets_received, debug_counters.uart0_crc_errors,
         //     debug_counters.uart1_packets_received, debug_counters.uart1_crc_errors

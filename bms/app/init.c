@@ -14,6 +14,7 @@
 #include "model.h"
 #include "sys/logging/logging.h"
 #include "pico/stdlib.h"
+#include <math.h>
 
 ina228_t ina228_dev = {0};
 ads1115_t ads1115_dev = {0};
@@ -116,6 +117,8 @@ static void init_model() {
     // voltages, as it will never exit slow mode since voltages won't update
     // until we exit slow mode.
     //model.balancing_active = true;
+
+    model.working_charge_current_limit_filtered_dA = NAN;
 }
 
 void bms_init() {

@@ -33,8 +33,6 @@ add_executable(bms
     bms/drivers/sensors/ina228.c
     bms/drivers/sensors/ads1115.c
     bms/drivers/comms/duart.c
-    bms/protocols/hmi_serial/hmi_serial.c
-    bms/protocols/internal_serial/internal_serial.c
     bms/drivers/chip/nvm.c
     bms/drivers/chip/i2c.c
     bms/drivers/chip/pwm.c
@@ -53,6 +51,9 @@ add_executable(bms
     bms/app/monitoring/counters.c
     bms/sys/events/events.c
     bms/sys/logging/logging.c
+    bms/protocols/cli/cli.c
+    bms/protocols/hmi_serial/hmi_serial.c
+    bms/protocols/internal_serial/internal_serial.c
     bms/protocols/inverter/can.c
     bms/protocols/inverter/byd_can.c
     bms/drivers/isospi/isospi_master.c

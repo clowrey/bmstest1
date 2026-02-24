@@ -206,30 +206,6 @@ float ocv_to_soc(float ocv) {
     return 1.0f; // Should not reach here
 }
 
-static float prev_min;
-static float prev_max;
-static float prev_soc_min;
-static float prev_soc_mul;
-
-float ocv_to_soc_scaled(float ocv, float min_voltage, float max_voltage) {
-    if (ocv <= min_voltage) return 0.0f;
-    if (ocv >= max_voltage) return 1.0f;
-
-    if (min_voltage != prev_min || max_voltage != prev_max) {
-        // Cache the scaling factors
-        prev_soc_min = ocv_to_soc(min_voltage);
-        float soc_max = ocv_to_soc(max_voltage);
-        prev_soc_mul = 1.0f / (soc_max - prev_soc_min);
-        prev_min = min_voltage;
-        prev_max = max_voltage;
-    }
-
-    float soc = ocv_to_soc(ocv);
-    return (soc - prev_soc_min) * prev_soc_mul;
-}
-
-
-
 // --- Helper: OCV Curve ---
 // Returns Open Circuit Voltage for a given SOC
 static float soc_to_ocv(float soc) {
@@ -246,24 +222,6 @@ static float soc_to_ocv(float soc) {
     return ocv_curve[idx_lower] * (1.0f - frac) + ocv_curve[idx_upper] * frac;
 }
 
-static float soc_to_ocv_scaled(float soc, float min_voltage, float max_voltage) {
-    if (soc < 0.0f) soc = 0.0f;
-    if (soc > 1.0f) soc = 1.0f;
-
-    if(min_voltage != prev_min || max_voltage != prev_max) {
-        // Cache the scaling factors
-        prev_soc_min = ocv_to_soc(min_voltage);
-        float soc_max = ocv_to_soc(max_voltage);
-        prev_soc_mul = 1.0f / (soc_max - prev_soc_min);
-        prev_min = min_voltage;
-        prev_max = max_voltage;
-    }
-
-    float soc_unscaled = soc / prev_soc_mul + prev_soc_min;
-    return soc_to_ocv(soc_unscaled);
-}
-
-
 // --- Helper: OCV Derivative ---
 // Returns d(OCV)/d(SOC)
 static float soc_to_ocv_derivative(float soc) {
@@ -276,7 +234,7 @@ static float soc_to_ocv_derivative(float soc) {
     return ocv_curve_diff[idx_lower];
 }
 
-void ekf_init(EKF *ekf, float initial_soc, float initial_capacity) {
+void ekf_init(ekf_t *ekf, float initial_soc, float initial_capacity) {
     // Initial States
     ekf->x[0] = (1.0f - initial_soc) * initial_capacity; // Ah_used
     ekf->x[1] = 0.0f;               // V_c1 starts relaxed
@@ -302,9 +260,20 @@ void ekf_init(EKF *ekf, float initial_soc, float initial_capacity) {
     ekf->R0 = 0.02f;
     ekf->R1 = 0.03f;
     ekf->C1 = 2000.0f;
+
+    // Bluetesla fitted params (badly)
+    ekf->R0 = 0.00076f;
+    ekf->R1 = 0.00054f;
+    ekf->C1 = 150000.0f;
+
+    // Reset scaling cache
+    ekf->prev_min = 0.0f;
+    ekf->prev_max = 0.0f;
+
+    ekf->initialized = true;
 }
 
-void ekf_step(EKF *ekf, float charge_Ah, float current_amps, float voltage_measured) {
+void ekf_step(ekf_t *ekf, float charge_Ah, float current_amps, float voltage_measured) {
     // -----------------------------------------
     // 1. PREDICTION STEP
     // -----------------------------------------
@@ -462,92 +431,83 @@ void ekf_step(EKF *ekf, float charge_Ah, float current_amps, float voltage_measu
     }
 }
 
-float ekf_get_soc(EKF *ekf) {
+float ekf_get_soc(ekf_t *ekf) {
     float ah = ekf->x[0];
     float cap = ekf->x[2];
     if (cap < 0.0001f) return 0.0f; // Prevent div by zero
     return 1.0f - (ah / cap);
 }
 
-static bool initialized = false;
-static EKF ekf_instance;
+static void ekf_auto_init(bms_model_t *model, float voltage_volts) {
+    if (model->ekf.initialized || voltage_volts <= 0.0f) {
+        return;
+    }
+
+    float initial_capacity_ah = (float)model->nameplate_capacity_mC / 3600000.0f; // in Ah
+    float estimated_soc = ocv_to_soc(voltage_volts);
+    float initial_soc = estimated_soc;
+
+    // TODO: is zero charge_used_Ah a valid indicator of uninitialized?
+    if (model->charge_used_Ah != 0.0f && model->charge_used_Ah < initial_capacity_ah) {
+        // Use stored charge_used if it seems realistic (within 20% of voltage-based estimate)
+        float stored_soc = 1.0f - (model->charge_used_Ah / initial_capacity_ah);
+        if (fabsf(stored_soc - estimated_soc) < 0.2f) {
+            initial_soc = stored_soc;
+        }
+    }
+
+    info_printf("EKF Initial SOC: %2.2f %% (Voltage: %2.3f V, Charge Used: %f Ah)\n",
+                initial_soc * 100.0f, voltage_volts, model->charge_used_Ah);
+    ekf_init(&model->ekf, initial_soc, initial_capacity_ah);
+}
+
+static void ekf_update_limits(bms_model_t *model) {
+    uint16_t min_mV = get_cell_voltage_working_min_mV(model);
+    uint16_t max_mV = get_cell_voltage_working_max_mV(model);
+
+    // Skip update if limits haven't changed
+    if ((float)min_mV == model->ekf.prev_min && (float)max_mV == model->ekf.prev_max) {
+        return;
+    }
+
+    // Cache the scaling factors
+    model->ekf.prev_soc_min = ocv_to_soc((float)min_mV / 1000.0f);
+    float soc_max = ocv_to_soc((float)max_mV / 1000.0f);
+    model->ekf.prev_soc_mul = 1.0f / (soc_max - model->ekf.prev_soc_min);
+    model->ekf.prev_min = (float)min_mV;
+    model->ekf.prev_max = (float)max_mV;
+
+    info_printf("EKF Scaling: %d-%d mV (SOC: %2.2f-%2.2f %%, Mul: %2.3f)\n",
+                min_mV, max_mV, model->ekf.prev_soc_min * 100.0f, soc_max * 100.0f, model->ekf.prev_soc_mul);
+
+    // TODO - Move this capacity calculation somewhere more appropriate
+    model->working_capacity_mC = (soc_max - model->ekf.prev_soc_min) * (float)model->nameplate_capacity_mC;
+}
 
 uint32_t ekf_tick(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV) {
-    float charge_Ah = (float)charge_mC / 3600000.0f; // Convert mC to Ah
-    float current_amps = (float)current_mA / 1000.0f;      // Convert mA to A
-    float voltage_volts = (float)voltage_mV / 1000.0f;     // Convert mV to V
+    float charge_Ah = (float)charge_mC / 3600000.0f;
+    float current_amps = (float)current_mA / 1000.0f;
+    float voltage_volts = (float)voltage_mV / 1000.0f;
 
-    // TODO - sequence this startup better so it waits for actual values
-    if (!initialized && voltage_mV > 0.0f) {
-        float initial_capacity_ah = model.nameplate_capacity_mC / 3600000; // in Ah
+    ekf_auto_init(&model, voltage_volts);
 
-        float estimated_soc = 1.0;
-        for(int i=0; i<10; i++) {
-            estimated_soc += (voltage_volts - soc_to_ocv(estimated_soc)); // Simple convergence
-        }
-
-        float initial_soc = 1.0f;
-        // TODO: is zero charge_used_Ah a valid indicator of uninitialized?
-        if(model.charge_used_Ah != 0.0f && model.charge_used_Ah < initial_capacity_ah) {
-            // Use stored charge_used if available
-            initial_soc = 1.0f - (model.charge_used_Ah / initial_capacity_ah);
-            if(fabsf(initial_soc - estimated_soc) > 0.2f) {
-                // Unrealistic, use voltage-based estimate instead
-                initial_soc = estimated_soc;
-            }
-        } else {
-            initial_soc = estimated_soc;
-        }
-
-        info_printf("EKF Initial SOC Estimate: %2.2f %% | Voltage: %2.3f V | Charge Used: %f Ah\n",
-              initial_soc * 100.0f, voltage_volts, model.charge_used_Ah);
-        ekf_init(&ekf_instance, initial_soc, initial_capacity_ah);
-
-        initialized = true;
-    } else if(!initialized) {
-        return 0xFFFFFFFF; // Not initialized yet
+    if (!model.ekf.initialized) {
+        return 0xFFFFFFFF;
     }
 
-    // if(timestep() > 300) {
-    //     current_amps -= 1.0f;
-    //     charge_Ah -= 1.0f / 3600.0f;
-    // }
+    ekf_step(&model.ekf, charge_Ah, current_amps, voltage_volts);
 
+    float soc = ekf_get_soc(&model.ekf);
 
-    ekf_step(&ekf_instance, charge_Ah, current_amps, voltage_volts);
+    ekf_update_limits(&model);
 
-    float soc = ekf_get_soc(&ekf_instance);
-
-    uint16_t cell_voltage_working_min_mV = get_cell_voltage_working_min_mV(&model);
-    uint16_t cell_voltage_working_max_mV = get_cell_voltage_working_max_mV(&model);
-
-    // Scale soc according to voltage limits
-    if(cell_voltage_working_min_mV != prev_min || cell_voltage_working_max_mV != prev_max) {
-        // Cache the scaling factors
-        prev_soc_min = ocv_to_soc(cell_voltage_working_min_mV/1000.0f);
-        float soc_max = ocv_to_soc(cell_voltage_working_max_mV/1000.0f);
-        prev_soc_mul = 1.0f / (soc_max - prev_soc_min);
-        prev_min = cell_voltage_working_min_mV;
-        prev_max = cell_voltage_working_max_mV;
-
-        info_printf("EKF OCV Scaling Updated: Min V=%d mV (SOC=%f), Max V=%d mV (SOC=%f), Mul=%f\n",
-               cell_voltage_working_min_mV, prev_soc_min,
-               cell_voltage_working_max_mV, soc_max,
-               prev_soc_mul);
-
-        // TODO - put this somewhere else
-        model.working_capacity_mC = (soc_max - prev_soc_min) * model.nameplate_capacity_mC;
-        info_printf("EKF Working Capacity Updated: %d mC\n", model.working_capacity_mC);
-    }
-    soc = (soc - prev_soc_min) * prev_soc_mul;
+    // Apply scaling
+    soc = (soc - model.ekf.prev_soc_min) * model.ekf.prev_soc_mul;
 
     if (soc < 0.0f) soc = 0.0f;
     if (soc > 1.0f) soc = 1.0f;
 
-    // TODO: Should we persist the entire EKF?
-    model.charge_used_Ah = ekf_instance.x[0];
-    //printf("EKF Update: SOC=%2.2f %% | Ah Used: %f Ah | Capacity: %f Ah\n",
-    //       soc * 100.0f, ekf_instance.x[0], ekf_instance.x[2]);
+    model.charge_used_Ah = model.ekf.x[0];
 
     return (uint32_t)(soc * 10000.0f); // Return SOC in 0.01% units
 }
@@ -556,36 +516,26 @@ void ekf_set_soc(bms_model_t *model, uint16_t soc) {
     // soc is in 0.01% units (0-10000)
     float soc_rel = (float)soc / 10000.0f;
 
-    uint16_t cell_voltage_working_min_mV = get_cell_voltage_working_min_mV(model);
-    uint16_t cell_voltage_working_max_mV = get_cell_voltage_working_max_mV(model);
+    ekf_update_limits(model);
 
-    // Ensure scaling factors are up to date
-    float min_v = (float)cell_voltage_working_min_mV / 1000.0f;
-    float max_v = (float)cell_voltage_working_max_mV / 1000.0f;
+    // Convert relative SOC back to absolute SOC
+    float soc_abs = (soc_rel / model->ekf.prev_soc_mul) + model->ekf.prev_soc_min;
 
-    if (min_v != prev_min || max_v != prev_max) {
-        prev_soc_min = ocv_to_soc(min_v);
-        float soc_max = ocv_to_soc(max_v);
-        prev_soc_mul = 1.0f / (soc_max - prev_soc_min);
-        prev_min = min_v;
-        prev_max = max_v;
-    }
-
-    // Convert relative SOC to absolute SOC
-    float soc_abs = (soc_rel / prev_soc_mul) + prev_soc_min;
-
-    if (!initialized) {
+    if (!model->ekf.initialized) {
         float initial_capacity_ah = (float)model->nameplate_capacity_mC / 3600000.0f;
-        ekf_init(&ekf_instance, soc_abs, initial_capacity_ah);
-        initialized = true;
+        ekf_init(&model->ekf, soc_abs, initial_capacity_ah);
     } else {
-        // Update EKF state: Ah_used = (1 - soc_abs) * capacity
-        ekf_instance.x[0] = (1.0f - soc_abs) * ekf_instance.x[2];
+        model->ekf.x[0] = (1.0f - soc_abs) * model->ekf.x[2];
     }
     
-    // Update model as well
-    model->charge_used_Ah = ekf_instance.x[0];
+    model->charge_used_Ah = model->ekf.x[0];
     
-    info_printf("EKF SOC Manually Set: %u (rel=%2.2f%%, abs=%2.2f%%) | Ah Used: %f Ah | Capacity: %f Ah\n", 
-           soc, soc_rel * 100.0f, soc_abs * 100.0f, ekf_instance.x[0], ekf_instance.x[2]);
+    info_printf("EKF SOC Manual Set: %u (rel=%2.2f%%, abs=%2.2f%%, Ah Used: %f)\n", 
+                soc, soc_rel * 100.0f, soc_abs * 100.0f, model->ekf.x[0]);
+}
+
+void ekf_print_state(ekf_t *ekf) {
+    float soc = ekf_get_soc(ekf);
+    printf("EKF State: Ah_used=%.4f Ah, V_c1=%.4f V, Capacity=%.2f Ah, SOC=%.2f%%\n",
+           ekf->x[0], ekf->x[1], ekf->x[2], soc * 100.0f);
 }

@@ -5,6 +5,7 @@
 #include "app/battery/balancing.h"
 #include "app/state_machines/contactors.h"
 #include "app/state_machines/system.h"
+#include "app/estimators/ekf.h"
 #include "config/limits.h"
 
 #include <stdint.h>
@@ -136,6 +137,8 @@ typedef struct bms_model {
     int16_t module_temperatures_dC[8];
     millis_t module_temperatures_millis;
 
+    ekf_t ekf;
+
     // Aggregated cell voltage data
     int16_t cell_voltage_min_mV;
     int16_t cell_voltage_max_mV;
@@ -169,6 +172,8 @@ typedef struct bms_model {
     uint16_t pack_voltage_discharge_current_limit_dA; // in 0.1A units
     uint16_t cell_voltage_charge_current_limit_dA; // in 0.1A units
     uint16_t cell_voltage_discharge_current_limit_dA; // in 0.1A units
+    uint16_t working_charge_current_limit_dA; // in 0.1A units
+    float working_charge_current_limit_filtered_dA;
     // The calculated final current limits
     uint16_t charge_current_limit_dA; // in 0.1A units
     uint16_t discharge_current_limit_dA; // in 0.1A units

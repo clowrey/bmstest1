@@ -56,7 +56,7 @@
 #elif CHEMISTRY == NMC
     // Hard voltage limits, beyond which the battery will be cut off
     #define CELL_VOLTAGE_HARD_MIN_mV 2700
-    #define CELL_VOLTAGE_HARD_MAX_mV 4200
+    #define CELL_VOLTAGE_HARD_MAX_mV 4250
     // Soft voltage limits, beyond which the battery will only allow a low-current
     // restoration charge/discharge.
     #define DEFAULT_CELL_VOLTAGE_SOFT_MIN_mV 3000
@@ -132,7 +132,7 @@
 
 
 // A deliberate overestimate of internal resistance of an individual cell, for working current limits
-#define WORKING_LIMIT_INTERNAL_RESISTANCE_uR 100
+#define WORKING_LIMIT_INTERNAL_RESISTANCE_uR 50
 
 
 // Options: 
@@ -147,7 +147,7 @@
 // Max discrepancy between BMB cell voltages and measured terminal voltage
 // (which should be calibrated away at zero current). If in slow mode there
 // could be a considerable time delay between cellvoltage and pack samples.
-#define VOLTAGE_MISMATCH_THRESHOLD_mV 10000
+#define VOLTAGE_MISMATCH_THRESHOLD_mV 20000
 
 #define DEFAULT_MINIMUM_BALANCING_VOLTAGE_mV 3770
 //3830
@@ -162,8 +162,8 @@
 // TODO - do voltage-based-SoC-linearisation at the extremes (should be
 // reasonably accurate) and limit by SoC
 
-#define CHARGE_VOLTAGE_DERATE_dA_PER_mV 2
-#define DISCHARGE_VOLTAGE_DERATE_dA_PER_mV 2
+#define CHARGE_VOLTAGE_DERATE_dA_PER_mV 5
+#define DISCHARGE_VOLTAGE_DERATE_dA_PER_mV 5
 
 // Current limits to apply in the soft-limit region
 #define OVERCHARGE_DISCHARGE_CURRENT_LIMIT_dA 50 // in 0.1A units

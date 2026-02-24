@@ -56,6 +56,8 @@ static void model_calculate_cell_current_limits(bms_model_t *model) {
     model->cell_voltage_discharge_current_limit_dA = calculate_cell_voltage_discharge_current_limit(
         model
     );
+    
+    model->working_charge_current_limit_dA = calculate_working_charge_current_limit(model);
 }
 
 static void model_apply_current_limits(bms_model_t *model) {
@@ -90,6 +92,10 @@ static void model_apply_current_limits(bms_model_t *model) {
     }
     if(discharge_limit > model->cell_voltage_discharge_current_limit_dA) {
         discharge_limit = model->cell_voltage_discharge_current_limit_dA;
+    }
+
+    if(charge_limit > model->working_charge_current_limit_dA) {
+        charge_limit = model->working_charge_current_limit_dA;
     }
 
     // User limits
