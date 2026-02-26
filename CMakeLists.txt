@@ -44,8 +44,7 @@ add_executable(bms
     bms/app/battery/current_limits.c
     bms/app/battery/safety_checks.c
     bms/app/calibration/common.c
-    bms/app/calibration/offline.c
-    bms/app/calibration/online.c
+    bms/app/calibration/calibration.c
     bms/app/estimators/basic_count.c
     bms/app/estimators/ekf.c
     bms/app/estimators/fancy_count.c

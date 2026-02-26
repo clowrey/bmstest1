@@ -80,8 +80,11 @@ static void cli_handle_command(const char *cmd) {
             debug_printf("Invalid set command format. Use: set <name> <val>\n");
         }
     } else if(strcmp(cmd, "calibrate") == 0) {
-        debug_printf("Requesting contactor calibration (offline)...\n");
-        model.system_req = SYSTEM_REQUEST_CALIBRATE_OFFLINE;
+        debug_printf("Requesting contactor calibration (offline long)...\n");
+        model.system_req = SYSTEM_REQUEST_CALIBRATE_OFFLINE_LONG;
+    } else if(strcmp(cmd, "calibrate_short") == 0) {
+        debug_printf("Requesting contactor calibration (offline short)...\n");
+        model.system_req = SYSTEM_REQUEST_CALIBRATE_OFFLINE_SHORT;
     } else if(strcmp(cmd, "calibrate_online") == 0) {
         debug_printf("Requesting online calibration...\n");
         model.system_req = SYSTEM_REQUEST_CALIBRATE_ONLINE;

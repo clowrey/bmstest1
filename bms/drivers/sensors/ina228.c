@@ -6,6 +6,7 @@
 #include "app/model.h"
 #include "drivers/chip/i2c.h"
 #include "sys/logging/logging.h"
+#include "lib/aema.h"
 
 #include "hardware/irq.h"
 #include "hardware/i2c.h"
@@ -296,6 +297,16 @@ bool ina228_read_current_async(ina228_t *dev) {
     int32_t current_corrected = current_raw - model.current_offset;
     model.current_mA = div_round_closest(current_corrected, 4);
     model.current_millis = millis();
+
+    aema_update(
+        &model.current_filtered_mA, 
+        &model.current_deviation, 
+        model.current_mA, 
+        0.005f, // slow alpha
+        0.5f,  // fast alpha
+        8.0f,   // slow threshold
+        20.0f   // fast threshold
+    );
     
     // Update charge
     model.charge_raw += (int64_t)current_corrected;

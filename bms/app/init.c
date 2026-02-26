@@ -85,7 +85,7 @@ static void init_model() {
     sm_init((sm_t*)&model.system_sm, "system");
     sm_init((sm_t*)&model.contactor_sm, "contactors");
     sm_init((sm_t*)&model.balancing_sm, "balancing");
-    sm_init((sm_t*)&model.offline_calibration_sm, "offline_calibration");
+    sm_init((sm_t*)&model.calibration_sm, "calibration");
 
     // load calibration data from NVM
     // if(nvm_load_calibration(&model)) {
@@ -111,13 +111,7 @@ static void init_model() {
 
     model.nameplate_capacity_mC = NAMEPLATE_CAPACITY_AH * 3600 * 1000; // in mC
 
-    // Pretend balancing is active at startup to avoid trusting
-    // cell voltages until we've definitely turned balancing off.
-    // Disabled, works badly if slow mode is entered at startup with low cell
-    // voltages, as it will never exit slow mode since voltages won't update
-    // until we exit slow mode.
-    //model.balancing_active = true;
-
+    model.current_filtered_mA = NAN;
     model.working_charge_current_limit_filtered_dA = NAN;
 }
 

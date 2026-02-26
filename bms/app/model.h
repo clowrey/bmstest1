@@ -1,8 +1,7 @@
 #pragma once
 
 #include "sys/time/time.h"
-#include "app/calibration/offline.h"
-#include "app/calibration/online.h"
+#include "app/calibration/calibration.h"
 #include "app/battery/balancing.h"
 #include "app/state_machines/contactors.h"
 #include "app/state_machines/system.h"
@@ -77,6 +76,9 @@ typedef struct bms_model {
     // Positive current means battery is charging
     int32_t current_mA;
     millis_t current_millis;
+    float current_filtered_mA;
+    float current_deviation;
+
     int64_t charge_raw;
     millis_t charge_millis;
 
@@ -130,11 +132,8 @@ typedef struct bms_model {
 
     balancing_sm_t balancing_sm;
 
-    offline_calibration_sm_t offline_calibration_sm;
-    offline_calibration_requests_t offline_calibration_req;
-
-    online_calibration_sm_t online_calibration_sm;
-    online_calibration_requests_t online_calibration_req;
+    calibration_sm_t calibration_sm;
+    calibration_requests_t calibration_req;
 
     // BATTERY DATA
 

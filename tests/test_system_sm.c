@@ -169,7 +169,7 @@ static void test_calibrate_request_from_inactive(void **state) {
     m.system_sm.state = SYSTEM_STATE_INACTIVE;
     m.system_sm.last_transition_time = stored_millis64;
     
-    m.system_req = SYSTEM_REQUEST_CALIBRATE_OFFLINE;
+    m.system_req = SYSTEM_REQUEST_CALIBRATE_OFFLINE_LONG;
     system_sm_tick(&m);
     
     assert_int_equal(m.system_sm.state, SYSTEM_STATE_CALIBRATING);
@@ -271,7 +271,7 @@ static void test_calibration_completes_returns_to_inactive(void **state) {
     m.system_sm.last_transition_time = stored_millis64;
     
     // Calibration completes (goes to idle state)
-    m.offline_calibration_sm.state = OFFLINE_CALIBRATION_STATE_IDLE;
+    m.calibration_sm.state = CALIBRATION_STATE_IDLE;
     
     system_sm_tick(&m);
     
@@ -287,7 +287,7 @@ static void test_calibration_timeout_causes_fault(void **state) {
     m.system_sm.last_transition_time = stored_millis64;
     
     // Calibration never completes
-    m.offline_calibration_sm.state = OFFLINE_CALIBRATION_STATE_MEASURING;
+    m.calibration_sm.state = CALIBRATION_STATE_MEASURING;
     
     // Wait past timeout (120s)
     advance_time(121000);

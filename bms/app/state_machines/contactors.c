@@ -24,7 +24,7 @@
 // Min voltage across a contactor to consider it open
 #define CONTACTORS_OPEN_VOLTAGE_THRESHOLD_MV 3000 // was 5000
 // Pos contactor has wider tolerances due to the way it is measured
-#define CONTACTORS_POS_CLOSED_VOLTAGE_THRESHOLD_MV 7000
+#define CONTACTORS_POS_CLOSED_VOLTAGE_THRESHOLD_MV 5000
 #define CONTACTORS_POS_OPEN_VOLTAGE_THRESHOLD_MV 10000
 
 
@@ -33,10 +33,19 @@
 
 // Precharge constants
 
+// It is difficult to get a good reading across the positive contactor due to
+// the ADC arrangement, so we have to tolerate a wider precharge voltage
+// differential than we'd like.
+
+// Max steady-state PTC current (TDK C1451 in 2S3P) will be at 450mA at 16V.
+
+// Thus we can close with a current < 225mA and voltage < 16V, since hot PTCs
+// would result in at least 25V or higher.
+
 // Largest allowable pack current to consider precharge successful
-#define PRECHARGE_SUCCESS_MAX_MA 1000
-// Maximum voltage difference to consider precharge successful
-#define PRECHARGE_SUCCESS_MAX_MV 3000
+#define PRECHARGE_SUCCESS_MAX_MA 225
+// Maximum voltage difference to consider precharge successful (allowing for drift)
+#define PRECHARGE_SUCCESS_MAX_MV 16000
 
 // Contactor opening constants
 
@@ -135,10 +144,10 @@ bool check_precharge_successful(bms_model_t *model, bool log_errors) {
 
     // Is current still too high?
     if(!check_or_confirm(
-        abs_int32(model->current_mA) <= PRECHARGE_SUCCESS_MAX_MA,
+        fabsf(model->current_filtered_mA - model->contactor_sm.pre_close_current_mA) <= PRECHARGE_SUCCESS_MAX_MA,
         log_errors,
         ERR_CONTACTOR_PRECHARGE_CURRENT_TOO_HIGH,
-        model->current_mA
+        (int32_t)(model->current_filtered_mA - model->contactor_sm.pre_close_current_mA)
     )) {
         return false;
     }
@@ -209,7 +218,10 @@ bool confirm_contactor_pos_seems_closed(bms_model_t *model) {
 
     float voltage = fabsf(model->pos_contactor_voltage);
     return confirm(
-        voltage <= (CONTACTORS_POS_CLOSED_VOLTAGE_THRESHOLD_MV * 0.001f),
+        (voltage <= (CONTACTORS_POS_CLOSED_VOLTAGE_THRESHOLD_MV * 0.001f))
+        // Drift or miscalibration may result in a higher than desired voltage
+        // reading, but we're satisfied as long as it is half or less of the open value.
+        || (voltage <= (model->contactor_sm.pre_close_pos_contactor_voltage * 0.5f)),
         ERR_CONTACTOR_POS_STUCK_OPEN,
         (int32_t)(voltage * 1000)
     );
@@ -286,7 +298,8 @@ bool confirm_contactors_staying_closed(bms_model_t *model) {
     )) {
         float pos_voltage = fabsf(model->pos_contactor_voltage);
         ret = confirm(
-            pos_voltage <= (CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV * 0.001f),
+            (pos_voltage <= (CONTACTORS_POS_CLOSED_VOLTAGE_THRESHOLD_MV * 0.001f))
+            || (pos_voltage <= (model->contactor_sm.pre_close_pos_contactor_voltage * 0.5f)),
             ERR_CONTACTOR_POS_UNEXPECTED_OPEN,
             (int32_t)(pos_voltage * 1000)
         ) && ret;
@@ -330,6 +343,7 @@ void contactor_sm_tick(bms_model_t *model) {
             case CONTACTORS_STATE_CALIBRATING_CLOSE_NEG:
             case CONTACTORS_STATE_CALIBRATING_PRECHARGE:
             case CONTACTORS_STATE_CALIBRATING_CLOSED:
+            case CONTACTORS_STATE_CALIBRATING_ONLY_NEG:
                 // Open contactors immediately
                 model->contactor_req = CONTACTORS_REQUEST_NULL;
                 state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
@@ -360,6 +374,9 @@ void contactor_sm_tick(bms_model_t *model) {
             } else if(model->contactor_req == CONTACTORS_REQUEST_CALIBRATE) {
                 model->contactor_req = CONTACTORS_REQUEST_NULL;
                 state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_CALIBRATING);
+            } else if(model->contactor_req == CONTACTORS_REQUEST_CALIBRATE_ONLY_NEG) {
+                model->contactor_req = CONTACTORS_REQUEST_NULL;
+                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_CALIBRATING_ONLY_NEG);
             }
             break;
         case CONTACTORS_STATE_CLOSED:
@@ -455,6 +472,8 @@ void contactor_sm_tick(bms_model_t *model) {
             if(state_timeout((sm_t*)contactor_sm, CONTACTORS_TEST_WAIT_MS)) {
                 if(confirm_contactor_pos_and_neg_seems_open(model)) {
                     // all tests passed
+                    // store pre-close voltage reading for later comparison
+                    contactor_sm->pre_close_pos_contactor_voltage = model->pos_contactor_voltage;
                     state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_TESTING_POS_CLOSED);
                 } else {
                     // fault detected
@@ -498,12 +517,14 @@ void contactor_sm_tick(bms_model_t *model) {
             break;
 
         case CONTACTORS_STATE_PRECHARGING_NEG:
-            // Close negative contactor first
+            // Close negative contactor
             contactors_set_pos_pre_neg(false, false, true);
             if(!confirm_contactor_pre_seems_open(model)) {
                 // precharge contactor is stuck closed
                 state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_PRECHARGE_FAILED);
             } else if(state_timeout((sm_t*)contactor_sm, 500)) {
+                // Store current reading just before closing contactors, so we can account for sensor drift
+                contactor_sm->pre_close_current_mA = model->current_filtered_mA;
                 state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_PRECHARGING);
             }
             break;
@@ -513,7 +534,7 @@ void contactor_sm_tick(bms_model_t *model) {
 
             debug_printf("PRECHARGING: %1.3f V, %d mA\n", 
                 model->battery_voltage - model->output_voltage,
-                model->current_mA
+                model->current_filtered_mA - contactor_sm->pre_close_current_mA
             );
 
 
@@ -588,7 +609,15 @@ void contactor_sm_tick(bms_model_t *model) {
                 state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
             }
             break;
-            
+
+        case CONTACTORS_STATE_CALIBRATING_ONLY_NEG:
+            contactors_set_pos_pre_neg(false, false, true);
+
+            if(!check_current_is_below(model, 200)) {
+                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
+            }
+            break;
+
         default:
             // panic instead?
             error_printf("Invalid contactor state!");

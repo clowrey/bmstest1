@@ -10,7 +10,7 @@
 #include "config/pins.h"
 #include "estimators/ekf.h"
 #include "estimators/estimators.h"
-#include "calibration/offline.h"
+#include "calibration/calibration.h"
 #include "state_machines/contactors.h"
 #include "battery/balancing.h"
 #include "battery/safety_checks.h"
@@ -196,8 +196,7 @@ void bms_tick() {
 
     system_sm_tick(&model);
     contactor_sm_tick(&model);
-    offline_calibration_sm_tick(&model);
-    online_calibration_sm_tick(&model);
+    calibration_sm_tick(&model);
 
     timings[7] = time_us_32();
 
@@ -266,6 +265,10 @@ void bms_tick() {
             model.soc_voltage_based / 100.0f,
             model.soc_basic_count / 100.0f,
             model.soc_fancy_count / 100.0f
+        );
+        debug_printf("Current filtered: %6f mA (%f)\n",
+            model.current_filtered_mA,
+            model.current_deviation
         );
         debug_printf("CV: %2.1f/%2.1f A | W: %2.1f A | T: %2.1f/%2.1f A | Inv. min: %2.1f V | Inv. max: %2.1f V\n\n",
             model.cell_voltage_charge_current_limit_dA / 10.0f,

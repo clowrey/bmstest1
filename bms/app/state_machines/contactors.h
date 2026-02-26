@@ -9,6 +9,8 @@ typedef struct {
     sm_t; 
     // Current flow is allowed (contactors are closed and not opening)
     bool enable_current;
+    float pre_close_current_mA; // Current reading just before closing contactors
+    float pre_close_pos_contactor_voltage; // Pos contactor voltage just before closing it
 } contactors_sm_t;
 
 #define CONTACTORS_STATES(X)                      \
@@ -26,8 +28,9 @@ typedef struct {
     X(CONTACTORS_STATE_CALIBRATING_CLOSE_NEG, 11) \
     X(CONTACTORS_STATE_CALIBRATING_PRECHARGE, 12) \
     X(CONTACTORS_STATE_CALIBRATING_CLOSED,    13) \
-    X(CONTACTORS_STATE_PRECHARGE_FAILED,      14) \
-    X(CONTACTORS_STATE_TESTING_FAILED,        15)
+    X(CONTACTORS_STATE_CALIBRATING_ONLY_NEG,  14) \
+    X(CONTACTORS_STATE_PRECHARGE_FAILED,      15) \
+    X(CONTACTORS_STATE_TESTING_FAILED,        16)
 
 enum contactors_states {
 #define X(name, value) name = value,
@@ -41,6 +44,7 @@ typedef enum contactors_requests {
     CONTACTORS_REQUEST_OPEN = 2,
     CONTACTORS_REQUEST_FORCE_OPEN = 3,
     CONTACTORS_REQUEST_CALIBRATE = 4,
+    CONTACTORS_REQUEST_CALIBRATE_ONLY_NEG = 5
 } contactors_requests_t;
 
 void contactor_sm_tick(bms_model_t *model);

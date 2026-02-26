@@ -202,8 +202,9 @@
 #define OUTPUT_VOLTAGE_STALE_THRESHOLD_MS 1000
 #define CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS 1000
 
-// The current samples every ~530ms, so this should be sufficient
-#define CURRENT_STALE_THRESHOLD_MS 1000
+// The current samples every ~531ms, so this should be sufficient. Precharge
+// must wait this long to ensure it isn't using pre-precharge readings.
+#define CURRENT_STALE_THRESHOLD_MS 800
 
 #define TEMPERATURE_STALE_THRESHOLD_MS(model) (  \
     (model)->cell_voltage_slow_mode ?              \

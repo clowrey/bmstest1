@@ -2,9 +2,6 @@
 
 #include "app/model.h"
 
-#define OFFLINE_VOLTAGE_CALIBRATION_SAMPLES 1024
-#define ONLINE_VOLTAGE_CALIBRATION_SAMPLES 32
-
 // cal mul value should be around 0.013 Volts/count
 #define MIN_CALIBRATION_MUL 0.008f
 #define MAX_CALIBRATION_MUL 0.018f

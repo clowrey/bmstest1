@@ -42,8 +42,6 @@ bool successfully_initialized(bms_model_t *model) {
     return true;
 }
 
-#define VOLTAGE_CALIBRATION_SAMPLES 1024
-
 
 void system_sm_tick(bms_model_t *model) {
     system_sm_t *system_sm = &(model->system_sm);
@@ -75,7 +73,7 @@ void system_sm_tick(bms_model_t *model) {
             break;
         case SYSTEM_STATE_CALIBRATING:
             // TODO - use explicit set/clear flags rather than checking state?
-            if(model->offline_calibration_sm.state == OFFLINE_CALIBRATION_STATE_IDLE) {
+            if(model->calibration_sm.state == CALIBRATION_STATE_IDLE) {
                 // Calibration complete
                 model->contactor_req = CONTACTORS_REQUEST_OPEN;
                 state_transition((sm_t*)system_sm, SYSTEM_STATE_INACTIVE);
@@ -91,14 +89,18 @@ void system_sm_tick(bms_model_t *model) {
                 model->operating = true;
                 nvm_schedule_save_persistent_fast(model);
                 state_transition((sm_t*)system_sm, SYSTEM_STATE_OPERATING);
-            } else if(model->system_req == SYSTEM_REQUEST_CALIBRATE_OFFLINE) {
+            } else if(model->system_req == SYSTEM_REQUEST_CALIBRATE_OFFLINE_LONG) {
                 model->system_req = SYSTEM_REQUEST_NULL;
                 model->contactor_req = CONTACTORS_REQUEST_CALIBRATE;
-                model->offline_calibration_req = OFFLINE_CALIBRATION_REQUEST_START;
+                model->calibration_req = CALIBRATION_REQUEST_START_OFFLINE_LONG;
+                state_transition((sm_t*)system_sm, SYSTEM_STATE_CALIBRATING);
+            } else if(model->system_req == SYSTEM_REQUEST_CALIBRATE_OFFLINE_SHORT) {
+                model->system_req = SYSTEM_REQUEST_NULL;
+                model->calibration_req = CALIBRATION_REQUEST_START_OFFLINE_SHORT;
                 state_transition((sm_t*)system_sm, SYSTEM_STATE_CALIBRATING);
             } else if(model->system_req == SYSTEM_REQUEST_CALIBRATE_ONLINE) {
                 model->system_req = SYSTEM_REQUEST_NULL;
-                model->online_calibration_req = ONLINE_CALIBRATION_REQUEST_START;
+                model->calibration_req = CALIBRATION_REQUEST_START_ONLINE;
             }
             break;
         case SYSTEM_STATE_OPERATING:
@@ -114,7 +116,7 @@ void system_sm_tick(bms_model_t *model) {
                 state_transition((sm_t*)system_sm, SYSTEM_STATE_INACTIVE);
             } else if(model->system_req == SYSTEM_REQUEST_CALIBRATE_ONLINE) {
                 model->system_req = SYSTEM_REQUEST_NULL;
-                model->online_calibration_req = ONLINE_CALIBRATION_REQUEST_START;
+                model->calibration_req = CALIBRATION_REQUEST_START_ONLINE;
             }
             break;
         case SYSTEM_STATE_FAULT:

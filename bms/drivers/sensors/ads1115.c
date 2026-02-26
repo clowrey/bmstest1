@@ -82,7 +82,7 @@ static void ads1115_start_conversion(ads1115_t *dev, int channel) {
                       | ADS1115_CONFIG_PGA_1_024V;
             break;
         case 3: 
-            // ADC0 - ADC3 (voltage between battery positive and negative output)
+            // ADC0 - ADC3 (voltage between battery positive and output negative)
             config |= ADS1115_CONFIG_MUX_DIFF_0_3
                       | ADS1115_CONFIG_PGA_1_024V;
             break;
@@ -144,7 +144,7 @@ static void ads1115_i2c_callback(i2c_inst_t *i2c, bool success, void *user_data)
             &filtered_samples[dev->current_channel], 
             &sample_deviations[dev->current_channel],
             (float)sample, 
-            0.001f, 0.25f, 15.0f, 150.0f
+            0.001f, 0.5f, 15.0f, 150.0f
         );
 
         if (dev->cal_samples_left[dev->current_channel] > 0) {
