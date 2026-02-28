@@ -6,6 +6,7 @@
 #include "app/model.h"
 
 #include "can2040.h"
+#include "protocols/inverter/can.h"
 
 #include <pico/stdlib.h>
 

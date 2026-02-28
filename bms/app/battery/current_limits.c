@@ -106,7 +106,7 @@ uint16_t calculate_temperature_charge_current_limit(int16_t temperature_min_dC, 
     } else {
         uint16_t upper_charge_limit = (MAX_CHARGE_TEMPERATURE_LIMIT_dC - temperature_max_dC) * CHARGE_TEMPERATURE_DERATE_dA_PER_dC;
         uint16_t lower_charge_limit = (temperature_min_dC - MIN_CHARGE_TEMPERATURE_LIMIT_dC) * CHARGE_TEMPERATURE_DERATE_dA_PER_dC;
-        return (upper_charge_limit < lower_charge_limit) ? upper_charge_limit : lower_charge_limit;
+        return min(upper_charge_limit, lower_charge_limit);
     }
     return 0xFFFF;
 }
@@ -117,7 +117,7 @@ uint16_t calculate_temperature_discharge_current_limit(int16_t temperature_min_d
     } else {
         uint16_t upper_discharge_limit = (MAX_DISCHARGE_TEMPERATURE_LIMIT_dC - temperature_max_dC) * DISCHARGE_TEMPERATURE_DERATE_dA_PER_dC;
         uint16_t lower_discharge_limit = (temperature_min_dC - MIN_DISCHARGE_TEMPERATURE_LIMIT_dC) * DISCHARGE_TEMPERATURE_DERATE_dA_PER_dC;
-        return (upper_discharge_limit < lower_discharge_limit) ? upper_discharge_limit : lower_discharge_limit;
+        return min(upper_discharge_limit, lower_discharge_limit);
     }
     return 0xFFFF;
 }
@@ -161,7 +161,7 @@ uint16_t calculate_working_charge_current_limit(bms_model_t *model) {
     // the working voltage limit to prevent overshoot.
     // In the "near-max" region (within 20mV of working max), we use the fixed cushion.
     // Between 20mV and 100mV below max, the cushion tapers up to the global limit.
-    float current_clamped_dA = current_dA > 0.0f ? current_dA : 0.0f;
+    float current_clamped_dA = max(current_dA, 0.0f);
     float delta_to_working_max_mV = (float)working_max_mV - (float)model->cell_voltage_max_mV;
     float cushion_dA = (float)CHARGE_MAX_CURRENT_dA; // Default to NO tether
 

@@ -11,64 +11,8 @@
 // TODO - as well as staleness, check for noisy readings (or use max value sometimes?)
 // TODO - give up after so many failed precharges
 
-// Contactor testing constants
-
-// How long to wait for voltage to settle during contactor tests
-#define CONTACTORS_TEST_WAIT_MS 1000
-// How long to wait after a failed precharge (for the PTCs to cool down)
-#define CONTACTORS_FAILED_PRECHARGE_TIMEOUT_MS 20000
-// How long to wait after a failed contactor test (to avoid rapid cycling)
-#define CONTACTORS_FAILED_TEST_TIMEOUT_MS 20000
-// Max voltage across a contactor to consider it closed
-#define CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV 2000
-// Min voltage across a contactor to consider it open
-#define CONTACTORS_OPEN_VOLTAGE_THRESHOLD_MV 3000 // was 5000
-// Pos contactor has wider tolerances due to the way it is measured
-#define CONTACTORS_POS_CLOSED_VOLTAGE_THRESHOLD_MV 5000
-#define CONTACTORS_POS_OPEN_VOLTAGE_THRESHOLD_MV 10000
-
-
-// TODO : more compensation for ADC resistor discrepancies, to avoid lopsided readings?
-// could just calibrate it? seems to specifically be a problem for pos due to it being a derived reading
-
-// Precharge constants
-
-// It is difficult to get a good reading across the positive contactor due to
-// the ADC arrangement, so we have to tolerate a wider precharge voltage
-// differential than we'd like.
-
-// Max steady-state PTC current (TDK C1451 in 2S3P) will be at 450mA at 16V.
-
-// Thus we can close with a current < 225mA and voltage < 16V, since hot PTCs
-// would result in at least 25V or higher.
-
-// Largest allowable pack current to consider precharge successful
-#define PRECHARGE_SUCCESS_MAX_MA 225
-// Maximum voltage difference to consider precharge successful (allowing for drift)
-#define PRECHARGE_SUCCESS_MAX_MV 16000
-
-// Contactor opening constants
-
-// Current below which we can instantly open contactors
-#define CONTACTORS_INSTANT_OPEN_MA 1000
-// Current below which we can open contactors (after a delay)
-#define CONTACTORS_DELAYED_OPEN_MA 5000
-// How long we wait for the current to fall before potentially failing to open contactors
-#define CONTACTORS_OPEN_TIMEOUT_MS 2000
-// How long we wait when force-opening contactors
-#define CONTACTORS_FORCE_OPEN_TIMEOUT_MS 2000
-
 static inline int32_t abs_int32(int32_t v) {
     return (v < 0) ? -v : v;
-}
-
-static inline int32_t clamp(int32_t v, int32_t min, int32_t max) {
-    if(v < min) {
-        return min;
-    } else if(v > max) {
-        return max;
-    }
-    return v;
 }
 
 

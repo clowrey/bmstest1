@@ -7,6 +7,13 @@
 #include <stdio.h>
 #include <string.h>
 
+void logging_printf(const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+}
+
 #include "app/model.h"
 #include "app/battery/safety_checks.h"
 #include "sys/events/events.h"
@@ -52,7 +59,7 @@ static void setup_model_operating(bms_model_t *m) {
     m->current_millis = stored_millis;
     
     // Normal operating values
-    m->battery_voltage_mV = 3700 * NUM_CELLS;
+    m->battery_voltage = (float)(3700 * NUM_CELLS);
     m->temperature_min_dC = 250;
     m->temperature_max_dC = 250;
     
@@ -168,7 +175,7 @@ static void test_cell_voltage_limits_applied(void **state) {
     
     // Set cell voltage above soft max - should stop charging
     for (int i = 0; i < NUM_CELLS; i++) {
-        m.cell_voltages_mV[i] = CELL_VOLTAGE_SOFT_MAX_mV + 10;
+        m.cell_voltages_mV[i] = get_cell_voltage_soft_max_mV(&m) + 10;
     }
     
     model_tick(&m);
@@ -265,7 +272,7 @@ static void test_soft_limit_buffer_accumulates_when_overcharged(void **state) {
     
     // Cell voltage above soft max
     for (int i = 0; i < NUM_CELLS; i++) {
-        m.cell_voltages_mV[i] = CELL_VOLTAGE_SOFT_MAX_mV + 50;
+        m.cell_voltages_mV[i] = get_cell_voltage_soft_max_mV(&m) + 50;
     }
     m.charge_current_limit_dA = 0;  // Limit should be 0
     m.current_mA = 5000;  // But still charging at 5A
@@ -290,8 +297,10 @@ static void test_voltage_mismatch_not_triggered_when_matched(void **state) {
     for (int i = 0; i < NUM_CELLS; i++) {
         m.cell_voltages_mV[i] = cell_voltage;
     }
-    m.battery_voltage_mV = cell_voltage * NUM_CELLS;
-    
+    m.battery_voltage_millis = stored_millis;
+    m.cell_voltage_millis = stored_millis;
+    m.battery_voltage = (float)cell_voltage * NUM_CELLS * 0.001f;
+
     model_tick(&m);
     confirm_battery_safety(&m);
     
@@ -308,7 +317,7 @@ static void test_voltage_mismatch_triggered_on_large_difference(void **state) {
         m.cell_voltages_mV[i] = 3700;
     }
     // Battery voltage way off
-    m.battery_voltage_mV = 3700 * NUM_CELLS + VOLTAGE_MISMATCH_THRESHOLD_mV + 1000;
+    m.battery_voltage = 3700 * NUM_CELLS + VOLTAGE_MISMATCH_THRESHOLD_mV + 1000;
     
     model_tick(&m);
     confirm_battery_safety(&m);
@@ -392,7 +401,7 @@ static void test_multiple_faults_highest_level_tracked(void **state) {
     setup_model_operating(&m);
     
     // Set up multiple faults
-    m.cell_voltage_max_mV = CELL_VOLTAGE_SOFT_MAX_mV + 10;  // Warning
+    m.cell_voltage_max_mV = get_cell_voltage_soft_max_mV(&m) + 10;  // Warning
     m.cell_voltage_min_mV = CELL_VOLTAGE_HARD_MIN_mV - 10;  // Critical
     
     confirm_battery_safety(&m);

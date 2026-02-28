@@ -79,8 +79,8 @@ void battery_model_tick(battery_model_t *bat, bms_model_t *model, float current_
     model->cell_voltage_max_mV = (int16_t)(v_cell * 1000.0f);
     model->cell_voltage_millis = stored_millis;
 
-    model->battery_voltage_mV = model->cell_voltage_min_mV * NUM_CELLS;
-    model->cell_voltage_total_mV = model->battery_voltage_mV;
+    model->battery_voltage = (float)model->cell_voltage_min_mV * NUM_CELLS * 0.001f;
+    model->cell_voltage_total_mV = model->cell_voltage_min_mV * NUM_CELLS;
     model->battery_voltage_millis = stored_millis;
 
     model->module_temperatures_millis = stored_millis;

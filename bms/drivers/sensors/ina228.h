@@ -75,3 +75,9 @@ static inline int64_t raw_charge_to_mC(int64_t charge_raw) {
     // (0.25mA * 530.944ms)
     return (charge_raw * 132736) / 1000000;
 }
+
+static inline float raw_charge_to_Ah(int32_t charge_raw) {
+    // Each LSB of charge_raw represents 0.132736 mC
+    // (0.25mA * 530.944ms)
+    return charge_raw * (0.132736f / 3600000.0f);
+}

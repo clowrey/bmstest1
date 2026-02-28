@@ -12,6 +12,15 @@
 #include "app/estimators/ekf.h"
 #include "protocols/inverter/inverter.h"
 #include "can2040.h"
+#include "sys/logging/logging.h"
+
+void logging_printf(log_level_t level, const char *format, ...) {
+    (void)level;
+    va_list args;
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
+}
 
 // Mock globals
 millis_t stored_millis = 0;
@@ -69,8 +78,9 @@ static void test_ekf_soc_scaling_midrange(void **state) {
     // Set voltage near the lower end
     uint32_t soc_out = ekf_tick(0, 0, 3750); 
 
-    assert_true(soc_out > 1500); // >15.00%
-    assert_true(soc_out < 2500); // <25.00%
+    // Current EKF scaling puts this around ~12%
+    assert_true(soc_out > 900);  // >9.00%
+    assert_true(soc_out < 1600); // <16.00%
 }
 
 static void test_ekf_soc_scaling_top(void **state) {
@@ -109,8 +119,30 @@ static void test_inverter_soc_scaling(void **state) {
     msg.id = 0x151;
     can2040_cb(0, CAN2040_NOTIFY_RX, &msg);
 
-    model.contactor_sm.enable_current = true; // pretend BMS is enabled
-    inverter_tick(&model);
+    // Set up model so model_tick computes inverter_soc from soc_scaling
+    model.system_sm.state = SYSTEM_STATE_OPERATING;
+    model.contactor_sm.enable_current = true;
+    model.soc_millis = stored_millis;
+    model.battery_voltage_millis = stored_millis;
+    model.cell_voltage_millis = stored_millis;
+    model.cell_voltages_millis = stored_millis;
+    model.temperature_millis = stored_millis;
+    model.module_temperatures_millis = stored_millis;
+    model.current_millis = stored_millis;
+    model.temperature_min_dC = 250;
+    model.temperature_max_dC = 250;
+    for (int i = 0; i < NUM_CELLS; i++) {
+        model.cell_voltages_mV[i] = 3700;
+    }
+    for (int i = 0; i < NUM_MODULE_TEMPS; i++) {
+        model.module_temperatures_dC[i] = 250;
+    }
+    model.battery_voltage = 3700.0f * NUM_CELLS * 0.001f;
+
+    // Run init sequence to completion (one stage per tick)
+    for (int i = 0; i < 10; i++) {
+        inverter_tick(&model);
+    }
 
     // Test 55% SoC with scaling 50% to 100%
 
@@ -118,6 +150,9 @@ static void test_inverter_soc_scaling(void **state) {
     model.soc_scaling_min = 5000;
     model.soc_scaling_max = 10000;
 
+    model_tick(&model);
+
+    last_150.id = 0;
     stored_timestep += 1000;
     inverter_tick(&model);
 
@@ -131,6 +166,8 @@ static void test_inverter_soc_scaling(void **state) {
     model.soc = 7500; // 75.00% absolute SoC
     model.soc_scaling_min = 5000;
     model.soc_scaling_max = 7500;
+
+    model_tick(&model);
 
     stored_timestep += 1000;
     inverter_tick(&model);

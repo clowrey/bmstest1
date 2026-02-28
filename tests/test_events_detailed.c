@@ -9,10 +9,24 @@
 
 #include "sys/events/events.h"
 #include "sys/time/time.h"
+#include "sys/logging/logging.h"
+
+void logging_printf(log_level_t level, const char *format, ...) {
+    (void)level;
+    va_list args;
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
+}
 
 // Mock globals
 millis_t stored_millis = 0;
 millis64_t stored_millis64 = 0;
+
+// Metadata exported by events.c
+extern const char* EVENT_TYPE_NAMES[];
+extern const bms_event_level_t EVENT_TYPE_LEVELS[];
+extern const uint16_t EVENT_TYPE_LEEWAY[];
 
 // ============================================================================
 // Test Helpers
@@ -250,6 +264,61 @@ static void test_event_timestamp_recorded(void **state) {
 }
 
 // ============================================================================
+// Exhaustive event coverage tests
+// ============================================================================
+
+static void test_all_event_metadata_matches_definitions(void **state) {
+    (void) state;
+
+    static const bms_event_level_t expected_levels[] = {
+#define X(_name, level, _leeway) level,
+        EVENT_TYPES(X)
+#undef X
+    };
+
+    static const uint16_t expected_leeway[] = {
+#define X(_name, level, leeway) ((level==LEVEL_WARNING) ? leeway : leeway/100),
+        EVENT_TYPES(X)
+#undef X
+    };
+
+    assert_int_equal((int)(sizeof(expected_levels) / sizeof(expected_levels[0])), ERR_HIGHEST);
+    assert_int_equal((int)(sizeof(expected_leeway) / sizeof(expected_leeway[0])), ERR_HIGHEST);
+
+    for (int i = 0; i < ERR_HIGHEST; i++) {
+        assert_non_null(EVENT_TYPE_NAMES[i]);
+        assert_true(strlen(EVENT_TYPE_NAMES[i]) > 0);
+        assert_int_equal(EVENT_TYPE_LEVELS[i], expected_levels[i]);
+        assert_int_equal(EVENT_TYPE_LEEWAY[i], expected_leeway[i]);
+    }
+}
+
+static void test_all_events_raise_and_clear_behavior(void **state) {
+    (void) state;
+
+    for (int i = 0; i < ERR_HIGHEST; i++) {
+        reset_events();
+
+        bms_event_type_t type = (bms_event_type_t)i;
+        raise_bms_event(type, 0xABCD0000u + (uint32_t)i);
+
+        // Every event must be raisable and leave LEVEL_NONE.
+        assert_int_not_equal(get_event_level(type), LEVEL_NONE);
+        assert_int_equal(get_event_count(type), 1);
+
+        bms_event_level_t before_clear = get_event_level(type);
+        clear_bms_event(type);
+
+        if (before_clear == LEVEL_FATAL) {
+            // Fatal events are intentionally sticky.
+            assert_int_equal(get_event_level(type), LEVEL_FATAL);
+        } else {
+            assert_int_equal(get_event_level(type), LEVEL_NONE);
+        }
+    }
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -279,6 +348,10 @@ int main(void) {
         // Edge cases
         cmocka_unit_test_setup(test_invalid_event_type_ignored, setup),
         cmocka_unit_test_setup(test_event_timestamp_recorded, setup),
+
+        // Exhaustive coverage across all events in events.h
+        cmocka_unit_test_setup(test_all_event_metadata_matches_definitions, setup),
+        cmocka_unit_test_setup(test_all_events_raise_and_clear_behavior, setup),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

@@ -7,6 +7,7 @@
 #include "app/state_machines/system.h"
 #include "app/estimators/ekf.h"
 #include "config/limits.h"
+#include "lib/math.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -228,22 +229,34 @@ extern bms_model_t model;
 
 void model_tick(bms_model_t *model);
 
-inline uint16_t get_cell_voltage_soft_min_mV(bms_model_t *model) {
-    return (model->cell_voltage_soft_min_mV > 0) ? model->cell_voltage_soft_min_mV : DEFAULT_CELL_VOLTAGE_SOFT_MIN_mV;
+static inline uint16_t get_cell_voltage_soft_min_mV(bms_model_t *model) {
+    return max(
+        (model->cell_voltage_soft_min_mV > 0) ? model->cell_voltage_soft_min_mV : DEFAULT_CELL_VOLTAGE_SOFT_MIN_mV,
+        CELL_VOLTAGE_HARD_MIN_mV + 25
+    );
 }
 
-inline uint16_t get_cell_voltage_soft_max_mV(bms_model_t *model) {
-    return (model->cell_voltage_soft_max_mV > 0) ? model->cell_voltage_soft_max_mV : DEFAULT_CELL_VOLTAGE_SOFT_MAX_mV;
+static inline uint16_t get_cell_voltage_soft_max_mV(bms_model_t *model) {
+    return min(
+        (model->cell_voltage_soft_max_mV > 0) ? model->cell_voltage_soft_max_mV : DEFAULT_CELL_VOLTAGE_SOFT_MAX_mV,
+        CELL_VOLTAGE_HARD_MAX_mV - 25
+    );
 }
 
-inline uint16_t get_cell_voltage_working_min_mV(bms_model_t *model) {
-    return (model->cell_voltage_working_min_mV > 0) ? model->cell_voltage_working_min_mV : DEFAULT_CELL_VOLTAGE_WORKING_MIN_mV;
+static inline uint16_t get_cell_voltage_working_min_mV(bms_model_t *model) {
+    return max(
+        (model->cell_voltage_working_min_mV > 0) ? model->cell_voltage_working_min_mV : DEFAULT_CELL_VOLTAGE_WORKING_MIN_mV,
+        get_cell_voltage_soft_min_mV(model) + 25
+    );
 }
 
-inline uint16_t get_cell_voltage_working_max_mV(bms_model_t *model) {
-    return (model->cell_voltage_working_max_mV > 0) ? model->cell_voltage_working_max_mV : DEFAULT_CELL_VOLTAGE_WORKING_MAX_mV;
+static inline uint16_t get_cell_voltage_working_max_mV(bms_model_t *model) {
+    return min(
+        (model->cell_voltage_working_max_mV > 0) ? model->cell_voltage_working_max_mV : DEFAULT_CELL_VOLTAGE_WORKING_MAX_mV,
+        get_cell_voltage_soft_max_mV(model) - 25
+    );
 }
 
-inline uint16_t get_minimum_balancing_voltage_mV(bms_model_t *model) {
+static inline uint16_t get_minimum_balancing_voltage_mV(bms_model_t *model) {
     return (model->minimum_balancing_voltage_mV > 0) ? model->minimum_balancing_voltage_mV : DEFAULT_MINIMUM_BALANCING_VOLTAGE_mV;
 }

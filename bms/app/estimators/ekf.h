@@ -46,6 +46,6 @@ void ekf_step(ekf_t *ekf, float charge_Ah, float current_amps, float voltage_mea
 float ekf_get_soc(ekf_t *ekf);
 void ekf_set_soc(bms_model_t *model, uint16_t soc);
 
-uint32_t ekf_tick(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV);
+uint32_t ekf_tick(float charge_Ah, int32_t current_mA, int32_t voltage_mV);
 
 void ekf_print_state(ekf_t *ekf);

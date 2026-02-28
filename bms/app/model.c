@@ -120,13 +120,13 @@ static void model_accumulate_overcurrent(bms_model_t *model) {
         int32_t excess_dA = (model->current_mA / 100) - model->charge_current_limit_dA - CURRENT_LIMIT_ERROR_MARGIN_dA;
         // Accumulate into the charge buffer if there is excess
         model->excess_charge_buffer_dC = sadd_i32(model->excess_charge_buffer_dC, 
-                                                  (excess_dA > 0) ? excess_dA : 0);
+                                                  max(excess_dA, 0));
     } else if(model->current_mA < 0) {
         // Discharging
         int32_t excess_dA = (-model->current_mA / 100) - model->discharge_current_limit_dA - CURRENT_LIMIT_ERROR_MARGIN_dA;
         // Accumulate into the discharge buffer if there is excess
         model->excess_discharge_buffer_dC = sadd_i32(model->excess_discharge_buffer_dC,
-                                                     (excess_dA > 0) ? excess_dA : 0);
+                                                     max(excess_dA, 0));
     }
 
     if(model->excess_charge_buffer_dC > 0) {
@@ -156,12 +156,12 @@ static void model_accumulate_soft_limit_overcurrent(bms_model_t *model) {
         // Charging
         int32_t excess_dA = (model->current_mA / 100) - model->charge_current_limit_dA;
         model->soft_limit_charge_buffer_dC = sadd_i32(model->soft_limit_charge_buffer_dC,
-                                                      (excess_dA > 0) ? excess_dA : 0);
+                                                      max(excess_dA, 0));
     } else if(model->current_mA < 0) {
         // Discharging
         int32_t excess_dA = (-model->current_mA / 100) - model->discharge_current_limit_dA;
         model->soft_limit_charge_buffer_dC = ssub_i32(model->soft_limit_charge_buffer_dC,
-                                                        (excess_dA > 0) ? excess_dA : 0);
+                                                        max(excess_dA, 0));
     }
 }
 

@@ -25,6 +25,6 @@ void init_inverter_can(can2040_rx_cb rx_cb) {
     can2040_start(&cbus, SYS_CLK_HZ, can_bitrate, PIN_CAN_RX, PIN_CAN_TX);
 }
 
-void inverter_can_transmit(struct can2040_msg *msg) {
-    can2040_transmit(&cbus, msg);
+int inverter_can_transmit(const struct can2040_msg *msg) {
+    return can2040_transmit(&cbus, msg);
 }

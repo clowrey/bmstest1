@@ -1,6 +1,18 @@
+#pragma once
+
 #include <stdint.h>
 
 #include "RP2350.h"
+
+#define max(a,b) \
+   ({ __typeof__ (a) _a = (a); \
+       __typeof__ (b) _b = (b); \
+     _a > _b ? _a : _b; })
+
+#define min(a,b) \
+   ({ __typeof__ (a) _a = (a); \
+       __typeof__ (b) _b = (b); \
+     _a < _b ? _a : _b; })
 
 // Saturating add for int32_t
 static inline int32_t sadd_i32(int32_t a, int32_t b) {

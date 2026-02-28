@@ -197,7 +197,7 @@
 
 // How recent readings must be to be considered valid.
 
-// Battery voltage samples every 320ms (plus jitter)
+// Battery voltage samples every ~100ms
 #define BATTERY_VOLTAGE_STALE_THRESHOLD_MS 1000
 #define OUTPUT_VOLTAGE_STALE_THRESHOLD_MS 1000
 #define CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS 1000
@@ -212,7 +212,7 @@
         : CELL_TEMPERATURE_STALE_THRESHOLD_MS )
 
 // We only sample every 1.28s, and could have isospi/CRC issues, so be generous
-// (also allow long enough for stable readings during balancing, which pauses every 12.8s)
+// (also allow long enough for stable readings during balancing)
 #define CELL_VOLTAGE_STALE_THRESHOLD_MS 15000
 // In slow mode we only sample every 81.92s, allow two bad reads
 #define CELL_VOLTAGE_STALE_THRESHOLD_SLOW_MS 270000
@@ -232,3 +232,54 @@
 #define SUPPLY_VOLTAGE_CONTACTOR_MAX_MV 16000
 #define SUPPLY_VOLTAGE_STALE_THRESHOLD_MS 2000
 
+
+// CONTACTOR BEHAVIOUR THRESHOLDS
+
+// Contactor weld test thresholds
+
+// How long to wait for voltage to settle during contactor tests
+#define CONTACTORS_TEST_WAIT_MS 1000
+// How long to wait after a failed precharge (for the PTCs to cool down)
+#define CONTACTORS_FAILED_PRECHARGE_TIMEOUT_MS 20000
+// How long to wait after a failed contactor test (to avoid rapid cycling)
+#define CONTACTORS_FAILED_TEST_TIMEOUT_MS 20000
+// Max voltage across a contactor to consider it closed
+#define CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV 2000
+// Min voltage across a contactor to consider it open
+#define CONTACTORS_OPEN_VOLTAGE_THRESHOLD_MV 3000 // was 5000
+// Pos contactor has wider tolerances due to the way it is measured
+#define CONTACTORS_POS_CLOSED_VOLTAGE_THRESHOLD_MV 5000
+#define CONTACTORS_POS_OPEN_VOLTAGE_THRESHOLD_MV 10000
+
+
+// Precharge thresholds
+
+// It is difficult to get a good reading across the positive contactor due to
+// the ADC arrangement, so we have to tolerate a wider precharge voltage
+// differential than we'd like.
+
+// Max steady-state PTC current (TDK C1451 in 2S3P) will be at 450mA at 16V.
+
+// Thus we can close with a current < 225mA and voltage < 16V, since hot PTCs
+// would result in at least 25V or higher.
+
+// Largest allowable pack current to consider precharge successful
+#define PRECHARGE_SUCCESS_MAX_MA 225
+// Maximum voltage difference to consider precharge successful (allowing for uncalibrated contactors)
+#define PRECHARGE_SUCCESS_MAX_MV 16000
+
+
+// Contactor opening thresholds
+
+// Current below which we can instantly open contactors
+#define CONTACTORS_INSTANT_OPEN_MA 1000
+// Current below which we will begrudgingly open contactors after the wait is up
+#define CONTACTORS_DELAYED_OPEN_MA 5000
+// How long we wait for the current to fall before opening anyway, or failing to
+// open (if the current is still too high)
+#define CONTACTORS_OPEN_TIMEOUT_MS 2000
+// How long we wait when force-opening contactors
+// NOTE: some inverters (Deye!) take a long time to react to current changes (20
+// seconds!). This could be increased to accommodate them, but will allow fault
+// conditions to persist for an uncomfortably long time.
+#define CONTACTORS_FORCE_OPEN_TIMEOUT_MS 2000

@@ -484,10 +484,9 @@ static void ekf_update_limits(bms_model_t *model) {
     model->working_capacity_mC = (soc_max - model->ekf.prev_soc_min) * (float)model->nameplate_capacity_mC;
 }
 
-uint32_t ekf_tick(int32_t charge_mC, int32_t current_mA, int32_t voltage_mV) {
-    float charge_Ah = (float)charge_mC / 3600000.0f;
-    float current_amps = (float)current_mA / 1000.0f;
-    float voltage_volts = (float)voltage_mV / 1000.0f;
+uint32_t ekf_tick(float charge_Ah, int32_t current_mA, int32_t voltage_mV) {
+    float current_amps = (float)current_mA * 0.001f;
+    float voltage_volts = (float)voltage_mV * 0.001f;
 
     ekf_auto_init(&model, voltage_volts);
 

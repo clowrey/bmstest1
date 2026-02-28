@@ -12,11 +12,22 @@
 #include "drivers/contactors/contactors.h"
 #include "sys/time/time.h"
 
-#define CONTACTORS_TEST_WAIT_MS 1000
+// #define CONTACTORS_TEST_WAIT_MS 1000
 
 // Mock globals
-extern millis_t stored_millis = 0;
-extern millis64_t stored_millis64 = 0;
+millis64_t stored_millis64 = 0;
+millis_t stored_millis = 0;
+
+uint32_t time_us_32() { return stored_millis * 1000; }
+
+#include "sys/logging/logging.h"
+void logging_printf(log_level_t level, const char *format, ...) {
+    (void)level;
+    va_list args;
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
+}
 
 // Mock functions
 //millis_t millis() { return stored_millis; }
@@ -82,8 +93,8 @@ static void test_close_request_to_testing_sequence(void **state) {
     assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_NEG_OPEN);
 
     // 3. TESTING_NEG_OPEN
-    model.pos_contactor_voltage_mV = 10000; // Above threshold (open)
-    model.neg_contactor_voltage_mV = 10000; // Above threshold (open)
+    model.pos_contactor_voltage = 15.0f; // Above threshold (open)
+    model.neg_contactor_voltage = 5.0f;  // Above threshold (open)
     expect_value(contactors_set_pos_pre_neg, pos, false);
     expect_value(contactors_set_pos_pre_neg, pre, false);
     expect_value(contactors_set_pos_pre_neg, neg, false);
@@ -91,7 +102,7 @@ static void test_close_request_to_testing_sequence(void **state) {
     assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_NEG_CLOSED);
 
     // 4. TESTING_NEG_CLOSED
-    model.neg_contactor_voltage_mV = 100; // Below threshold (closed)
+    model.neg_contactor_voltage = 0.1f; // Below threshold (closed)
     expect_value(contactors_set_pos_pre_neg, pos, false);
     expect_value(contactors_set_pos_pre_neg, pre, false);
     expect_value(contactors_set_pos_pre_neg, neg, true);
@@ -99,8 +110,8 @@ static void test_close_request_to_testing_sequence(void **state) {
     assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_POS_OPEN);
 
     // 5. TESTING_POS_OPEN
-    model.neg_contactor_voltage_mV = 10000; // Above threshold (open)
-    model.pos_contactor_voltage_mV = 10000; // Above threshold (open)
+    model.neg_contactor_voltage = 5.0f;  // Above threshold (open)
+    model.pos_contactor_voltage = 15.0f; // Above threshold (open)
     expect_value(contactors_set_pos_pre_neg, pos, false);
     expect_value(contactors_set_pos_pre_neg, pre, false);
     expect_value(contactors_set_pos_pre_neg, neg, false);
@@ -108,7 +119,7 @@ static void test_close_request_to_testing_sequence(void **state) {
     assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_POS_CLOSED);
 
     // 6. TESTING_POS_CLOSED
-    model.pos_contactor_voltage_mV = 100; // Below threshold (closed)
+    model.pos_contactor_voltage = 0.5f; // Below threshold (closed)
     expect_value(contactors_set_pos_pre_neg, pos, true);
     expect_value(contactors_set_pos_pre_neg, pre, true);
     expect_value(contactors_set_pos_pre_neg, neg, false);
@@ -122,16 +133,18 @@ static void test_precharge_success(void **state) {
     
     // Force state to PRECHARGING
     model.contactor_sm.state = CONTACTORS_STATE_PRECHARGING;
-    model.contactor_sm.last_transition_time = stored_millis;
+    model.contactor_sm.last_transition_time = stored_millis64;
 
     // Set up model for successful precharge
-    model.battery_voltage_mV = 400000;
+    model.battery_voltage = 400.0f;
     model.battery_voltage_millis = stored_millis;
-    model.output_voltage_mV = 398000; // 2V diff
+    model.output_voltage = 399.0f; // 1V diff
     model.output_voltage_millis = stored_millis;
-    model.neg_contactor_voltage_mV = 100; // < threshold
+    model.neg_contactor_voltage = 0.1f; // < threshold
     model.neg_contactor_voltage_millis = stored_millis;
-    model.current_mA = 300; // < PRECHARGE_SUCCESS_MAX_MA
+    model.current_mA = 300.0f; // < PRECHARGE_SUCCESS_MAX_MA
+    model.current_filtered_mA = 300.0f;
+    model.contactor_sm.pre_close_current_mA = 300.0f;
     model.current_millis = stored_millis;
 
     expect_value(contactors_set_pos_pre_neg, pos, false);
@@ -148,17 +161,22 @@ static void test_precharge_failure_timeout(void **state) {
     bms_model_t model = {0};
     
     model.contactor_sm.state = CONTACTORS_STATE_PRECHARGING;
-    model.contactor_sm.last_transition_time = stored_millis;
+    model.contactor_sm.last_transition_time = stored_millis64;
 
     // Output voltage never rises
-    model.battery_voltage_mV = 400000;
-    model.output_voltage_mV = 0;
+    model.battery_voltage = 400.0f;
+    model.battery_voltage_millis = stored_millis;
+    model.output_voltage = 0.0f;
+    model.output_voltage_millis = stored_millis;
+    model.neg_contactor_voltage = 0.0f;
+    model.neg_contactor_voltage_millis = stored_millis;
+    model.current_millis = stored_millis;
 
     expect_value(contactors_set_pos_pre_neg, pos, false);
     expect_value(contactors_set_pos_pre_neg, pre, true);
     expect_value(contactors_set_pos_pre_neg, neg, true);
     
-    tick_sm(&model, 10001);
+    tick_sm(&model, 15000);
 
     assert_int_equal(get_event_count(ERR_CONTACTOR_PRECHARGE_VOLTAGE_TOO_HIGH), 1);
     assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_PRECHARGE_FAILED);
@@ -168,13 +186,13 @@ static void test_pos_weld_failure_detection(void **state) {
     (void) state;
     bms_model_t model = {0};
     
-    // Force state to CLOSED
+    // Force state to TESTING_POS_OPEN
     model.contactor_sm.state = CONTACTORS_STATE_TESTING_POS_OPEN;
-    model.contactor_sm.last_transition_time = stored_millis;
+    model.contactor_sm.last_transition_time = stored_millis64;
 
     // Set up model to simulate POS contactor weld (stuck closed)
-    model.pos_contactor_voltage_mV = 100; // Below threshold (closed)
-    model.current_millis = stored_millis;
+    model.pos_contactor_voltage = 0.1f; // Below threshold (closed)
+    model.pos_contactor_voltage_millis = stored_millis;
 
     expect_value(contactors_set_pos_pre_neg, pos, false);
     expect_value(contactors_set_pos_pre_neg, pre, false);
@@ -200,6 +218,13 @@ static void test_open_request_from_closed(void **state) {
     expect_value(contactors_set_pos_pre_neg, neg, true);
     tick_sm(&model, 10);
 
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_AWAITING_OPEN);
+
+    expect_value(contactors_set_pos_pre_neg, pos, true);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, true);
+    tick_sm(&model, 10);
+
     assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_OPEN);
 }
 
@@ -218,7 +243,7 @@ static void test_delayed_open_request_from_closed(void **state) {
     expect_value(contactors_set_pos_pre_neg, pre, false);
     expect_value(contactors_set_pos_pre_neg, neg, true);
     tick_sm(&model, 500);
-    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_CLOSED);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_AWAITING_OPEN);
 
     expect_value(contactors_set_pos_pre_neg, pos, true);
     expect_value(contactors_set_pos_pre_neg, pre, false);
@@ -242,7 +267,7 @@ static void test_force_open_request(void **state) {
     expect_value(contactors_set_pos_pre_neg, pre, false);
     expect_value(contactors_set_pos_pre_neg, neg, true);
     tick_sm(&model, 10);
-    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_CLOSED);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_AWAITING_OPEN);
 
     expect_value(contactors_set_pos_pre_neg, pos, true);
     expect_value(contactors_set_pos_pre_neg, pre, false);
@@ -268,8 +293,84 @@ static void test_calibrate_request(void **state) {
     expect_value(contactors_set_pos_pre_neg, pos, false);
     expect_value(contactors_set_pos_pre_neg, pre, false);
     expect_value(contactors_set_pos_pre_neg, neg, false);
-    tick_sm(&model, 501);
+    tick_sm(&model, 1001);
     assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_CALIBRATING_CLOSE_NEG);
+}
+
+static void test_precharging_aborts_immediately_on_open_request(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    model.contactor_sm.state = CONTACTORS_STATE_PRECHARGING;
+    model.contactor_sm.last_transition_time = stored_millis64;
+    model.contactor_req = CONTACTORS_REQUEST_OPEN;
+
+    // Force/open request is handled before state switch body, so this tick
+    // executes OPEN outputs immediately.
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+    tick_sm(&model, 10);
+
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_OPEN);
+    assert_int_equal(model.contactor_req, CONTACTORS_REQUEST_NULL);
+}
+
+static void test_precharge_failed_recovers_to_open_after_cooldown(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    model.contactor_sm.state = CONTACTORS_STATE_PRECHARGE_FAILED;
+    model.contactor_sm.last_transition_time = stored_millis64;
+
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+    tick_sm(&model, 10000);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_PRECHARGE_FAILED);
+
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+    tick_sm(&model, 10001);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_OPEN);
+}
+
+static void test_testing_failed_recovers_to_open_after_timeout(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    model.contactor_sm.state = CONTACTORS_STATE_TESTING_FAILED;
+    model.contactor_sm.last_transition_time = stored_millis64;
+
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+    tick_sm(&model, 15000);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_FAILED);
+
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+    tick_sm(&model, 5001);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_OPEN);
+}
+
+static void test_force_open_from_testing_state_is_immediate(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    model.contactor_sm.state = CONTACTORS_STATE_TESTING_NEG_CLOSED;
+    model.contactor_sm.last_transition_time = stored_millis64;
+    model.contactor_req = CONTACTORS_REQUEST_FORCE_OPEN;
+
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+    tick_sm(&model, 1);
+
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_OPEN);
+    assert_int_equal(model.contactor_req, CONTACTORS_REQUEST_NULL);
 }
 
 int main(void) {
@@ -279,10 +380,14 @@ int main(void) {
         cmocka_unit_test(test_precharge_success),
         cmocka_unit_test(test_precharge_failure_timeout),
         cmocka_unit_test(test_pos_weld_failure_detection),
-        // cmocka_unit_test(test_open_request_from_closed),
-        // cmocka_unit_test(test_delayed_open_request_from_closed),
-        // cmocka_unit_test(test_force_open_request),
-        // cmocka_unit_test(test_calibrate_request),
+        cmocka_unit_test(test_open_request_from_closed),
+        cmocka_unit_test(test_delayed_open_request_from_closed),
+        cmocka_unit_test(test_force_open_request),
+        cmocka_unit_test(test_calibrate_request),
+        cmocka_unit_test(test_precharging_aborts_immediately_on_open_request),
+        cmocka_unit_test(test_precharge_failed_recovers_to_open_after_cooldown),
+        cmocka_unit_test(test_testing_failed_recovers_to_open_after_timeout),
+        cmocka_unit_test(test_force_open_from_testing_state_is_immediate),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

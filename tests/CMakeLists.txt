@@ -68,6 +68,7 @@ add_executable(test_soc
     ../bms/app/model.c
     ../bms/app/battery/current_limits.c
     ../bms/app/estimators/ekf.c
+    ../bms/protocols/inverter/can.c
     ../bms/protocols/inverter/byd_can.c
     ../bms/sys/events/events.c
     ../bms/app/state_machines/base.c
@@ -204,3 +205,9 @@ target_include_directories(test_events_detailed PRIVATE
 )
 
 add_test(NAME test_events_detailed COMMAND ${MEMORY_CHECK} test_events_detailed)
+
+add_custom_target(coverage
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/coverage_report.sh ${CMAKE_CURRENT_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Run built tests and generate gcov coverage summary"
+)

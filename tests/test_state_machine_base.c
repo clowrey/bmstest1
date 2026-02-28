@@ -9,6 +9,15 @@
 
 #include "app/state_machines/base.h"
 #include "sys/time/time.h"
+#include "sys/logging/logging.h"
+
+void logging_printf(log_level_t level, const char *format, ...) {
+    (void)level;
+    va_list args;
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
+}
 
 // Mock globals
 millis_t stored_millis = 0;

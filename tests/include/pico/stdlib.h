@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #define PIO0_IRQ_0 0
 #define SYS_CLK_HZ 150000000
@@ -16,3 +17,5 @@ static inline void irq_set_priority(int irq, int priority) {
 static inline void irq_set_enabled(int irq, bool enabled) {
     // Mock implementation
 }
+
+uint32_t time_us_32(void);

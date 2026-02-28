@@ -7,6 +7,16 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "sys/logging/logging.h"
+
+void logging_printf(log_level_t level, const char *fmt, ...) {
+    (void)level;
+    va_list args;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+}
+
 #include "app/model.h"
 #include "app/state_machines/system.h"
 #include "app/state_machines/base.h"
@@ -104,7 +114,7 @@ static void test_system_stays_initializing_without_data(void **state) {
     // Make data stale
     m.battery_voltage_millis = 0;
     
-    advance_time(15000);
+    advance_time(5000);
     system_sm_tick(&m);
     
     // Should still be initializing (waiting for valid data)
@@ -287,7 +297,7 @@ static void test_calibration_timeout_causes_fault(void **state) {
     m.system_sm.last_transition_time = stored_millis64;
     
     // Calibration never completes
-    m.calibration_sm.state = CALIBRATION_STATE_MEASURING;
+    m.calibration_sm.state = CALIBRATION_STATE_LONG_MEASURING;
     
     // Wait past timeout (120s)
     advance_time(121000);

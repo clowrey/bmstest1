@@ -48,13 +48,18 @@ float nmc_ocv_to_soc(float ocv) {
 int main() {
     printf("temperature_dC,voltage_mV,charge_limit_dA,discharge_limit_dA\n");
 
+    bms_model_t model = {0};
+
     for (int temp_dC = -200; temp_dC <= 600; temp_dC += 2) {
         for (int volt_mV = 2200; volt_mV <= 4500; volt_mV += 2) {
+            model.cell_voltage_min_mV = volt_mV;
+            model.cell_voltage_max_mV = volt_mV;
+
             uint16_t t_charge = calculate_temperature_charge_current_limit(temp_dC, temp_dC);
             uint16_t t_discharge = calculate_temperature_discharge_current_limit(temp_dC, temp_dC);
 
-            uint16_t v_charge = calculate_cell_voltage_charge_current_limit(volt_mV, volt_mV);
-            uint16_t v_discharge = calculate_cell_voltage_discharge_current_limit(volt_mV, volt_mV);
+            uint16_t v_charge = calculate_cell_voltage_charge_current_limit(&model);
+            uint16_t v_discharge = calculate_cell_voltage_discharge_current_limit(&model);
 
             uint16_t final_charge = CHARGE_MAX_CURRENT_dA;
             if (t_charge < final_charge) final_charge = t_charge;

@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "sys/time/time.h"
+#include "app/model.h"
 #include "app/battery/current_limits.h"
 #include "config/limits.h"
 
@@ -70,19 +71,26 @@ static int setup(void **state) {
 
 static void test_charge_limit_normal_voltage(void **state) {
     (void) state;
+    bms_model_t m = {0};
+    m.cell_voltage_min_mV = 3500;
+    m.cell_voltage_max_mV = 3800;
     
     // Normal operating voltage range - should allow full charging
-    uint16_t limit = calculate_cell_voltage_charge_current_limit(3500, 3800);
+    uint16_t limit = calculate_cell_voltage_charge_current_limit(&m);
     
-    // Should return max limit (0xFFFF means no limit from this function)
-    assert_int_equal(limit, 0xFFFF);
+    // Should be at max allowed current for NMC profile
+    assert_true(limit > 0);
+    assert_true(limit < 0xFFFF);
 }
 
 static void test_charge_limit_near_max_voltage(void **state) {
     (void) state;
+    bms_model_t m = {0};
+    m.cell_voltage_min_mV = 3500;
+    m.cell_voltage_max_mV = 4100;
     
     // Voltage just below soft max - should start derating
-    uint16_t limit = calculate_cell_voltage_charge_current_limit(3500, 4100);
+    uint16_t limit = calculate_cell_voltage_charge_current_limit(&m);
     
     // Should be derated but still positive
     assert_true(limit > 0);
@@ -91,18 +99,24 @@ static void test_charge_limit_near_max_voltage(void **state) {
 
 static void test_charge_limit_at_soft_max(void **state) {
     (void) state;
+    bms_model_t m = {0};
+    m.cell_voltage_min_mV = 3500;
+    m.cell_voltage_max_mV = get_cell_voltage_soft_max_mV(&m) + 1;
     
     // At soft max voltage, charging should be stopped
-    uint16_t limit = calculate_cell_voltage_charge_current_limit(3500, CELL_VOLTAGE_SOFT_MAX_mV + 1);
+    uint16_t limit = calculate_cell_voltage_charge_current_limit(&m);
     
     assert_int_equal(limit, 0);
 }
 
 static void test_charge_limit_at_low_cell_voltage(void **state) {
     (void) state;
+    bms_model_t m = {0};
+    m.cell_voltage_min_mV = get_cell_voltage_soft_min_mV(&m) - 100;
+    m.cell_voltage_max_mV = 3500;
     
     // Below soft min - charge limit is restricted to allow recovery
-    uint16_t limit = calculate_cell_voltage_charge_current_limit(CELL_VOLTAGE_SOFT_MIN_mV - 100, 3500);
+    uint16_t limit = calculate_cell_voltage_charge_current_limit(&m);
     
     // Should be limited to the overdischarge charge limit
     assert_int_equal(limit, OVERDISCHARGE_CHARGE_CURRENT_LIMIT_dA);
@@ -114,18 +128,25 @@ static void test_charge_limit_at_low_cell_voltage(void **state) {
 
 static void test_discharge_limit_normal_voltage(void **state) {
     (void) state;
+    bms_model_t m = {0};
+    m.cell_voltage_min_mV = 3700;
+    m.cell_voltage_max_mV = 3800;
     
     // Normal operating voltage - should allow full discharge
-    uint16_t limit = calculate_cell_voltage_discharge_current_limit(3700, 3800);
+    uint16_t limit = calculate_cell_voltage_discharge_current_limit(&m);
     
-    assert_int_equal(limit, 0xFFFF);
+    assert_true(limit > 0);
+    assert_true(limit < 0xFFFF);
 }
 
 static void test_discharge_limit_low_voltage_derate(void **state) {
     (void) state;
+    bms_model_t m = {0};
+    m.cell_voltage_min_mV = 3300;
+    m.cell_voltage_max_mV = 3800;
     
     // Low voltage - should derate discharge
-    uint16_t limit = calculate_cell_voltage_discharge_current_limit(3300, 3800);
+    uint16_t limit = calculate_cell_voltage_discharge_current_limit(&m);
     
     // Should be derated
     assert_true(limit > 0);
@@ -134,18 +155,24 @@ static void test_discharge_limit_low_voltage_derate(void **state) {
 
 static void test_discharge_limit_at_soft_min(void **state) {
     (void) state;
+    bms_model_t m = {0};
+    m.cell_voltage_min_mV = get_cell_voltage_soft_min_mV(&m) - 1;
+    m.cell_voltage_max_mV = 3800;
     
     // At soft min voltage, discharge should be stopped
-    uint16_t limit = calculate_cell_voltage_discharge_current_limit(CELL_VOLTAGE_SOFT_MIN_mV - 1, 3800);
+    uint16_t limit = calculate_cell_voltage_discharge_current_limit(&m);
     
     assert_int_equal(limit, 0);
 }
 
 static void test_discharge_limit_at_high_cell_voltage(void **state) {
     (void) state;
+    bms_model_t m = {0};
+    m.cell_voltage_min_mV = 3700;
+    m.cell_voltage_max_mV = get_cell_voltage_soft_max_mV(&m) + 100;
     
     // Above soft max - discharge is limited to allow recovery
-    uint16_t limit = calculate_cell_voltage_discharge_current_limit(3700, CELL_VOLTAGE_SOFT_MAX_mV + 100);
+    uint16_t limit = calculate_cell_voltage_discharge_current_limit(&m);
     
     // Should be limited to the overcharge discharge limit
     assert_int_equal(limit, OVERCHARGE_DISCHARGE_CURRENT_LIMIT_dA);
@@ -191,7 +218,7 @@ static void test_temp_charge_limit_cold_derate(void **state) {
     uint16_t limit = calculate_temperature_charge_current_limit(50, 200);
     
     // Should be limited based on proximity to min temp
-    uint16_t expected = (50 - MIN_CHARGE_TEMPERATURE_LIMIT_dC) * CHARGE_TEMPERATURE_DERATE_dA_PER_dC;
+    uint16_t expected = (50 - (uint16_t)MIN_CHARGE_TEMPERATURE_LIMIT_dC) * CHARGE_TEMPERATURE_DERATE_dA_PER_dC;
     assert_int_equal(limit, expected);
 }
 
@@ -258,28 +285,30 @@ static void test_temp_discharge_allows_colder_than_charge(void **state) {
 
 static void test_symmetric_voltages(void **state) {
     (void) state;
+    bms_model_t m = {0};
+    m.cell_voltage_min_mV = 3700;
+    m.cell_voltage_max_mV = 3700;
     
     // When min == max, limits should be consistent
-    uint16_t charge_limit = calculate_cell_voltage_charge_current_limit(3700, 3700);
-    uint16_t discharge_limit = calculate_cell_voltage_discharge_current_limit(3700, 3700);
+    uint16_t charge_limit = calculate_cell_voltage_charge_current_limit(&m);
+    uint16_t discharge_limit = calculate_cell_voltage_discharge_current_limit(&m);
     
     // Both should allow current at normal voltage
-    assert_int_equal(charge_limit, 0xFFFF);
-    assert_int_equal(discharge_limit, 0xFFFF);
+    assert_true(charge_limit > 0);
+    assert_true(charge_limit < 0xFFFF);
+    assert_true(discharge_limit > 0);
+    assert_true(discharge_limit < 0xFFFF);
 }
 
 static void test_extreme_voltage_imbalance(void **state) {
     (void) state;
+    bms_model_t m = {0};
+    m.cell_voltage_min_mV = get_cell_voltage_soft_min_mV(&m) - 100; 
+    m.cell_voltage_max_mV = get_cell_voltage_soft_max_mV(&m) + 100;
     
     // Large imbalance: one cell low, one high
-    uint16_t charge_limit = calculate_cell_voltage_charge_current_limit(
-        CELL_VOLTAGE_SOFT_MIN_mV - 100, 
-        CELL_VOLTAGE_SOFT_MAX_mV + 100
-    );
-    uint16_t discharge_limit = calculate_cell_voltage_discharge_current_limit(
-        CELL_VOLTAGE_SOFT_MIN_mV - 100,
-        CELL_VOLTAGE_SOFT_MAX_mV + 100
-    );
+    uint16_t charge_limit = calculate_cell_voltage_charge_current_limit(&m);
+    uint16_t discharge_limit = calculate_cell_voltage_discharge_current_limit(&m);
     
     // Both charge and discharge should be severely limited
     assert_int_equal(charge_limit, 0);  // Can't charge - too high

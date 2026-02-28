@@ -1,60 +1,131 @@
 # GitHub Copilot Instructions for RP2350 BMS Project
 
 ## Project Overview
-This is a C firmware project for a Battery Management System (BMS) running on the Raspberry Pi Pico (RP2350). It uses the Pico SDK and CMake build system.
+This repository contains C11 firmware for the BMS controller running on RP235x (Pico SDK + CMake). The current codebase is organized under `bms/` with app logic, drivers, protocols, and system utilities split by domain.
+
+## Current Project Layout
+
+- `main.c`: firmware entry point (`main()`) with core1 launch, `bms_init()`, `bms_tick()`, `synchronize_time()` loop.
+- `bms/app/`: high-level application logic
+  - `bms.c`: main tick pipeline
+  - `init.c`: hardware/comms/model initialization
+  - `model.h/.c`: global model, persistent structs, derived calculations
+  - `battery/`: balancing, current limits, safety checks
+  - `state_machines/`: `base`, `system`, `contactors`
+  - `calibration/`: calibration state machine + helpers
+  - `estimators/`: EKF + alternative SoC estimators
+  - `monitoring/`: runtime counters
+- `bms/drivers/`: low-level device/peripheral drivers
+  - `bmb3y/`, `isospi/`, `contactors/`, `sensors/`, `comms/`, `chip/`
+- `bms/protocols/`: external/internal interfaces
+  - `cli/`, `hmi_serial/`, `internal_serial/`, `inverter/`
+- `bms/sys/`: shared system services (`events/`, `logging/`, `time/`)
+- `bms/config/`: limits, pins, settings, allocations, board headers
+- `tests/`: host-side CMocka unit tests and coverage tooling
 
 ## Architecture & Patterns
 
-### 1. Global Data Model (`model.h`)
-- **Central State**: The system state is centralized in a global singleton `bms_model_t model`.
-- **Usage**: All components (state machines, hardware drivers) read from and write to this global structure.
-- **Fields**: Contains sensor data (`current_mA`, `cell_voltages_mv`), timestamps (`current_millis`), and state machine contexts (`contactor_sm`).
+### 1) Global model-first design (`bms/app/model.h`)
+- System state is centralized in global `bms_model_t model`.
+- Most modules read/write `model` fields directly.
+- `bms_model_t` includes:
+  - live measurements + timestamps
+  - derived limits/estimates
+  - state-machine contexts (`system_sm`, `contactor_sm`, `balancing_sm`, `calibration_sm`)
+  - persistent settings split into:
+    - `persistent_fast` (frequent NVM writes)
+    - `persistent_slow` (infrequent calibration/config writes)
 
-### 2. State Machines (`state_machines/`)
-- **Framework**: Logic is implemented using a lightweight state machine framework defined in `state_machines/base.h`.
-- **Structure**:
-  - Use `sm_t` for the state machine context.
-  - Implement a `_tick(bms_model_t *model)` function called in the main loop.
-  - Use `state_transition(sm, NEW_STATE)` to change states.
-  - Use `state_timeout(sm, timeout_ms)` for time-based transitions.
-- **Example**: See `state_machines/contactors.c` for a reference implementation.
+### 2) Main loop pipeline (`bms/app/bms.c`)
+Each tick follows a phased flow:
+1. watchdog + preamble
+2. read inputs/sensors
+3. update model + estimators
+4. run safety/hardware checks + events processing
+5. tick state machines
+6. run protocol/comms outputs and NVM maintenance
+7. optional debug output/timing metrics
 
-### 3. Hardware Abstraction (`hw/`)
-- **Drivers**: Peripheral drivers are located in `hw/` (e.g., `duart.c`, `internal_adc.c`, `pwm.c`).
-- **Time**: Use `hw/time.h` for system time. `millis_t` is the standard time type.
-- **Safety**: Always check data freshness using `millis_recent_enough(timestamp, max_age_ms)` before acting on sensor data.
+### 3) State machine framework (`bms/app/state_machines/base.h`)
+- Use `sm_t` (anonymous-struct embedding is common in this repo).
+- Initialize with `sm_init()`.
+- Transition with `state_transition()`.
+- Use `state_timeout()` / `state_time()` for time-based logic.
+- Implement per-module `*_sm_tick(bms_model_t *model)` functions.
 
-### 4. Communication Protocols
-- **ISOSPI**: Implemented in `isospi/` using a custom PIO program (`isospi_master.pio`).
-- **BATMan**: The battery monitoring protocol (likely for LTC68xx chips) is in `batman/`. It uses the ISOSPI driver.
-- **DUART**: A custom DMA-driven Dual UART implementation (`hw/duart.c`) handles external communication using ring buffers and packet framing.
+### 4) Active state machines
+- `system_sm_tick()`: high-level mode lifecycle (`INITIALIZING`, `INACTIVE`, `OPERATING`, `CALIBRATING`, `FAULT`) and request handling.
+- `contactor_sm_tick()`: sequencing/tests/precharge/opening behavior.
+- `balancing_sm_tick()`: automatic cell balancing logic (called from BMB cycle).
+- `calibration_sm_tick()`: offline/online calibration flows.
 
-## Developer Workflow
+### 5) Timing model (`bms/sys/time/time.h`)
+- Tick period target is `TIMESTEP_PERIOD_MS` (20 ms).
+- Use `millis()`, `millis64()`, `timestep()` helpers.
+- Validate freshness with `millis_recent_enough(...)` before acting on sensor data.
+- `synchronize_time()` enforces loop cadence and reports overruns.
 
-### Build System
-- **CMake**: The project uses standard CMake with the Pico SDK.
-- **Commands**:
-  ```bash
-  mkdir build && cd build
-  cmake ..
-  make -j4
-  ```
-- **Output**: The build produces `bms.uf2` for flashing.
+### 6) Safety/event model (`bms/sys/events`)
+- Event levels: `NONE`, `INFO`, `WARNING`, `CRITICAL`, `FATAL`.
+- `confirm(...)` / `check_or_confirm(...)` are the standard pattern for condition + event management.
+- FATAL events drive system fault behavior (contactor opening path).
 
-### Debugging
-- **USB Output**: `stdio_usb_init()` is used. `printf` output goes to the USB serial connection.
-- **Logging**: Use `printf` for debug logs.
+## Drivers & Protocol Notes
 
-## Coding Conventions
-- **C Standard**: C11.
-- **Naming**: `snake_case` for functions and variables.
-- **Safety First**:
-  - Validate sensor data age.
-  - Handle timeouts in state machines.
-  - Use `volatile` and `atomic` types where appropriate for interrupt-shared data (though the current codebase relies heavily on the main loop).
+- BMB communications are in `bms/drivers/bmb3y/` over ISOSPI (`bms/drivers/isospi/`).
+- Sensor drivers include INA228, ADS1115, and internal ADC under `bms/drivers/sensors/`.
+- Serial packet links use DUART in `bms/drivers/comms/duart.c`.
+- Inverter integration lives in `bms/protocols/inverter/` (CAN-based).
+- USB CLI command parsing is in `bms/protocols/cli/cli.c`.
 
-## Key Files
-- `bms.c`: Main entry point and loop.
-- `model.h`: Global state definition.
-- `state_machines/base.h`: State machine primitives.
-- `isospi/isospi_master.pio`: PIO assembly for ISOSPI.
+## Persistence / NVM
+
+- NVM support is in `bms/drivers/chip/nvm.c`.
+- LittleFS is used for persisted blobs and boot count.
+- Respect versioned persistent structs in `model.h`.
+- Do not reorder existing persisted fields without version migration.
+
+## Build & Test Workflow
+
+### Firmware build
+```bash
+mkdir -p build
+cd build
+cmake ..
+make -j4
+```
+Primary output: `build/bms.uf2`.
+
+### Unit tests (host)
+```bash
+cd tests
+mkdir -p build
+cd build
+cmake ..
+ctest --output-on-failure
+```
+Tests are CMocka-based and defined in `tests/CMakeLists.txt`.
+
+## Coding conventions for this repo
+
+- Language: C11 (`-fms-extensions` enabled; anonymous struct embedding is used intentionally).
+- Naming: `snake_case` for functions/variables; enums/macros in project style.
+- Prefer minimal, targeted changes; preserve existing style.
+- Safety-first defaults:
+  - check data staleness before control decisions
+  - keep event semantics consistent (`confirm`/`clear` patterns)
+  - keep contactor and state-machine transitions explicit and conservative
+- When changing control logic, update/add unit tests in `tests/` where practical.
+
+## Key files to consult first
+
+- `main.c`
+- `bms/app/bms.c`
+- `bms/app/init.c`
+- `bms/app/model.h`
+- `bms/app/state_machines/base.h`
+- `bms/app/state_machines/system.c`
+- `bms/app/state_machines/contactors.c`
+- `bms/sys/events/events.h`
+- `bms/sys/time/time.h`
+- `tests/CMakeLists.txt`

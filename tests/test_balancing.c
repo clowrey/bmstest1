@@ -11,6 +11,19 @@
 #include "app/battery/balancing.h"
 #include "sys/events/events.h"
 #include "config/limits.h"
+#include "sys/logging/logging.h"
+
+void logging_printf(log_level_t level, const char *format, ...) {
+    (void)level;
+    va_list args;
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
+}
+
+uint32_t time_us_32() {
+    return (uint32_t)stored_millis * 1000;
+}
 
 // Mock globals
 millis_t stored_millis = 0;
@@ -20,7 +33,7 @@ millis64_t stored_millis64 = 0;
 extern bms_model_t model;
 
 // External functions for testing
-int16_t calculate_balance_time(int16_t voltage_mV, int16_t min_voltage_mV);
+int16_t calculate_balance_time(int16_t voltage_mV, int16_t min_voltage_mV, bms_model_t *model);
 
 // ============================================================================
 // Test Helpers
@@ -34,7 +47,9 @@ static void advance_time(uint32_t ms) {
 static void reset_model(bms_model_t *m) {
     memset(m, 0, sizeof(bms_model_t));
     m->system_sm.state = SYSTEM_STATE_OPERATING;
-    m->balancing_enabled = true;
+    m->auto_balancing_period_ms = 3600000; // 1 hour
+    m->balancing_periods_per_mV = 50;
+    m->balance_min_offset_mV = 2;
     m->cell_voltage_millis = stored_millis;
     
     // Set all cell voltages to a normal value
@@ -68,31 +83,43 @@ static int setup(void **state) {
 
 static void test_calculate_balance_time_no_difference(void **state) {
     (void) state;
+    bms_model_t m = {0};
+    m.balance_min_offset_mV = 0;
+    m.balancing_periods_per_mV = 50;
     // When voltage equals minimum, balance time should be 0
-    int16_t time = calculate_balance_time(3800, 3800);
+    int16_t time = calculate_balance_time(3800, 3800, &m);
     assert_int_equal(time, 0);
 }
 
 static void test_calculate_balance_time_small_difference(void **state) {
     (void) state;
+    bms_model_t m = {0};
+    m.balance_min_offset_mV = 0;
+    m.balancing_periods_per_mV = 50;
     // Small voltage difference (1mV above minimum)
-    int16_t time = calculate_balance_time(3801, 3800);
+    int16_t time = calculate_balance_time(3801, 3800, &m);
     // With PERIODS_PER_MV = 50, expect 50 periods
     assert_int_equal(time, 50);
 }
 
 static void test_calculate_balance_time_large_difference(void **state) {
     (void) state;
+    bms_model_t m = {0};
+    m.balance_min_offset_mV = 0;
+    m.balancing_periods_per_mV = 50;
     // Larger voltage difference (10mV above minimum)
-    int16_t time = calculate_balance_time(3810, 3800);
+    int16_t time = calculate_balance_time(3810, 3800, &m);
     // 10mV * 50 periods = 500 periods
     assert_int_equal(time, 500);
 }
 
 static void test_calculate_balance_time_below_minimum(void **state) {
     (void) state;
+    bms_model_t m = {0};
+    m.balance_min_offset_mV = 0;
+    m.balancing_periods_per_mV = 50;
     // When cell voltage is below minimum, should return 0
-    int16_t time = calculate_balance_time(3790, 3800);
+    int16_t time = calculate_balance_time(3790, 3800, &m);
     assert_int_equal(time, 0);
 }
 
@@ -117,7 +144,7 @@ static void test_balancing_does_not_start_with_high_voltage(void **state) {
     reset_model(&m);
     
     // Set max cell voltage above soft max
-    m.cell_voltage_max_mV = CELL_VOLTAGE_SOFT_MAX_mV + 100;
+    m.cell_voltage_max_mV = get_cell_voltage_soft_max_mV(&m) + 100;
     
     advance_time(35000);
     balancing_sm_tick(&m);
@@ -132,9 +159,9 @@ static void test_balancing_does_not_start_with_low_voltage(void **state) {
     reset_model(&m);
     
     // Set min cell voltage below minimum balance voltage
-    m.cell_voltage_min_mV = MINIMUM_BALANCE_VOLTAGE_mV - 100;
+    m.cell_voltage_min_mV = get_minimum_balancing_voltage_mV(&m) - 100;
     for (int i = 0; i < NUM_CELLS; i++) {
-        m.cell_voltages_mV[i] = MINIMUM_BALANCE_VOLTAGE_mV - 100;
+        m.cell_voltages_mV[i] = get_minimum_balancing_voltage_mV(&m) - 100;
     }
     
     advance_time(35000);

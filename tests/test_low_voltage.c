@@ -15,6 +15,13 @@
 #include <stdint.h>
 #include <stdio.h>
 
+void logging_printf(const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+}
+
 // Mock globals
 millis_t stored_millis = 0;
 millis64_t stored_millis64 = 0;
@@ -125,7 +132,7 @@ static void test_low_voltage_protection(void **state) {
     assert_true(model.cell_voltage_discharge_current_limit_dA > 100);
 
     // 2. Discharge to just below SOFT_MIN
-    discharge(&bat, &model, CELL_VOLTAGE_SOFT_MIN_mV - 1);
+    discharge(&bat, &model, get_cell_voltage_soft_min_mV(&model) - 1);
     // Check that discharge limit has been zeroed           
     assert_int_equal(model.cell_voltage_discharge_current_limit_dA, 0);
     // Highest level should still be NONE or WARNING (if LOW is warning)
