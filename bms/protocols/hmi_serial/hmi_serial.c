@@ -77,7 +77,6 @@ static bool hmi_register_is_available(uint16_t reg_id, bms_model_t *model) {
     // Currently only checks for initial data availability on power-on, not
     // staleness
 
-    millis_t now = millis();
     switch (reg_id) {
         case HMI_REG_SOC:
             return model->soc_millis > 0;
@@ -364,7 +363,7 @@ static void hmi_handle_read_registers(const uint8_t *rx_buf, size_t len, bms_mod
     uint8_t addr = rx_buf[1];
     if (addr != device_address) return;
 
-    uint8_t tx_buf[256+8];
+    uint8_t tx_buf[256];
     uint16_t tx_idx = 0;
     tx_buf[tx_idx++] = HMI_MSG_READ_REGISTERS_RESPONSE;
     tx_buf[tx_idx++] = device_address;
@@ -375,12 +374,12 @@ static void hmi_handle_read_registers(const uint8_t *rx_buf, size_t len, bms_mod
             // Skip unavailable registers
             continue;
         }
-        uint8_t len = hmi_append_register_value(&tx_buf[tx_idx], reg_id, model);
-        if(tx_idx + len > 256) {
+        // Max single register: 2 (id) + 1 (type) + 8 (value) = 11 bytes
+        if(tx_idx + 11 > sizeof(tx_buf)) {
             // prevent buffer overflow
             break;
         }
-        tx_idx += len;
+        tx_idx += hmi_append_register_value(&tx_buf[tx_idx], reg_id, model);
     }
 
     duart_send_packet(&HMI_SERIAL_DUART, tx_buf, tx_idx);
@@ -511,7 +510,9 @@ static void hmi_handle_write_registers(const uint8_t *rx_buf, size_t len, bms_mo
         rx_idx += size;
         
         // Always append the current (possibly new) value to the response
-        tx_idx += hmi_append_register_value(&tx_buf[tx_idx], reg_id, model);
+        if(tx_idx + 11 <= sizeof(tx_buf)) {
+            tx_idx += hmi_append_register_value(&tx_buf[tx_idx], reg_id, model);
+        }
     }
 
     duart_send_packet(&HMI_SERIAL_DUART, tx_buf, tx_idx);
