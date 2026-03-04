@@ -266,7 +266,7 @@ static int send_1d0(bms_model_t *model) {
     const int16_t pack_current_dA = model->current_mA / 100; // in 0.1A units
     msg.data[2] = (pack_current_dA >> 8) & 0xFF;
     msg.data[3] = pack_current_dA & 0xFF;
-    const int16_t temperature_midpoint_dC = (model->temperature_min_dC + model->temperature_max_dC) / 2; // in 0.1C units
+    const int16_t temperature_midpoint_dC = (int16_t)((model->temperature_min + model->temperature_max) * 0.5f * 10.0f); // in 0.1C units
     msg.data[4] = (temperature_midpoint_dC >> 8) & 0xFF;
     msg.data[5] = temperature_midpoint_dC & 0xFF;
     msg.data[6] = 0x03;
@@ -286,12 +286,12 @@ static int send_210(bms_model_t *model) {
     msg.id = 0x210;
     msg.dlc = 8;
 
-    const int16_t temperature_max_dC = model->temperature_max_dC; // in 0.1C units
-    msg.data[0] = (temperature_max_dC >> 8) & 0xFF;
-    msg.data[1] = temperature_max_dC & 0xFF;
-    const int16_t temperature_min_dC = model->temperature_min_dC; // in 0.1C units
-    msg.data[2] = (temperature_min_dC >> 8) & 0xFF;
-    msg.data[3] = temperature_min_dC & 0xFF;
+    const int16_t temperature_max = (int16_t)(model->temperature_max * 10.0f); // in 0.1C units
+    msg.data[0] = (temperature_max >> 8) & 0xFF;
+    msg.data[1] = temperature_max & 0xFF;
+    const int16_t temperature_min = (int16_t)(model->temperature_min * 10.0f); // in 0.1C units
+    msg.data[2] = (temperature_min >> 8) & 0xFF;
+    msg.data[3] = temperature_min & 0xFF;
     msg.data[4] = 0x00;
     msg.data[5] = 0x00;
     msg.data[6] = 0x00;

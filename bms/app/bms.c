@@ -224,9 +224,9 @@ void bms_tick() {
                 debug_printf("\n");
             }
         }
-        debug_printf("Total: %dmV | Temps: %ddC - %ddC | Delta: %d mV %s%s\n\n", 
+        debug_printf("Total: %dmV | Temps: %.1fC - %.1fC | Delta: %d mV %s%s\n\n", 
             total, 
-            model.temperature_min_dC, model.temperature_max_dC, 
+            model.temperature_min, model.temperature_max, 
             (int)(model.cell_voltage_max_mV - model.cell_voltage_min_mV),
             model.cell_voltage_slow_mode ? " | Slow" : "",
             model.balancing_active ? " | Balancing" : ""

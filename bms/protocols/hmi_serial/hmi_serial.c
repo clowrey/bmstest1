@@ -56,6 +56,17 @@ static inline uint8_t hmi_buf_append_uint16(uint8_t *buf, uint16_t value) {
     return idx;
 }
 
+static inline uint8_t hmi_buf_append_float(uint8_t *buf, float value) {
+    uint8_t idx = 0;
+    union {
+        float f;
+        uint32_t u;
+    } u;
+    u.f = value;
+    idx += hmi_buf_append_uint32(buf, u.u);
+    return idx;
+}
+
 static inline uint16_t hmi_buf_get_uint16(const uint8_t *buf) {
     return (uint16_t)buf[0] | ((uint16_t)buf[1] << 8);
 }
@@ -163,12 +174,12 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
             idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)(model->neg_contactor_voltage * 1000));
             break;
         case HMI_REG_TEMPERATURE_MIN:
-            buf[idx++] = HMI_TYPE_INT16;
-            idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->temperature_min_dC);
+            buf[idx++] = HMI_TYPE_FLOAT;
+            idx += hmi_buf_append_float(&buf[idx], (uint16_t)model->temperature_min);
             break;
         case HMI_REG_TEMPERATURE_MAX:
-            buf[idx++] = HMI_TYPE_INT16;
-            idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->temperature_max_dC);
+            buf[idx++] = HMI_TYPE_FLOAT;
+            idx += hmi_buf_append_float(&buf[idx], (uint16_t)model->temperature_max);
             break;
         case HMI_REG_CELL_VOLTAGE_MIN:
             buf[idx++] = HMI_TYPE_INT16;
@@ -296,8 +307,8 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
             } else if (reg_id >= HMI_REG_MODULE_TEMPS_START && reg_id <= HMI_REG_MODULE_TEMPS_END) {
                 uint16_t temp_idx = reg_id - HMI_REG_MODULE_TEMPS_START;
                 if (temp_idx < 8) {
-                    buf[idx++] = HMI_TYPE_UINT16;
-                    idx += hmi_buf_append_uint16(&buf[idx], model->module_temperatures_dC[temp_idx]);
+                    buf[idx++] = HMI_TYPE_FLOAT;
+                    idx += hmi_buf_append_float(&buf[idx], model->module_temperatures[temp_idx]);
                 } else {
                     // Unknown temp
                     idx -= 2; // rollback reg_id

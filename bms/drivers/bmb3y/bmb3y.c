@@ -6,6 +6,7 @@
 #include "sys/events/events.h"
 #include "sys/logging/logging.h"
 #include "drivers/isospi/isospi_master.h"
+#include "lib/aema.h"
 
 #include "pico/stdlib.h"
 
@@ -421,8 +422,17 @@ bool bmb3y_read_temperatures_blocking(bms_model_t *model) {
                 (int16_t)(rx_buf[module * 8 + 2]) |
                 (int16_t)(rx_buf[module * 8 + 3] << 8);
 
-            model->module_temperatures_dC[module] = raw_temp - 1131;
-            //printf("module temp %d is %d dC\n", module, model->module_temperatures_dC[module]);
+            model->module_temperatures_raw_dC[module] = raw_temp - 1131;
+
+            aema_update(
+                &model->module_temperatures[module],
+                NULL,
+                model->module_temperatures_raw_dC[module] * 0.1f,
+                0.05f,  // slow alpha
+                0.75f,  // fast alpha
+                2.0f,  // slow threshold
+                10.0f // fast threshold
+            );
         }
         
         // LFP algo: (TEMPS3)
@@ -433,7 +443,17 @@ bool bmb3y_read_temperatures_blocking(bms_model_t *model) {
 
             // super-crude cal, 28c = 0x4300, 100c = 0x6e00
             // FIXME - do proper thermistor conversion
-            model->module_temperatures_dC[module] = ((raw_temp - 0x4300) * (1000 - 280)) / (0x6e00 - 0x4300) + 280;
+            model->module_temperatures_raw_dC[module] = ((raw_temp - 0x4300) * (1000 - 280)) / (0x6e00 - 0x4300) + 280;
+
+            aema_update(
+                &model->module_temperatures[module],
+                NULL,
+                model->module_temperatures_raw_dC[module] * 0.1f,
+                0.05f,  // slow alpha
+                0.75f,  // fast alpha
+                2.0f,  // slow threshold
+                10.0f // fast threshold
+            );
         }
 
         model->raw_temperatures[module] = (

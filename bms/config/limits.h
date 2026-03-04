@@ -35,23 +35,23 @@
     // TEMPERATURE
 
     // Temperatures at which charge power limit falls to zero
-    #define MAX_CHARGE_TEMPERATURE_LIMIT_dC 500    // in 0.1C units
-    #define MIN_CHARGE_TEMPERATURE_LIMIT_dC   0    // in 0.1C units
+    #define MAX_CHARGE_TEMPERATURE_LIMIT 50.0f
+    #define MIN_CHARGE_TEMPERATURE_LIMIT  0.0f
     // Charge current-per-temp linear derating (near min and max limits)
-    #define CHARGE_TEMPERATURE_DERATE_dA_PER_dC 2 // in 0.1A per 0.1C units
+    #define CHARGE_TEMPERATURE_DERATE_A_PER_C 2.0f
 
     // Temperatures at which discharge power limit falls to zero
-    #define MAX_DISCHARGE_TEMPERATURE_LIMIT_dC  550   // in 0.1C units
-    #define MIN_DISCHARGE_TEMPERATURE_LIMIT_dC -150   // in 0.1C units
+    #define MAX_DISCHARGE_TEMPERATURE_LIMIT  55.0f
+    #define MIN_DISCHARGE_TEMPERATURE_LIMIT -15.0f
     // Discharge current-per-temp linear derating (near min and max limits)
-    #define DISCHARGE_TEMPERATURE_DERATE_dA_PER_dC 2 // in 0.1A per 0.1C units
+    #define DISCHARGE_TEMPERATURE_DERATE_A_PER_C 2.0f
 
     // Hard temperature limits, beyond which the battery will be cut off
-    #define TEMPERATURE_HARD_MAX_dC 600
-    #define TEMPERATURE_HARD_MIN_dC -200
+    #define TEMPERATURE_HARD_MAX 60.0f
+    #define TEMPERATURE_HARD_MIN -20.0f
     // Soft temperature limits, beyond which the battery will warn
-    #define TEMPERATURE_SOFT_MAX_dC 550
-    #define TEMPERATURE_SOFT_MIN_dC -150
+    #define TEMPERATURE_SOFT_MAX 55.0f
+    #define TEMPERATURE_SOFT_MIN -15.0f
 
 #elif CHEMISTRY == NMC
     // Hard voltage limits, beyond which the battery will be cut off
@@ -76,22 +76,22 @@
     #define DISCHARGE_CELL_VOLTAGE_DERATE_dA_PER_SoC 20 // in 0.1A per percent SoC
 
     // Temperatures by which charge power limit falls to zero
-    #define MAX_CHARGE_TEMPERATURE_LIMIT_dC  500    // in 0.1C units
-    #define MIN_CHARGE_TEMPERATURE_LIMIT_dC 0       // in 0.1C units
+    #define MAX_CHARGE_TEMPERATURE_LIMIT  50.0f
+    #define MIN_CHARGE_TEMPERATURE_LIMIT   0.0f
     // Charge current-per-temp linear derating (near min and max limits)
-    #define CHARGE_TEMPERATURE_DERATE_dA_PER_dC 2 // in 0.1A per 0.1C units
+    #define CHARGE_TEMPERATURE_DERATE_A_PER_C 2.0f
 
     // Temperatures by which discharge power limit falls to zero
-    #define MAX_DISCHARGE_TEMPERATURE_LIMIT_dC  550   // in 0.1C units
-    #define MIN_DISCHARGE_TEMPERATURE_LIMIT_dC -50    // in 0.1C units
+    #define MAX_DISCHARGE_TEMPERATURE_LIMIT  55.0f
+    #define MIN_DISCHARGE_TEMPERATURE_LIMIT  -5.0f
     // Discharge current-per-temp linear derating (near min and max limits)
-    #define DISCHARGE_TEMPERATURE_DERATE_dA_PER_dC 2 // in 0.1A per 0.1C units
+    #define DISCHARGE_TEMPERATURE_DERATE_A_PER_C 2.0f
 
-    #define TEMPERATURE_HARD_MAX_dC 600
-    #define TEMPERATURE_HARD_MIN_dC -100
+    #define TEMPERATURE_HARD_MAX  60.0f
+    #define TEMPERATURE_HARD_MIN -10.0f
 
-    #define TEMPERATURE_SOFT_MAX_dC 500
-    #define TEMPERATURE_SOFT_MIN_dC 0
+    #define TEMPERATURE_SOFT_MAX  50.0f
+    #define TEMPERATURE_SOFT_MIN   0.0f
 #else
     #error "Unsupported CHEMISTRY"
 #endif
@@ -275,11 +275,9 @@
 #define CONTACTORS_INSTANT_OPEN_MA 1000
 // Current below which we will begrudgingly open contactors after the wait is up
 #define CONTACTORS_DELAYED_OPEN_MA 5000
-// How long we wait for the current to fall before opening anyway, or failing to
-// open (if the current is still too high)
-#define CONTACTORS_OPEN_TIMEOUT_MS 2000
+// How long we wait for the current to fall before failing to open contactors.
+// NOTE: Some inverters (Deye!) take a long time to react to current changes (20
+// seconds!).
+#define CONTACTORS_OPEN_TIMEOUT_MS 30000
 // How long we wait when force-opening contactors
-// NOTE: some inverters (Deye!) take a long time to react to current changes (20
-// seconds!). This could be increased to accommodate them, but will allow fault
-// conditions to persist for an uncomfortably long time.
 #define CONTACTORS_FORCE_OPEN_TIMEOUT_MS 2000

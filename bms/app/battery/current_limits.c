@@ -100,23 +100,25 @@ uint16_t calculate_cell_voltage_discharge_current_limit(bms_model_t *model) {
     return discharge_limit;
 }
 
-uint16_t calculate_temperature_charge_current_limit(int16_t temperature_min_dC, int16_t temperature_max_dC) {
-    if(temperature_max_dC >= MAX_CHARGE_TEMPERATURE_LIMIT_dC || temperature_min_dC <= MIN_CHARGE_TEMPERATURE_LIMIT_dC) {
+uint16_t calculate_temperature_charge_current_limit(float temperature_min, float temperature_max) {
+    if(temperature_max >= MAX_CHARGE_TEMPERATURE_LIMIT || temperature_min <= MIN_CHARGE_TEMPERATURE_LIMIT) {
         return 0;
     } else {
-        uint16_t upper_charge_limit = (MAX_CHARGE_TEMPERATURE_LIMIT_dC - temperature_max_dC) * CHARGE_TEMPERATURE_DERATE_dA_PER_dC;
-        uint16_t lower_charge_limit = (temperature_min_dC - MIN_CHARGE_TEMPERATURE_LIMIT_dC) * CHARGE_TEMPERATURE_DERATE_dA_PER_dC;
+        // Limit is in dA
+        uint16_t upper_charge_limit = 10.0f * (MAX_CHARGE_TEMPERATURE_LIMIT - temperature_max) * CHARGE_TEMPERATURE_DERATE_A_PER_C;
+        uint16_t lower_charge_limit = 10.0f * (temperature_min - MIN_CHARGE_TEMPERATURE_LIMIT) * CHARGE_TEMPERATURE_DERATE_A_PER_C;
         return min(upper_charge_limit, lower_charge_limit);
     }
     return 0xFFFF;
 }
 
-uint16_t calculate_temperature_discharge_current_limit(int16_t temperature_min_dC, int16_t temperature_max_dC) {
-    if(temperature_max_dC >= MAX_DISCHARGE_TEMPERATURE_LIMIT_dC || temperature_min_dC <= MIN_DISCHARGE_TEMPERATURE_LIMIT_dC) {
+uint16_t calculate_temperature_discharge_current_limit(float temperature_min, float temperature_max) {
+    if(temperature_max >= MAX_DISCHARGE_TEMPERATURE_LIMIT || temperature_min <= MIN_DISCHARGE_TEMPERATURE_LIMIT) {
         return 0;
     } else {
-        uint16_t upper_discharge_limit = (MAX_DISCHARGE_TEMPERATURE_LIMIT_dC - temperature_max_dC) * DISCHARGE_TEMPERATURE_DERATE_dA_PER_dC;
-        uint16_t lower_discharge_limit = (temperature_min_dC - MIN_DISCHARGE_TEMPERATURE_LIMIT_dC) * DISCHARGE_TEMPERATURE_DERATE_dA_PER_dC;
+        // Limit is in dA
+        uint16_t upper_discharge_limit = 10.0f * (MAX_DISCHARGE_TEMPERATURE_LIMIT - temperature_max) * DISCHARGE_TEMPERATURE_DERATE_A_PER_C;
+        uint16_t lower_discharge_limit = 10.0f * (temperature_min - MIN_DISCHARGE_TEMPERATURE_LIMIT) * DISCHARGE_TEMPERATURE_DERATE_A_PER_C;
         return min(upper_discharge_limit, lower_discharge_limit);
     }
     return 0xFFFF;

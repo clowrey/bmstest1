@@ -80,24 +80,24 @@ void confirm_battery_safety(bms_model_t *model) {
         0x1000000000000000
     )) {
         confirm(
-            model->temperature_max_dC <= TEMPERATURE_SOFT_MAX_dC,
+            model->temperature_max <= TEMPERATURE_SOFT_MAX,
             ERR_BATTERY_TEMPERATURE_HIGH,
-            model->temperature_max_dC
+            model->temperature_max
         );
         confirm(
-            model->temperature_max_dC <= TEMPERATURE_HARD_MAX_dC,
+            model->temperature_max <= TEMPERATURE_HARD_MAX,
             ERR_BATTERY_TEMPERATURE_VERY_HIGH,
-            model->temperature_max_dC
+            model->temperature_max
         );
         confirm(
-            model->temperature_min_dC >= TEMPERATURE_SOFT_MIN_dC,
+            model->temperature_min >= TEMPERATURE_SOFT_MIN,
             ERR_BATTERY_TEMPERATURE_LOW,
-            model->temperature_min_dC
+            model->temperature_min
         );
         confirm(
-            model->temperature_min_dC >= TEMPERATURE_HARD_MIN_dC,
+            model->temperature_min >= TEMPERATURE_HARD_MIN,
             ERR_BATTERY_TEMPERATURE_VERY_LOW,
-            model->temperature_min_dC
+            model->temperature_min
         );
     }
 

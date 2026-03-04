@@ -28,8 +28,8 @@ static void cli_handle_command(const char *cmd) {
     debug_printf("Executing command: '%s'\n", cmd);
 
     if(strcmp(cmd, "restart") == 0) {
-        debug_printf("Restarting...\n");
-        count_bms_event(ERR_RESTARTING, 1);
+        debug_printf("Requesting inactive mode\n");
+        model.system_req = SYSTEM_REQUEST_STOP;
     } else if (strncmp(cmd, "set ", 4) == 0) {
         char name[64];
         float value;

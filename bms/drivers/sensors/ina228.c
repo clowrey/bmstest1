@@ -303,7 +303,7 @@ bool ina228_read_current_async(ina228_t *dev) {
         &model.current_deviation, 
         model.current_mA, 
         0.005f, // slow alpha
-        0.5f,  // fast alpha
+        0.5f,   // fast alpha
         8.0f,   // slow threshold
         20.0f   // fast threshold
     );

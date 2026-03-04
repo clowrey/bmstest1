@@ -113,6 +113,10 @@ static void init_model() {
 
     model.current_filtered_mA = NAN;
     model.working_charge_current_limit_filtered_dA = NAN;
+
+    for(int i=0; i<NUM_MODULE_TEMPS; i++) {
+        model.module_temperatures[i] = NAN;
+    }
 }
 
 void bms_init() {

@@ -7,15 +7,15 @@
 bms_model_t model = {0};
 
 static void model_process_temperatures(bms_model_t *model) {
-    model->temperature_min_dC = model->module_temperatures_dC[0];
-    model->temperature_max_dC = model->module_temperatures_dC[0];
+    model->temperature_min = model->module_temperatures[0];
+    model->temperature_max = model->module_temperatures[0];
     for(int i=1; i<NUM_MODULE_TEMPS; i++) {
-        int16_t temp = model->module_temperatures_dC[i];
-        if(temp < model->temperature_min_dC) {
-            model->temperature_min_dC = temp;
+        int16_t temp = model->module_temperatures[i];
+        if(temp < model->temperature_min) {
+            model->temperature_min = temp;
         }
-        if(temp > model->temperature_max_dC) {
-            model->temperature_max_dC = temp;
+        if(temp > model->temperature_max) {
+            model->temperature_max = temp;
         }   
     }
     model->temperature_millis = model->module_temperatures_millis;
@@ -177,12 +177,12 @@ static void model_check_overcurrent_accumulation(bms_model_t *model) {
 
 static void model_calculate_temperature_current_limits(bms_model_t *model) {
     model->temp_charge_current_limit_dA = calculate_temperature_charge_current_limit(
-        model->temperature_min_dC,
-        model->temperature_max_dC
+        model->temperature_min,
+        model->temperature_max
     );
     model->temp_discharge_current_limit_dA = calculate_temperature_discharge_current_limit(
-        model->temperature_min_dC,
-        model->temperature_max_dC
+        model->temperature_min,
+        model->temperature_max
     );
 }
 

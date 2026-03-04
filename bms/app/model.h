@@ -83,8 +83,8 @@ typedef struct bms_model {
     int64_t charge_raw;
     millis_t charge_millis;
 
-    int16_t temperature_min_dC;
-    int16_t temperature_max_dC;
+    float temperature_min;
+    float temperature_max;
     millis_t temperature_millis;
 
     float battery_voltage;
@@ -138,8 +138,10 @@ typedef struct bms_model {
 
     // BATTERY DATA
 
-    int16_t module_temperatures_dC[8];
+    int16_t module_temperatures_raw_dC[NUM_MODULE_TEMPS];
     millis_t module_temperatures_millis;
+    float module_temperatures[NUM_MODULE_TEMPS];
+
 
     ekf_t ekf;
 
