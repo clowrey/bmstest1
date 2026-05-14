@@ -4,6 +4,8 @@ set(CMAKE_C_STANDARD 11)
 
 set(PICO_BOARD_HEADER_DIRS ${CMAKE_CURRENT_LIST_DIR}/bms/config/boards)
 set(PICO_BOARD bms_rp2354b)
+set(PICO_PLATFORM rp2350)
+set(PICO_STDIO_USB 1)
 
 # Support for anonymous structs
 add_definitions("-fms-extensions")

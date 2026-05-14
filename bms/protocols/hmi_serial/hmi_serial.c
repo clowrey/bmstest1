@@ -143,7 +143,7 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
             break;
         case HMI_REG_MILLIS:
             buf[idx++] = HMI_TYPE_UINT64;
-            idx += hmi_buf_append_uint64(&buf[idx], millis());
+            idx += hmi_buf_append_uint64(&buf[idx], millis64());
             break;
         case HMI_REG_SOC:
             buf[idx++] = HMI_TYPE_UINT16;
@@ -275,23 +275,23 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
             break;
         case HMI_REG_INVERTER_SOC:
             buf[idx++] = HMI_TYPE_INT16;
-            idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->inverter_soc);
+            idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->inverter_outputs.soc);
             break;
         case HMI_REG_INVERTER_FULL_CAPACITY_DAH:
             buf[idx++] = HMI_TYPE_INT16;
-            idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->inverter_full_capacity_dAh);
+            idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->inverter_outputs.full_capacity_dAh);
             break;
         case HMI_REG_INVERTER_REMAINING_CAPACITY_DAH:
             buf[idx++] = HMI_TYPE_INT16;
-            idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->inverter_remaining_capacity_dAh);
+            idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->inverter_outputs.remaining_capacity_dAh);
             break;
         case HMI_REG_INVERTER_MIN_VOLTAGE_LIMIT_DV:
             buf[idx++] = HMI_TYPE_INT16;
-            idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->inverter_min_voltage_limit_dV);
+            idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->inverter_outputs.min_voltage_limit_dV);
             break;
         case HMI_REG_INVERTER_MAX_VOLTAGE_LIMIT_DV:
             buf[idx++] = HMI_TYPE_INT16;
-            idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->inverter_max_voltage_limit_dV);
+            idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->inverter_outputs.max_voltage_limit_dV);
             break;
 
         default:

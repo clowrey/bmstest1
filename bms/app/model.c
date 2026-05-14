@@ -4,6 +4,8 @@
 #include "../config/limits.h"
 #include "../lib/math.h"
 
+#include <string.h>
+
 bms_model_t model = {0};
 
 static void model_process_temperatures(bms_model_t *model) {
@@ -186,7 +188,7 @@ static void model_calculate_temperature_current_limits(bms_model_t *model) {
     );
 }
 
-static void model_calculate_inverter_voltage_limits(bms_model_t *model) {
+static void model_calculate_inverter_voltage_limits(const bms_model_t *model, inverter_outputs_t *out) {
     // For inverters that allow absorption charging to continue at the voltage
     // limit.
 
@@ -221,11 +223,11 @@ static void model_calculate_inverter_voltage_limits(bms_model_t *model) {
     max_voltage_limit_dV += model->pack_voltage_limit_upper_offset_dV;
     min_voltage_limit_dV += model->pack_voltage_limit_lower_offset_dV;  
 
-    model->inverter_max_voltage_limit_dV = max_voltage_limit_dV;
-    model->inverter_min_voltage_limit_dV = min_voltage_limit_dV;
+    out->max_voltage_limit_dV = max_voltage_limit_dV;
+    out->min_voltage_limit_dV = min_voltage_limit_dV;
 }
 
-static void model_calculate_inverter_soc_and_capacity(bms_model_t *model) {
+static void model_calculate_inverter_soc_and_capacity(const bms_model_t *model, inverter_outputs_t *out) {
     // Calculate the SoC and capacity to send to the inverter, applying scaling and limits.
 
     int16_t divisor = model->soc_scaling_max - model->soc_scaling_min;
@@ -245,7 +247,8 @@ static void model_calculate_inverter_soc_and_capacity(bms_model_t *model) {
         scaled_soc = 10000;
     }
 
-    model->inverter_soc = scaled_soc;
+    out->soc = scaled_soc;
+    out->soc_millis = model->soc_millis;
 
     // TODO - use floating point instead of the int64_t math here?
 
@@ -253,10 +256,29 @@ static void model_calculate_inverter_soc_and_capacity(bms_model_t *model) {
 
     uint32_t scaled_working_capacity_mC = ((uint64_t)model->working_capacity_mC * divisor) / 10000;
 
-    model->inverter_remaining_capacity_dAh = ((uint64_t)scaled_working_capacity_mC * scaled_soc) / ((uint64_t)10000 * 3600 * 100);
-    model->inverter_full_capacity_dAh = (scaled_working_capacity_mC / (3600 * 100));
+    out->remaining_capacity_dAh = ((uint64_t)scaled_working_capacity_mC * scaled_soc) / ((uint64_t)10000 * 3600 * 100);
+    out->full_capacity_dAh = (scaled_working_capacity_mC / (3600 * 100));
 }
 
+static void model_calculate_inverter_outputs(const bms_model_t *model, inverter_outputs_t *out) {
+    // Calculate the values to send to the inverter, applying any necessary scaling or limits.
+
+    memset(out, 0, sizeof(*out));
+    
+    model_calculate_inverter_voltage_limits(model, out);
+    model_calculate_inverter_soc_and_capacity(model, out);
+
+    // Copy other values acruss from the model
+    out->battery_voltage = model->battery_voltage;
+    out->battery_voltage_millis = model->battery_voltage_millis;
+    out->current_mA = model->current_mA;
+    out->current_millis = model->current_millis;
+    out->temperature_min = model->temperature_min;
+    out->temperature_max = model->temperature_max;
+    out->temperature_millis = model->temperature_millis;
+    out->charge_current_limit_dA = model->charge_current_limit_dA;
+    out->discharge_current_limit_dA = model->discharge_current_limit_dA;
+}
 
 void model_tick(bms_model_t *model) {
     model_process_temperatures(model);
@@ -271,6 +293,5 @@ void model_tick(bms_model_t *model) {
 
     model_check_overcurrent_accumulation(model);
 
-    model_calculate_inverter_voltage_limits(model);
-    model_calculate_inverter_soc_and_capacity(model);
+    model_calculate_inverter_outputs(model, &model->inverter_outputs);
 }

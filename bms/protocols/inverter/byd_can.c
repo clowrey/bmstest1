@@ -198,19 +198,19 @@ static void send_inverter_init_messages() {
     timestep_3 = timestep_1 + 2;
 }
 
-static int send_110(bms_model_t *model) {
+static int send_110(inverter_outputs_t *outputs) {
     struct can2040_msg msg;
     msg.id = 0x110;
     msg.dlc = 8;
 
-    msg.data[0] = (model->inverter_max_voltage_limit_dV >> 8) & 0xFF;
-    msg.data[1] = model->inverter_max_voltage_limit_dV & 0xFF;
-    msg.data[2] = (model->inverter_min_voltage_limit_dV >> 8) & 0xFF;
-    msg.data[3] = model->inverter_min_voltage_limit_dV & 0xFF;
-    msg.data[4] = (model->discharge_current_limit_dA >> 8) & 0xFF;
-    msg.data[5] = model->discharge_current_limit_dA & 0xFF;
-    msg.data[6] = (model->charge_current_limit_dA >> 8) & 0xFF;
-    msg.data[7] = model->charge_current_limit_dA & 0xFF;
+    msg.data[0] = (outputs->max_voltage_limit_dV >> 8) & 0xFF;
+    msg.data[1] = outputs->max_voltage_limit_dV & 0xFF;
+    msg.data[2] = (outputs->min_voltage_limit_dV >> 8) & 0xFF;
+    msg.data[3] = outputs->min_voltage_limit_dV & 0xFF;
+    msg.data[4] = (outputs->discharge_current_limit_dA >> 8) & 0xFF;
+    msg.data[5] = outputs->discharge_current_limit_dA & 0xFF;
+    msg.data[6] = (outputs->charge_current_limit_dA >> 8) & 0xFF;
+    msg.data[7] = outputs->charge_current_limit_dA & 0xFF;
 
     // printf("CAN 110 %02X %02X %02X %02X %02X %02X %02X %02X\n",
     //     msg.data[0], msg.data[1], msg.data[2], msg.data[3],
@@ -219,8 +219,8 @@ static int send_110(bms_model_t *model) {
     return inverter_can_transmit(&msg);
 }
 
-static int send_150(bms_model_t *model) {
-    if(model->soc_millis==0) {
+static int send_150(inverter_outputs_t *outputs) {
+    if(outputs->soc_millis==0) {
         // no valid data yet, don't send anything
         return -1;
     }
@@ -229,18 +229,18 @@ static int send_150(bms_model_t *model) {
     msg.id = 0x150;
     msg.dlc = 8;
 
-    msg.data[0] = (model->inverter_soc >> 8) & 0xFF;
-    msg.data[1] = model->inverter_soc & 0xFF;
+    msg.data[0] = (outputs->soc >> 8) & 0xFF;
+    msg.data[1] = outputs->soc & 0xFF;
     //const uint16_t soh = 10000; // 100.00%
     const uint16_t soh = 9900; // 99.00%
     msg.data[2] = (soh >> 8) & 0xFF;
     msg.data[3] = soh & 0xFF;
 
-    msg.data[4] = (model->inverter_remaining_capacity_dAh >> 8) & 0xFF;
-    msg.data[5] = model->inverter_remaining_capacity_dAh & 0xFF;
+    msg.data[4] = (outputs->remaining_capacity_dAh >> 8) & 0xFF;
+    msg.data[5] = outputs->remaining_capacity_dAh & 0xFF;
 
-    msg.data[6] = (model->inverter_full_capacity_dAh >> 8) & 0xFF;
-    msg.data[7] = model->inverter_full_capacity_dAh & 0xFF;
+    msg.data[6] = (outputs->full_capacity_dAh >> 8) & 0xFF;
+    msg.data[7] = outputs->full_capacity_dAh & 0xFF;
 
     // printf("CAN 150 sent SOC %d RemCap %d FullCap %d\n",
     //     scaled_soc, remaining_capacity_dAh, full_capacity_dAh);
@@ -248,8 +248,8 @@ static int send_150(bms_model_t *model) {
     return inverter_can_transmit(&msg);
 }
 
-static int send_1d0(bms_model_t *model) {
-    if(model->battery_voltage_millis==0 || model->current_millis==0 || model->temperature_millis==0) {
+static int send_1d0(inverter_outputs_t *outputs) {
+    if(outputs->battery_voltage_millis==0 || outputs->current_millis==0 || outputs->temperature_millis==0) {
         // no valid data yet, don't send anything
         return -1;
     }
@@ -259,14 +259,14 @@ static int send_1d0(bms_model_t *model) {
     msg.dlc = 8;
 
     // TODO: battery voltage or cell voltage total?
-    const uint16_t pack_voltage_dV = (uint16_t)(model->battery_voltage * 10.0f); // in 0.1V units
+    const uint16_t pack_voltage_dV = (uint16_t)(outputs->battery_voltage * 10.0f); // in 0.1V units
     msg.data[0] = (pack_voltage_dV >> 8) & 0xFF;
     msg.data[1] = pack_voltage_dV & 0xFF;
     // TODO: check current direction
-    const int16_t pack_current_dA = model->current_mA / 100; // in 0.1A units
+    const int16_t pack_current_dA = outputs->current_mA / 100; // in 0.1A units
     msg.data[2] = (pack_current_dA >> 8) & 0xFF;
     msg.data[3] = pack_current_dA & 0xFF;
-    const int16_t temperature_midpoint_dC = (int16_t)((model->temperature_min + model->temperature_max) * 0.5f * 10.0f); // in 0.1C units
+    const int16_t temperature_midpoint_dC = (int16_t)((outputs->temperature_min + outputs->temperature_max) * 0.5f * 10.0f); // in 0.1C units
     msg.data[4] = (temperature_midpoint_dC >> 8) & 0xFF;
     msg.data[5] = temperature_midpoint_dC & 0xFF;
     msg.data[6] = 0x03;
@@ -274,8 +274,8 @@ static int send_1d0(bms_model_t *model) {
     return inverter_can_transmit(&msg);
 }
 
-static int send_210(bms_model_t *model) {
-    if(model->temperature_millis==0) {
+static int send_210(inverter_outputs_t *outputs) {
+    if(outputs->temperature_millis==0) {
         // no valid temperature data, don't send anything
         return -1;
     }
@@ -286,10 +286,10 @@ static int send_210(bms_model_t *model) {
     msg.id = 0x210;
     msg.dlc = 8;
 
-    const int16_t temperature_max = (int16_t)(model->temperature_max * 10.0f); // in 0.1C units
+    const int16_t temperature_max = (int16_t)(outputs->temperature_max * 10.0f); // in 0.1C units
     msg.data[0] = (temperature_max >> 8) & 0xFF;
     msg.data[1] = temperature_max & 0xFF;
-    const int16_t temperature_min = (int16_t)(model->temperature_min * 10.0f); // in 0.1C units
+    const int16_t temperature_min = (int16_t)(outputs->temperature_min * 10.0f); // in 0.1C units
     msg.data[2] = (temperature_min >> 8) & 0xFF;
     msg.data[3] = temperature_min & 0xFF;
     msg.data[4] = 0x00;
@@ -299,12 +299,12 @@ static int send_210(bms_model_t *model) {
     return inverter_can_transmit(&msg);
 }
 
-static int send_190(bms_model_t *model) {
+static int send_190(inverter_outputs_t *outputs) {
     // Alarms
     struct can2040_msg msg;
     msg.id = 0x190;
     msg.dlc = 8;
-    (void)model;
+    (void)outputs;
 
     msg.data[0] = 0x00;
     msg.data[1] = 0x00;
@@ -319,7 +319,7 @@ static int send_190(bms_model_t *model) {
 
 static uint8_t transmit_cycle = 0;
 
-void inverter_tick(bms_model_t *model) {
+void inverter_tick(inverter_outputs_t *outputs) {
     // This should get called every 100ms
 
     // inverter_present = true; // for testing
@@ -338,17 +338,17 @@ void inverter_tick(bms_model_t *model) {
 
     if(timestep_every_ms(100, &timestep_1)) {
         // send regular messages every 100ms
-        send_110(model);
+        send_110(outputs);
     }
     if(timestep_every_ms(1000, &timestep_2)) {
         // send regular messages every 1s (note: was 10s)
-        send_150(model);
-        send_1d0(model);
-        send_210(model);
+        send_150(outputs);
+        send_1d0(outputs);
+        send_210(outputs);
     }
     if(timestep_every_ms(60000, &timestep_3)) {
         // send regular messages every 60s
-        send_190(model);
+        send_190(outputs);
     }
 
     // transmit_cycle++;

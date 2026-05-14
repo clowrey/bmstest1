@@ -1,5 +1,6 @@
 #include "app/monitoring/counters.h"
 #include "drivers/bmb3y/bmb3y.h"
+#include "drivers/chip/nvm.h"
 #include "drivers/chip/pwm.h"
 #include "drivers/chip/watchdog.h"
 #include "drivers/sensors/ina228.h"
@@ -41,17 +42,17 @@ void read_inputs(bms_model_t *model) {
     // For differential readings, full scale should be 436V
     // const int32_t full_scale_mv = 436000;
 
-    float battery_voltage_mul = model->battery_voltage_mul != 0.0f ? model->battery_voltage_mul : 0.013f;
+    float battery_voltage_mul = fabs(model->battery_voltage_mul) > 0.001f ? model->battery_voltage_mul : 0.013f;
     model->battery_voltage_millis = ads1115_get_sample_millis(0);
     model->battery_voltage = ads1115_float_sample(0, battery_voltage_mul);
     model->battery_voltage_deviation = ads1115_float_deviation(0, battery_voltage_mul);
 
-    float output_voltage_mul = model->output_voltage_mul != 0.0f ? model->output_voltage_mul : 0.013f;
+    float output_voltage_mul = fabs(model->output_voltage_mul) > 0.001f ? model->output_voltage_mul : 0.013f;
     model->output_voltage_millis = ads1115_get_sample_millis(1);
     model->output_voltage = ads1115_float_sample(1, output_voltage_mul);
     model->output_voltage_deviation = ads1115_float_deviation(1, output_voltage_mul);
 
-    float neg_contactor_mul = model->neg_contactor_mul != 0.0f ? model->neg_contactor_mul : 0.013f;
+    float neg_contactor_mul = fabs(model->neg_contactor_mul) > 0.001f ? model->neg_contactor_mul : 0.013f;
     model->neg_contactor_voltage_millis = ads1115_get_sample_millis(2);
     //debug_printf("read samp=%f, offset=%f\n", ads1115_float_sample(2, neg_contactor_mul), model->neg_contactor_offset_mV);
     model->neg_contactor_voltage = ads1115_float_sample(2, neg_contactor_mul) + (0.001f * model->neg_contactor_offset_mV);
@@ -60,7 +61,7 @@ void read_inputs(bms_model_t *model) {
     // Positive contactor voltage has to be derived from the difference between (battery+
     // to output-) and (output+ to output-), since we can't sample relative to battery+.
 
-    float pos_contactor_mul = model->pos_contactor_mul != 0.0f ? model->pos_contactor_mul : 0.013f;
+    float pos_contactor_mul = fabs(model->pos_contactor_mul) > 0.001f ? model->pos_contactor_mul : 0.013f;
     millis_t raw_bat_pos_to_out_neg_millis = ads1115_get_sample_millis(3);
     float raw_bat_plus_to_out_neg = ads1115_float_sample(3, pos_contactor_mul);
     
@@ -277,8 +278,8 @@ void bms_tick() {
             model.working_charge_current_limit_dA / 10.0f,
             model.temp_charge_current_limit_dA / 10.0f,
             model.temp_discharge_current_limit_dA / 10.0f,
-            model.inverter_min_voltage_limit_dV / 10.0f,
-            model.inverter_max_voltage_limit_dV / 10.0f
+            model.inverter_outputs.min_voltage_limit_dV / 10.0f,
+            model.inverter_outputs.max_voltage_limit_dV / 10.0f
         );
 
         /*

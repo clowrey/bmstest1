@@ -1,5 +1,4 @@
-#ifndef HW_NVM_H
-#define HW_NVM_H
+#pragma once
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -14,6 +13,5 @@ bool nvm_save_persistent_slow(bms_model_t *model);
 bool nvm_load_persistent_slow(bms_model_t *model);
 bool nvm_save_persistent_fast(bms_model_t *model);
 bool nvm_load_persistent_fast(bms_model_t *model);
+void nvm_schedule_save_persistent_fast(bms_model_t *model);
 void nvm_tick(bms_model_t *model);
-
-#endif // HW_NVM_H

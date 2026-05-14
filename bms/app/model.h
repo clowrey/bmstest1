@@ -72,6 +72,38 @@ typedef struct {
 
 static const uint32_t BMS_MODEL_PERSISTENT_SLOW_VERSION = 2;
 
+
+typedef struct inverter_outputs {
+    // The values that will get sent to the inverter
+
+    int16_t soc; // in 0.01% units
+    millis_t soc_millis;
+
+    float battery_voltage;
+    millis_t battery_voltage_millis;
+
+    int32_t current_mA; // Positive current means battery is charging
+    millis_t current_millis;
+
+    float temperature_min;
+    float temperature_max;
+    millis_t temperature_millis;
+
+    // Voltage limits for inverters that allow absorption charging to continue
+    // at the limit. Some inverters may ignore these.
+    int16_t min_voltage_limit_dV;
+    int16_t max_voltage_limit_dV;
+    // TODO: move everything to signed ints?
+    uint16_t charge_current_limit_dA;
+    uint16_t discharge_current_limit_dA;
+
+    int16_t remaining_capacity_dAh;
+    int16_t full_capacity_dAh;
+} inverter_outputs_t;
+
+
+
+
 // This entire structure will be zero-initialized at startup
 typedef struct bms_model {
     // Positive current means battery is charging
@@ -162,15 +194,6 @@ typedef struct bms_model {
 
     bool cell_voltage_slow_mode; // only request BMB data infrequently
 
-    // Inverter voltage limits (sent to the inverter, for inverters that allow
-    // absorption charging to continue at the limit). Some inverters may ignore
-    // these.
-    int16_t inverter_min_voltage_limit_dV; // in 0.1V units
-    int16_t inverter_max_voltage_limit_dV; // in 0.1V units
-    int16_t inverter_soc; // in 0.01% units
-    int16_t inverter_full_capacity_dAh;
-    int16_t inverter_remaining_capacity_dAh;
-
     // Current limits (the lower of these limits will be used)
     uint16_t temp_charge_current_limit_dA; // in 0.1A units
     uint16_t temp_discharge_current_limit_dA; // in 0.1A units
@@ -215,6 +238,8 @@ typedef struct bms_model {
     // int32_t pos_contactor_mul; // actually only the bat+ to out- part
     //int32_t current_offset;
 
+    inverter_outputs_t inverter_outputs;
+
     bool balancing_active; // whether balancing was requested during the past BMB cycle (and so whether any read voltages are unstable)
     int16_t balancing_voltage_threshold_mV; // Only balance cells above this voltage
 
@@ -224,6 +249,7 @@ typedef struct bms_model {
     // Whether we should ignore a potential loop overrun at the end of this tick
     // (eg, due to a slow flash write). This is reset each tick.
     bool ignore_missed_deadline;
+    
   
 } bms_model_t;
 
@@ -231,34 +257,34 @@ extern bms_model_t model;
 
 void model_tick(bms_model_t *model);
 
-static inline uint16_t get_cell_voltage_soft_min_mV(bms_model_t *model) {
+static inline uint16_t get_cell_voltage_soft_min_mV(const bms_model_t *model) {
     return max(
         (model->cell_voltage_soft_min_mV > 0) ? model->cell_voltage_soft_min_mV : DEFAULT_CELL_VOLTAGE_SOFT_MIN_mV,
         CELL_VOLTAGE_HARD_MIN_mV + 25
     );
 }
 
-static inline uint16_t get_cell_voltage_soft_max_mV(bms_model_t *model) {
+static inline uint16_t get_cell_voltage_soft_max_mV(const bms_model_t *model) {
     return min(
         (model->cell_voltage_soft_max_mV > 0) ? model->cell_voltage_soft_max_mV : DEFAULT_CELL_VOLTAGE_SOFT_MAX_mV,
         CELL_VOLTAGE_HARD_MAX_mV - 25
     );
 }
 
-static inline uint16_t get_cell_voltage_working_min_mV(bms_model_t *model) {
+static inline uint16_t get_cell_voltage_working_min_mV(const bms_model_t *model) {
     return max(
         (model->cell_voltage_working_min_mV > 0) ? model->cell_voltage_working_min_mV : DEFAULT_CELL_VOLTAGE_WORKING_MIN_mV,
         get_cell_voltage_soft_min_mV(model) + 25
     );
 }
 
-static inline uint16_t get_cell_voltage_working_max_mV(bms_model_t *model) {
+static inline uint16_t get_cell_voltage_working_max_mV(const bms_model_t *model) {
     return min(
         (model->cell_voltage_working_max_mV > 0) ? model->cell_voltage_working_max_mV : DEFAULT_CELL_VOLTAGE_WORKING_MAX_mV,
         get_cell_voltage_soft_max_mV(model) - 25
     );
 }
 
-static inline uint16_t get_minimum_balancing_voltage_mV(bms_model_t *model) {
+static inline uint16_t get_minimum_balancing_voltage_mV(const bms_model_t *model) {
     return (model->minimum_balancing_voltage_mV > 0) ? model->minimum_balancing_voltage_mV : DEFAULT_MINIMUM_BALANCING_VOLTAGE_mV;
 }
