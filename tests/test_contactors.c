@@ -48,10 +48,10 @@ void tick_sm(bms_model_t *model, uint32_t ms) {
     stored_millis += ms;
     stored_millis64 += ms;
 
-    model->battery_voltage_millis = stored_millis;
-    model->output_voltage_millis = stored_millis;
-    model->pos_contactor_voltage_millis = stored_millis;
-    model->neg_contactor_voltage_millis = stored_millis;
+    model->high_voltages.battery_millis = stored_millis;
+    model->high_voltages.output_millis = stored_millis;
+    model->high_voltages.pos_contactor_millis = stored_millis;
+    model->high_voltages.neg_contactor_millis = stored_millis;
     model->current_millis = stored_millis;
 
     contactor_sm_tick(model);

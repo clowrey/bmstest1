@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <math.h>
 
-uint16_t calculate_cell_voltage_charge_current_limit(bms_model_t *model) {
+uint16_t calculate_cell_voltage_charge_current_limit(const bms_model_t *model) {
     uint16_t charge_limit = 0xFFFF;
 
 #if CHEMISTRY == LFP

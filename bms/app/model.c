@@ -269,8 +269,8 @@ static void model_calculate_inverter_outputs(const bms_model_t *model, inverter_
     model_calculate_inverter_soc_and_capacity(model, out);
 
     // Copy other values acruss from the model
-    out->battery_voltage = model->battery_voltage;
-    out->battery_voltage_millis = model->battery_voltage_millis;
+    out->battery_voltage = model->high_voltages.battery;
+    out->battery_voltage_millis = model->high_voltages.battery_millis;
     out->current_mA = model->current_mA;
     out->current_millis = model->current_millis;
     out->temperature_min = model->temperature_min;

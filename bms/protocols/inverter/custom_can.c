@@ -6,6 +6,33 @@
 #include "protocols/inverter/can.h"
 #include <string.h>
 
+/* 
+Custom inverter CAN protocol 
+
+The battery starts in unpaired mode. It will repeatedly broadcast a message
+containing a unique 7-byte serial fragment (derived from the Pico's unique ID)
+on a fixed broadcast ID.
+
+The inverter can listen for these broadcasts, and respond with a pairing message
+containing the same serial fragment and a unique inverter address (0-255). Once
+the battery receives a valid pairing message, it will start sending regular
+messages on addresses derived from that inverter address.
+
+It will also respond to requests from the inverter on addresses corresponding to
+the inverter address.
+
+
+
+
+
+
+
+
+
+
+
+*/
+
 #define CUSTOM_CAN_BROADCAST_ID     0x0c311000
 #define CUSTOM_CAN_METERS_ID_BASE   0x0c311100
 #define CUSTOM_CAN_LIMITS_ID_BASE   0x0c311200

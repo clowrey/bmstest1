@@ -96,13 +96,13 @@ static bool hmi_register_is_available(uint16_t reg_id, bms_model_t *model) {
         case HMI_REG_CHARGE:
             return model->charge_millis > 0;
         case HMI_REG_BATTERY_VOLTAGE:
-            return model->battery_voltage_millis > 0;
+            return model->high_voltages.battery_millis > 0;
         case HMI_REG_OUTPUT_VOLTAGE:
-            return model->output_voltage_millis > 0;
+            return model->high_voltages.output_millis > 0;
         case HMI_REG_POS_CONTACTOR_VOLTAGE:
-            return model->pos_contactor_voltage_millis > 0;
+            return model->high_voltages.pos_contactor_millis > 0;
         case HMI_REG_NEG_CONTACTOR_VOLTAGE:
-            return model->neg_contactor_voltage_millis > 0;
+            return model->high_voltages.neg_contactor_millis > 0;
         case HMI_REG_TEMPERATURE_MIN:
         case HMI_REG_TEMPERATURE_MAX:
             return model->temperature_millis > 0;
@@ -110,13 +110,13 @@ static bool hmi_register_is_available(uint16_t reg_id, bms_model_t *model) {
         case HMI_REG_CELL_VOLTAGE_MAX:
             return model->cell_voltage_millis > 0;
         case HMI_REG_SUPPLY_VOLTAGE_3V3:
-            return model->supply_voltage_3V3_millis > 0;
+            return model->supply_voltages.voltage_3V3_millis > 0;
         case HMI_REG_SUPPLY_VOLTAGE_5V:
-            return model->supply_voltage_5V_millis > 0;
+            return model->supply_voltages.voltage_5V_millis > 0;
         case HMI_REG_SUPPLY_VOLTAGE_12V:
-            return model->supply_voltage_12V_millis > 0;
+            return model->supply_voltages.voltage_12V_millis > 0;
         case HMI_REG_SUPPLY_VOLTAGE_CTR:
-            return model->supply_voltage_contactor_millis > 0;
+            return model->supply_voltages.voltage_contactor_millis > 0;
         case HMI_REG_INVERTER_SOC:
         case HMI_REG_INVERTER_FULL_CAPACITY_DAH:
         case HMI_REG_INVERTER_REMAINING_CAPACITY_DAH:
@@ -159,19 +159,19 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
             break;
         case HMI_REG_BATTERY_VOLTAGE:
             buf[idx++] = HMI_TYPE_INT32;
-            idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)(model->battery_voltage * 1000));
+            idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)(model->high_voltages.battery * 1000));
             break;
         case HMI_REG_OUTPUT_VOLTAGE:
             buf[idx++] = HMI_TYPE_INT32;
-            idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)(model->output_voltage * 1000));
+            idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)(model->high_voltages.output * 1000));
             break;
         case HMI_REG_POS_CONTACTOR_VOLTAGE:
             buf[idx++] = HMI_TYPE_INT32;
-            idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)(model->pos_contactor_voltage * 1000));
+            idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)(model->high_voltages.pos_contactor * 1000));
             break;
         case HMI_REG_NEG_CONTACTOR_VOLTAGE:
             buf[idx++] = HMI_TYPE_INT32;
-            idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)(model->neg_contactor_voltage * 1000));
+            idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)(model->high_voltages.neg_contactor * 1000));
             break;
         case HMI_REG_TEMPERATURE_MIN:
             buf[idx++] = HMI_TYPE_FLOAT;
@@ -211,19 +211,19 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
             break;
         case HMI_REG_SUPPLY_VOLTAGE_3V3:
             buf[idx++] = HMI_TYPE_UINT16;
-            idx += hmi_buf_append_uint16(&buf[idx], model->supply_voltage_3V3_mV);
+            idx += hmi_buf_append_uint16(&buf[idx], model->supply_voltages.voltage_3V3_mV);
             break;
         case HMI_REG_SUPPLY_VOLTAGE_5V:
             buf[idx++] = HMI_TYPE_UINT16;
-            idx += hmi_buf_append_uint16(&buf[idx], model->supply_voltage_5V_mV);
+            idx += hmi_buf_append_uint16(&buf[idx], model->supply_voltages.voltage_5V_mV);
             break;
         case HMI_REG_SUPPLY_VOLTAGE_12V:
             buf[idx++] = HMI_TYPE_UINT16;
-            idx += hmi_buf_append_uint16(&buf[idx], model->supply_voltage_12V_mV);
+            idx += hmi_buf_append_uint16(&buf[idx], model->supply_voltages.voltage_12V_mV);
             break;
         case HMI_REG_SUPPLY_VOLTAGE_CTR:
             buf[idx++] = HMI_TYPE_UINT16;
-            idx += hmi_buf_append_uint16(&buf[idx], model->supply_voltage_contactor_mV);
+            idx += hmi_buf_append_uint16(&buf[idx], model->supply_voltages.voltage_contactor_mV);
             break;
         case HMI_REG_CELL_VOLTAGE_WORKING_MIN:
             buf[idx++] = HMI_TYPE_UINT16;

@@ -6,7 +6,7 @@
 
 static float internal_resistance = 0.02f; // ohms
 
-uint16_t voltage_based_soc_estimate(bms_model_t *model) {
+uint16_t voltage_based_soc_estimate(const bms_model_t *model) {
     // Open-circuit voltage (OCV) approximation
 
     // calculate representative cell voltage

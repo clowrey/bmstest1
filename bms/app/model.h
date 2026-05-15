@@ -72,6 +72,31 @@ typedef struct {
 
 static const uint32_t BMS_MODEL_PERSISTENT_SLOW_VERSION = 2;
 
+typedef struct supply_voltages {
+    int32_t voltage_3V3_mV;
+    millis_t voltage_3V3_millis;
+    int32_t voltage_5V_mV;
+    millis_t voltage_5V_millis;
+    int32_t voltage_12V_mV;
+    millis_t voltage_12V_millis;
+    int32_t voltage_contactor_mV;
+    millis_t voltage_contactor_millis;
+} supply_voltages_t;
+
+typedef struct high_voltages {
+    float battery;
+    float battery_deviation;
+    millis_t battery_millis;
+    float output;
+    float output_deviation;
+    millis_t output_millis;
+    float pos_contactor;
+    float pos_contactor_deviation;
+    millis_t pos_contactor_millis;
+    float neg_contactor;
+    float neg_contactor_deviation;
+    millis_t neg_contactor_millis;
+} high_voltages_t;
 
 typedef struct inverter_outputs {
     // The values that will get sent to the inverter
@@ -103,7 +128,6 @@ typedef struct inverter_outputs {
 
 
 
-
 // This entire structure will be zero-initialized at startup
 typedef struct bms_model {
     // Positive current means battery is charging
@@ -119,21 +143,22 @@ typedef struct bms_model {
     float temperature_max;
     millis_t temperature_millis;
 
-    float battery_voltage;
-    millis_t battery_voltage_millis;
-    float battery_voltage_deviation;
+    high_voltages_t high_voltages;
+    // float battery_voltage;
+    // millis_t battery_voltage_millis;
+    // float battery_voltage_deviation;
 
-    float output_voltage;
-    millis_t output_voltage_millis;
-    float output_voltage_deviation;
+    // float output_voltage;
+    // millis_t output_voltage_millis;
+    // float output_voltage_deviation;
 
-    float pos_contactor_voltage;
-    millis_t pos_contactor_voltage_millis;
-    float pos_contactor_voltage_deviation;
+    // float pos_contactor_voltage;
+    // millis_t pos_contactor_voltage_millis;
+    // float pos_contactor_voltage_deviation;
 
-    float neg_contactor_voltage;
-    millis_t neg_contactor_voltage_millis;
-    float neg_contactor_voltage_deviation;
+    // float neg_contactor_voltage;
+    // millis_t neg_contactor_voltage_millis;
+    // float neg_contactor_voltage_deviation;
 
     uint16_t soc; // state of charge in 0.01% units (0=0%, 10000=100.00%)
     millis_t soc_millis;
@@ -221,14 +246,15 @@ typedef struct bms_model {
     int32_t excess_charge_buffer_dC; // in 0.1C units
     int32_t excess_discharge_buffer_dC; // in 0.1C units
 
-    int32_t supply_voltage_3V3_mV;
-    millis_t supply_voltage_3V3_millis;
-    int32_t supply_voltage_5V_mV;
-    millis_t supply_voltage_5V_millis;
-    int32_t supply_voltage_12V_mV;
-    millis_t supply_voltage_12V_millis;
-    int32_t supply_voltage_contactor_mV;
-    millis_t supply_voltage_contactor_millis;
+    supply_voltages_t supply_voltages;
+    // int32_t supply_voltage_3V3_mV;
+    // millis_t supply_voltage_3V3_millis;
+    // int32_t supply_voltage_5V_mV;
+    // millis_t supply_voltage_5V_millis;
+    // int32_t supply_voltage_12V_mV;
+    // millis_t supply_voltage_12V_millis;
+    // int32_t supply_voltage_contactor_mV;
+    // millis_t supply_voltage_contactor_millis;
 
     // Calibration constants
     // int32_t battery_voltage_mul; // convert raw ADC to mV (/4096)

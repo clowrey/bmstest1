@@ -2,14 +2,14 @@
 #include "config/limits.h"
 #include "sys/events/events.h"
 
-void confirm_battery_safety(bms_model_t *model) {
+void confirm_battery_safety(const bms_model_t *model) {
     bool not_fully_initialized = (
        model->system_sm.state == SYSTEM_STATE_UNINITIALIZED ||
        model->system_sm.state == SYSTEM_STATE_INITIALIZING
     );
 
     if(check_or_confirm(
-        millis_recent_enough(model->battery_voltage_millis, BATTERY_VOLTAGE_STALE_THRESHOLD_MS),
+        millis_recent_enough(model->high_voltages.battery_millis, BATTERY_VOLTAGE_STALE_THRESHOLD_MS),
         // Don't raise faults if we're still initializing
         !not_fully_initialized,
         ERR_BATTERY_VOLTAGE_STALE,
@@ -21,9 +21,9 @@ void confirm_battery_safety(bms_model_t *model) {
         //     (int32_t)(model->battery_voltage * 1000)
         // );
         confirm(
-            model->battery_voltage <= (BATTERY_VOLTAGE_HARD_MAX_mV * 0.001f),
+            model->high_voltages.battery <= (BATTERY_VOLTAGE_HARD_MAX_mV * 0.001f),
             ERR_BATTERY_VOLTAGE_VERY_HIGH,
-            (int32_t)(model->battery_voltage * 1000)
+            (int32_t)(model->high_voltages.battery * 1000)
         );
         // confirm(
         //     model->battery_voltage >= (BATTERY_VOLTAGE_SOFT_MIN_mV * 0.001f),
@@ -31,9 +31,9 @@ void confirm_battery_safety(bms_model_t *model) {
         //     (int32_t)(model->battery_voltage * 1000)
         // );
         confirm(
-            model->battery_voltage >= (BATTERY_VOLTAGE_HARD_MIN_mV * 0.001f),
+            model->high_voltages.battery >= (BATTERY_VOLTAGE_HARD_MIN_mV * 0.001f),
             ERR_BATTERY_VOLTAGE_VERY_LOW,
-            (int32_t)(model->battery_voltage * 1000)
+            (int32_t)(model->high_voltages.battery * 1000)
         );
     }
 
@@ -112,11 +112,11 @@ void confirm_battery_safety(bms_model_t *model) {
     // TODO: Is this the right place for this?
 
     // Check for battery vs cell voltage discrepancy
-    if(model->battery_voltage_millis > 0 && model->cell_voltage_millis > 0 && (model->battery_voltage_millis - model->cell_voltage_millis) < 1000) {
+    if(model->high_voltages.battery_millis > 0 && model->cell_voltage_millis > 0 && (model->high_voltages.battery_millis - model->cell_voltage_millis) < 1000) {
         // If we have a recent cell voltage reading, compare total to battery
         // voltage. We may be sampling the cell voltages very infrequently, so
         // only do this check if the voltage readings are close in time.
-        float expected_total = model->battery_voltage;
+        float expected_total = model->high_voltages.battery;
         float voltage_diff = model->cell_voltage_total_mV*0.001f - expected_total;
         confirm(
             voltage_diff > -(VOLTAGE_MISMATCH_THRESHOLD_mV * 0.001f) && voltage_diff < (VOLTAGE_MISMATCH_THRESHOLD_mV * 0.001f),

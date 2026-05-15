@@ -8,22 +8,22 @@
 #include "app/model.h"
 
 
-bool successfully_initialized(bms_model_t *model) {
+bool successfully_initialized(const bms_model_t *model) {
     // check we're getting readings from everything we need
 
-    if(!millis_recent_enough(model->battery_voltage_millis, BATTERY_VOLTAGE_STALE_THRESHOLD_MS)) {
+    if(!millis_recent_enough(model->high_voltages.battery_millis, BATTERY_VOLTAGE_STALE_THRESHOLD_MS)) {
         return false;
     }
 
-    if(!millis_recent_enough(model->output_voltage_millis, OUTPUT_VOLTAGE_STALE_THRESHOLD_MS)) {
+    if(!millis_recent_enough(model->high_voltages.output_millis, OUTPUT_VOLTAGE_STALE_THRESHOLD_MS)) {
         return false;
     }
 
-    if(!millis_recent_enough(model->neg_contactor_voltage_millis, CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS)) {
+    if(!millis_recent_enough(model->high_voltages.neg_contactor_millis, CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS)) {
         return false;
     }
 
-    if(!millis_recent_enough(model->pos_contactor_voltage_millis, CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS)) {
+    if(!millis_recent_enough(model->high_voltages.pos_contactor_millis, CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS)) {
         return false;
     }
 
