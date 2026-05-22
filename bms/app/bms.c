@@ -99,7 +99,12 @@ void read_inputs(bms_model_t *model) {
     read_supply_voltages(&model->supply_voltages);
 
     model->estop_pressed = gpio_get(PIN_ESTOP);
-    model->precharge_closed = gpio_get(PIN_AUX_CONTACTOR_PRE);
+
+#ifdef PRECHARGE_ON_NEGATIVE
+    model->precharge_closed = gpio_get(PIN_AUX_CONTACTOR_FC_NEG);
+#else
+    model->precharge_closed = gpio_get(PIN_AUX_CONTACTOR_FC_POS);
+#endif
     //printf("Pre: %d\n", model->precharge_closed);
 }
 
@@ -208,7 +213,7 @@ void bms_tick() {
     // Phase 5: Comms
 
     nvm_tick(&model);
-    inverter_tick(&model);
+    inverter_tick(&model.inverter_outputs);
     internal_serial_tick();
     hmi_serial_tick(&model);
 

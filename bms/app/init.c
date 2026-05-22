@@ -50,9 +50,16 @@ static void init_hw() {
     gpio_set_dir(PIN_ESTOP, GPIO_IN);
     gpio_pull_down(PIN_ESTOP);
 
-    gpio_init(PIN_AUX_CONTACTOR_PRE);
-    gpio_set_dir(PIN_AUX_CONTACTOR_PRE, GPIO_IN);
-    gpio_pull_down(PIN_AUX_CONTACTOR_PRE);
+    // Init precharge sense input
+#ifdef PRECHARGE_ON_NEGATIVE
+    gpio_init(PIN_AUX_CONTACTOR_FC_NEG);
+    gpio_set_dir(PIN_AUX_CONTACTOR_FC_NEG, GPIO_IN);
+    gpio_pull_down(PIN_AUX_CONTACTOR_FC_NEG);
+#else
+    gpio_init(PIN_AUX_CONTACTOR_FC_POS);
+    gpio_set_dir(PIN_AUX_CONTACTOR_FC_POS, GPIO_IN);
+    gpio_pull_down(PIN_AUX_CONTACTOR_FC_POS);
+#endif
 
     if(!ina228_init(&ina228_dev, 0x40, 0.001, 100.0f)) {
         error_printf("INA228 init failed!\n");

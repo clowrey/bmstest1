@@ -277,16 +277,17 @@ void contactor_sm_tick(bms_model_t *model) {
     // React to open requests immediately
     if(model->contactor_req == CONTACTORS_REQUEST_OPEN || model->contactor_req == CONTACTORS_REQUEST_FORCE_OPEN) {
         switch(contactor_sm->state) {
-            case CONTACTORS_STATE_PRECHARGING_NEG:
+            case CONTACTORS_STATE_PRECHARGING_INIT:
             case CONTACTORS_STATE_PRECHARGING:
             case CONTACTORS_STATE_TESTING_NEG_OPEN:
             case CONTACTORS_STATE_TESTING_NEG_CLOSED:
             case CONTACTORS_STATE_TESTING_POS_OPEN:
             case CONTACTORS_STATE_TESTING_POS_CLOSED:
             case CONTACTORS_STATE_CALIBRATING:
-            case CONTACTORS_STATE_CALIBRATING_CLOSE_NEG:
+            case CONTACTORS_STATE_CALIBRATING_PRECHARGE_INIT:
             case CONTACTORS_STATE_CALIBRATING_PRECHARGE:
             case CONTACTORS_STATE_CALIBRATING_CLOSED:
+            case CONTACTORS_STATE_CALIBRATING_ONLY_NEG_INIT:
             case CONTACTORS_STATE_CALIBRATING_ONLY_NEG:
                 // Open contactors immediately
                 model->contactor_req = CONTACTORS_REQUEST_NULL;
@@ -320,7 +321,7 @@ void contactor_sm_tick(bms_model_t *model) {
                 state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_CALIBRATING);
             } else if(model->contactor_req == CONTACTORS_REQUEST_CALIBRATE_ONLY_NEG) {
                 model->contactor_req = CONTACTORS_REQUEST_NULL;
-                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_CALIBRATING_ONLY_NEG);
+                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_CALIBRATING_ONLY_NEG_INIT);
             }
             break;
         case CONTACTORS_STATE_CLOSED:
@@ -394,7 +395,14 @@ void contactor_sm_tick(bms_model_t *model) {
             }
             break;
         case CONTACTORS_STATE_TESTING_NEG_CLOSED:
+#ifdef PRECHARGE_ON_NEGATIVE
+            // Both megatove and precharge (since this actually leaves the
+            // precharge open due to the inverted logic - we don't want to close
+            // more than one contactor per state due to current draw)
+            contactors_set_pos_pre_neg(false, true, true);
+#else
             contactors_set_pos_pre_neg(false, false, true);
+#endif
 
             if(state_timeout((sm_t*)contactor_sm, CONTACTORS_TEST_WAIT_MS)) {
                 if(confirm_contactor_neg_seems_closed(model)) {
@@ -430,10 +438,14 @@ void contactor_sm_tick(bms_model_t *model) {
             }
             break;
         case CONTACTORS_STATE_TESTING_POS_CLOSED:
+#ifdef PRECHARGE_ON_NEGATIVE
+            contactors_set_pos_pre_neg(true, false, false);
+#else
             // Both positive and precharge (since this actually leaves the
             // precharge open due to the inverted logic - we don't want to close
             // more than one contactor per state due to current draw)
             contactors_set_pos_pre_neg(true, true, false);
+#endif
 
             float voltage = fabsf(model->high_voltages.pos_contactor);
             debug_printf("Pos contactor voltage: %1.3f V\n", voltage);
@@ -441,7 +453,7 @@ void contactor_sm_tick(bms_model_t *model) {
             if(state_timeout((sm_t*)contactor_sm, CONTACTORS_TEST_WAIT_MS)) {
                 if(confirm_contactor_pos_seems_closed(model)) {
                     // all tests passed, go to precharging
-                    state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_PRECHARGING_NEG);
+                    state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_PRECHARGING_INIT);
                 } else {
                     // fault detected
                     count_bms_event(
@@ -460,9 +472,14 @@ void contactor_sm_tick(bms_model_t *model) {
             }
             break;
 
-        case CONTACTORS_STATE_PRECHARGING_NEG:
+        case CONTACTORS_STATE_PRECHARGING_INIT:
+#ifdef PRECHARGE_ON_NEGATIVE
+            // Close positive contactor
+            contactors_set_pos_pre_neg(true, false, false);
+#else
             // Close negative contactor
             contactors_set_pos_pre_neg(false, false, true);
+#endif
             if(!confirm_contactor_pre_seems_open(model)) {
                 // precharge contactor is stuck closed
                 state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_PRECHARGE_FAILED);
@@ -473,8 +490,13 @@ void contactor_sm_tick(bms_model_t *model) {
             }
             break;
         case CONTACTORS_STATE_PRECHARGING:
+#ifdef PRECHARGE_ON_NEGATIVE
+            // Now close precharge contactor (actually just the Bat- one)
+            contactors_set_pos_pre_neg(true, true, false);
+#else
             // Now close precharge contactor (actually just the Bat+ one)
             contactors_set_pos_pre_neg(false, true, true);
+#endif
 
             debug_printf("PRECHARGING: %1.3f V, %d mA\n", 
                 model->high_voltages.battery - model->high_voltages.output,
@@ -516,19 +538,29 @@ void contactor_sm_tick(bms_model_t *model) {
             contactors_set_pos_pre_neg(false, false, false);
 
             if(state_timeout((sm_t*)contactor_sm, CONTACTORS_TEST_WAIT_MS)) {
-                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_CALIBRATING_CLOSE_NEG);
+                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_CALIBRATING_PRECHARGE_INIT);
             }
             break;
-        case CONTACTORS_STATE_CALIBRATING_CLOSE_NEG:
+        case CONTACTORS_STATE_CALIBRATING_PRECHARGE_INIT:
+#ifdef PRECHARGE_ON_NEGATIVE
+            // Close positive contactor first
+            contactors_set_pos_pre_neg(true, false, false);
+#else
             // Close negative contactor first
             contactors_set_pos_pre_neg(false, false, true);
+#endif            
             if(state_timeout((sm_t*)contactor_sm, CONTACTORS_TEST_WAIT_MS)) {
                 state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_CALIBRATING_PRECHARGE);
             }
             break;
         case CONTACTORS_STATE_CALIBRATING_PRECHARGE:
+#ifdef PRECHARGE_ON_NEGATIVE
+            // Now precharge
+            contactors_set_pos_pre_neg(true, true, false);
+#else
             // Now precharge
             contactors_set_pos_pre_neg(false, true, true);
+#endif
             if(state_timeout((sm_t*)contactor_sm, CONTACTORS_TEST_WAIT_MS)) {
                 // There should be no real precharging as nothing should be
                 // attached. We need a margin to accommodate for uncalibrated
@@ -552,6 +584,20 @@ void contactor_sm_tick(bms_model_t *model) {
                 // TODO - Error properly?
                 state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
             }
+            break;
+
+        case CONTACTORS_STATE_CALIBRATING_ONLY_NEG_INIT:
+#ifdef PRECHARGE_ON_NEGATIVE
+            // Precharge + negative (actually just negative due to inverted logic)
+            contactors_set_pos_pre_neg(false, true, true);
+
+            if(state_timeout((sm_t*)contactor_sm, CONTACTORS_TEST_WAIT_MS)) {
+                state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_CALIBRATING_ONLY_NEG);
+            }
+#else
+            // Go straight to the next state
+            state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_CALIBRATING_ONLY_NEG);
+#endif
             break;
 
         case CONTACTORS_STATE_CALIBRATING_ONLY_NEG:

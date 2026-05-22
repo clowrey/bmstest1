@@ -2,14 +2,53 @@
 
 #define LFP 1
 #define NMC 2
-#define CHEMISTRY NMC
+//#define CHEMISTRY NMC
 
 #define BMS_DESK 1
 #define BMS_BLUETESLA 2
+#define BMS_LFP1 3
 
 #ifndef BMS_PROFILE
 #define BMS_PROFILE BMS_BLUETESLA
 #endif
+
+
+#if BMS_PROFILE == BMS_DESK
+#define CHEMISTRY NMC
+#define CELL_PRESENCE_MASK { 0x7FFF, 0, 0, 0 }
+#define NUM_CELLS 15
+#define NUM_MODULE_VOLTAGES 1
+#define NUM_MODULE_TEMPS 1
+#define NAMEPLATE_CAPACITY_AH 1
+#define INA228_SHUNT_CAL 3088
+    
+#elif BMS_PROFILE == BMS_BLUETESLA
+    // for the 96-cell NMC pack:
+#define CHEMISTRY NMC
+#define CELL_PRESENCE_MASK { 0xc7ff8f7f, 0xf3ffe3ff, 0xfcfff8ff, 0x1ffe3d }
+#define NUM_CELLS 96
+#define NUM_MODULE_VOLTAGES 8
+#define NUM_MODULE_TEMPS 8
+#define NAMEPLATE_CAPACITY_AH 147
+#define INA228_SHUNT_CAL 332
+#define INVERTER_MODEL_STRING "CellKeeper Tesla NMC 1\x00\x00\x00\x00\x00";
+
+#elif BMS_PROFILE == BMS_LFP1
+
+#define CHEMISTRY LFP
+#define CELL_PRESENCE_MASK { 0x87ffbfff, 0xffffefff, 0xf9fffbff, 0x3ffeff }
+#define NUM_CELLS 108
+#define NUM_MODULE_VOLTAGES 8
+#define NUM_MODULE_TEMPS 8
+#define NAMEPLATE_CAPACITY_AH 163
+#define INA228_SHUNT_CAL 332
+#define PRECHARGE_ON_NEGATIVE 1
+#define INVERTER_MODEL_STRING "CellKeeper Tesla LFP 1\x00\x00\x00\x00\x00";
+
+#else
+    #error "Unsupported BMS_PROFILE"
+#endif
+
 
 // TODO - derate voltage limits based on temperature
 
@@ -102,26 +141,6 @@
 // #define NUM_MODULE_VOLTAGES 1
 // #define NUM_MODULE_TEMPS 1
 
-#if BMS_PROFILE == BMS_DESK
-#define CELL_PRESENCE_MASK { 0x7FFF, 0, 0, 0 }
-#define NUM_CELLS 15
-#define NUM_MODULE_VOLTAGES 1
-#define NUM_MODULE_TEMPS 1
-#define NAMEPLATE_CAPACITY_AH 1
-#define INA228_SHUNT_CAL 3088
-    
-#elif BMS_PROFILE == BMS_BLUETESLA
-    // for the 96-cell NMC pack:
-#define CELL_PRESENCE_MASK { 0xc7ff8f7f, 0xf3ffe3ff, 0xfcfff8ff, 0x1ffe3d }
-#define NUM_CELLS 96
-#define NUM_MODULE_VOLTAGES 8
-#define NUM_MODULE_TEMPS 8
-#define NAMEPLATE_CAPACITY_AH 147
-#define INA228_SHUNT_CAL 332
-
-#else
-    #error "Unsupported BMS_PROFILE"
-#endif
 
 // for the 108-cell LFP pack:
 // #define CELL_PRESENCE_MASK { 0x87ffbfff, 0xffffefff, 0xf9fffbff, 0x3ffeff }

@@ -6,6 +6,8 @@
 
 #include <string.h>
 
+#include "sys/logging/logging.h"
+
 bms_model_t model = {0};
 
 static void model_process_temperatures(bms_model_t *model) {

@@ -44,6 +44,14 @@ static const struct can2040_msg byd_2d0 = {
     .data = {0x00, 'B', 'Y', 'D', 0x00, 0x00, 0x00, 0x00}
 };
 
+#ifndef INVERTER_MODEL_STRING
+#define INVERTER_MODEL_STRING "Battery-Box Premium HVS\x00\x00\x00\x00"
+#endif
+
+//static const char INVERTER_MODEL[] = "Battery-Box Premium HVS\x00\x00\x00\x00";
+  static const char INVERTER_MODEL[] = INVERTER_MODEL_STRING;
+static_assert(sizeof(INVERTER_MODEL) == 28, "INVERTER_MODEL must be exactly 28 characters including null terminator");
+
 static void can2040_cb(struct can2040 *cd, uint32_t notify, struct can2040_msg *msg)
 {
     if (notify != CAN2040_NOTIFY_RX) return;
@@ -129,13 +137,13 @@ static void send_inverter_init_messages() {
 
     if(inverter_init_state == 3) {
         msg.data[0] = 0x00;
-        msg.data[1] = 'B';
-        msg.data[2] = 'a';
-        msg.data[3] = 't';
-        msg.data[4] = 't';
-        msg.data[5] = 'e';
-        msg.data[6] = 'r';
-        msg.data[7] = 'y';
+        msg.data[1] = INVERTER_MODEL[0];
+        msg.data[2] = INVERTER_MODEL[1];
+        msg.data[3] = INVERTER_MODEL[2];
+        msg.data[4] = INVERTER_MODEL[3];
+        msg.data[5] = INVERTER_MODEL[4];
+        msg.data[6] = INVERTER_MODEL[5];
+        msg.data[7] = INVERTER_MODEL[6];
         if(inverter_can_transmit(&msg)<0) {
             // failed to send
             return;
@@ -145,13 +153,13 @@ static void send_inverter_init_messages() {
 
     if(inverter_init_state == 4) {
         msg.data[0] = 0x01;
-        msg.data[1] = '-';
-        msg.data[2] = 'B';
-        msg.data[3] = 'o';
-        msg.data[4] = 'x';
-        msg.data[5] = ' ';
-        msg.data[6] = 'P';
-        msg.data[7] = 'r';
+        msg.data[1] = INVERTER_MODEL[7];
+        msg.data[2] = INVERTER_MODEL[8];
+        msg.data[3] = INVERTER_MODEL[9];
+        msg.data[4] = INVERTER_MODEL[10];
+        msg.data[5] = INVERTER_MODEL[11];
+        msg.data[6] = INVERTER_MODEL[12];
+        msg.data[7] = INVERTER_MODEL[13];
         if(inverter_can_transmit(&msg)<0) {
             // failed to send
             return;
@@ -161,13 +169,13 @@ static void send_inverter_init_messages() {
 
     if(inverter_init_state == 5) {
         msg.data[0] = 0x02;
-        msg.data[1] = 'e';
-        msg.data[2] = 'm';
-        msg.data[3] = 'i';
-        msg.data[4] = 'u';
-        msg.data[5] = 'm';
-        msg.data[6] = ' ';
-        msg.data[7] = 'H';
+        msg.data[1] = INVERTER_MODEL[14];
+        msg.data[2] = INVERTER_MODEL[15];
+        msg.data[3] = INVERTER_MODEL[16];
+        msg.data[4] = INVERTER_MODEL[17];
+        msg.data[5] = INVERTER_MODEL[18];
+        msg.data[6] = INVERTER_MODEL[19];
+        msg.data[7] = INVERTER_MODEL[20];
         if(inverter_can_transmit(&msg)<0) {
             // failed to send
             return;
@@ -177,13 +185,13 @@ static void send_inverter_init_messages() {
 
     if(inverter_init_state == 6) {
         msg.data[0] = 0x03;
-        msg.data[1] = 'V';
-        msg.data[2] = 'S';
-        msg.data[3] = 0x00;
-        msg.data[4] = 0x00;
-        msg.data[5] = 0x00;
-        msg.data[6] = 0x00;
-        msg.data[7] = 0x00;
+        msg.data[1] = INVERTER_MODEL[21];
+        msg.data[2] = INVERTER_MODEL[22];
+        msg.data[3] = INVERTER_MODEL[23];
+        msg.data[4] = INVERTER_MODEL[24];
+        msg.data[5] = INVERTER_MODEL[25];
+        msg.data[6] = INVERTER_MODEL[26];
+        msg.data[7] = INVERTER_MODEL[27];
         if(inverter_can_transmit(&msg)<0) {
             // failed to send
             return;
@@ -212,9 +220,10 @@ static int send_110(inverter_outputs_t *outputs) {
     msg.data[6] = (outputs->charge_current_limit_dA >> 8) & 0xFF;
     msg.data[7] = outputs->charge_current_limit_dA & 0xFF;
 
-    // printf("CAN 110 %02X %02X %02X %02X %02X %02X %02X %02X\n",
+    // debug_printf("CAN 110 %02X %02X %02X %02X %02X %02X %02X %02X\n",
     //     msg.data[0], msg.data[1], msg.data[2], msg.data[3],
     //     msg.data[4], msg.data[5], msg.data[6], msg.data[7]);
+    // debug_printf("110 dcl: %udA %p\n", outputs->discharge_current_limit_dA, &outputs->discharge_current_limit_dA);
 
     return inverter_can_transmit(&msg);
 }
@@ -243,7 +252,10 @@ static int send_150(inverter_outputs_t *outputs) {
     msg.data[7] = outputs->full_capacity_dAh & 0xFF;
 
     // printf("CAN 150 sent SOC %d RemCap %d FullCap %d\n",
-    //     scaled_soc, remaining_capacity_dAh, full_capacity_dAh);
+    //     outputs->soc, outputs->remaining_capacity_dAh, outputs->full_capacity_dAh);
+    // debug_printf("CAN 150 %02X %02X %02X %02X %02X %02X %02X %02X\n",
+    //     msg.data[0], msg.data[1], msg.data[2], msg.data[3],
+    //     msg.data[4], msg.data[5], msg.data[6], msg.data[7]);
 
     return inverter_can_transmit(&msg);
 }
@@ -296,6 +308,11 @@ static int send_210(inverter_outputs_t *outputs) {
     msg.data[5] = 0x00;
     msg.data[6] = 0x00;
     msg.data[7] = 0x00;
+
+    // debug_printf("CAN 210 %02X %02X %02X %02X %02X %02X %02X %02X\n",
+    //     msg.data[0], msg.data[1], msg.data[2], msg.data[3],
+    //     msg.data[4], msg.data[5], msg.data[6], msg.data[7]);
+
     return inverter_can_transmit(&msg);
 }
 

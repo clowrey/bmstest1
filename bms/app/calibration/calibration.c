@@ -73,6 +73,7 @@ void calibration_sm_tick(bms_model_t *model) {
 
         /* OFFLINE SHORT calibration (battery voltage and negative contactor) */
         case CALIBRATION_STATE_SHORT_WAIT_OPEN:
+            // Wait for all contactors to open
             if (model->contactor_sm.state == CONTACTORS_STATE_OPEN) {
                 state_transition((sm_t*)sm, CALIBRATION_STATE_SHORT_STABILIZING_OPEN);
             } else if (state_timeout((sm_t*)sm, 10000)) {
@@ -81,6 +82,7 @@ void calibration_sm_tick(bms_model_t *model) {
             break;
         
         case CALIBRATION_STATE_SHORT_STABILIZING_OPEN:
+            // Wait for 2s and then start calibrating
             if (state_timeout((sm_t*)sm, 2000)) {
                 ads1115_start_calibration(&ads1115_dev, SHORT_VOLTAGE_CALIBRATION_SAMPLES);
                 ina228_dev.null_accumulator = 0;
@@ -90,6 +92,7 @@ void calibration_sm_tick(bms_model_t *model) {
             break;
         
         case CALIBRATION_STATE_SHORT_MEASURING_OPEN:
+            // Wait until calibration is finished
             if (ads1115_calibration_finished(&ads1115_dev)) {
                 float n = (float)SHORT_VOLTAGE_CALIBRATION_SAMPLES;
                 bool ok = true;
@@ -108,6 +111,7 @@ void calibration_sm_tick(bms_model_t *model) {
             break;
 
         case CALIBRATION_STATE_SHORT_WAIT_NEG:
+            // Wait until negative contactor only is closed
             if (model->contactor_sm.state == CONTACTORS_STATE_CALIBRATING_ONLY_NEG) {
                 state_transition((sm_t*)sm, CALIBRATION_STATE_SHORT_STABILIZING_NEG);
             } else if (state_timeout((sm_t*)sm, 10000)) {
@@ -116,6 +120,7 @@ void calibration_sm_tick(bms_model_t *model) {
             break;
 
         case CALIBRATION_STATE_SHORT_STABILIZING_NEG:
+            // Wait for 2s and then start calibrating
             if (state_timeout((sm_t*)sm, 2000)) {
                 ads1115_start_calibration(&ads1115_dev, SHORT_VOLTAGE_CALIBRATION_SAMPLES);
                 state_transition((sm_t*)sm, CALIBRATION_STATE_SHORT_MEASURING_NEG);
@@ -123,6 +128,7 @@ void calibration_sm_tick(bms_model_t *model) {
             break;
 
         case CALIBRATION_STATE_SHORT_MEASURING_NEG:
+            // Wait until calibration is finished
             if (ads1115_calibration_finished(&ads1115_dev)) {
                 float n = (float)SHORT_VOLTAGE_CALIBRATION_SAMPLES;
                 bool ok = true;

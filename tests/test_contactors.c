@@ -124,7 +124,7 @@ static void test_close_request_to_testing_sequence(void **state) {
     expect_value(contactors_set_pos_pre_neg, pre, true);
     expect_value(contactors_set_pos_pre_neg, neg, false);
     tick_sm(&model, 1100);
-    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_PRECHARGING_NEG);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_PRECHARGING_INIT);
 }
 
 static void test_precharge_success(void **state) {

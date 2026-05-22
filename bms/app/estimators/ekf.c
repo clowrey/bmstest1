@@ -535,6 +535,6 @@ void ekf_set_soc(bms_model_t *model, uint16_t soc) {
 
 void ekf_print_state(ekf_t *ekf) {
     float soc = ekf_get_soc(ekf);
-    printf("EKF State: Ah_used=%.4f Ah, V_c1=%.4f V, Capacity=%.2f Ah, SOC=%.2f%%\n",
+    debug_printf("EKF State: Ah_used=%.4f Ah, V_c1=%.4f V, Capacity=%.2f Ah, SOC=%.2f%%\n",
            ekf->x[0], ekf->x[1], ekf->x[2], soc * 100.0f);
 }
