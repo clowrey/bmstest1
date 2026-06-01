@@ -135,17 +135,16 @@ int16_t calculate_balance_time(int16_t voltage_mV, int16_t min_voltage_mV, bms_m
 static bool start_balancing(bms_model_t *model) {
     balancing_sm_t *balancing_sm = &model->balancing_sm;
 
+    if(model->cell_voltage_max_mV < model->balancing_start_voltage_mV) {
+        // Don't start balancing if we haven't reached the start voltage threshold
+        return false;
+    }
+
     // TODO - check staleness of cell voltages
 
     // Determine which cells need balancing
 
-    int16_t min_cell_voltage = 0x7FFF;
-  
-    int16_t threshold = model->balancing_voltage_threshold_mV;
-    if(threshold < get_minimum_balancing_voltage_mV(model)) {
-        threshold = get_minimum_balancing_voltage_mV(model);
-    }
-
+    int16_t min_cell_voltage = INT16_MAX;
     for(int cell=0; cell<NUM_CELLS; cell++) {
         if(model->cell_voltages_mV[cell] > 2500 && model->cell_voltages_mV[cell] < min_cell_voltage) {
             min_cell_voltage = model->cell_voltages_mV[cell];

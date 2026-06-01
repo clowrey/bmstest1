@@ -64,7 +64,6 @@ void read_inputs(bms_model_t *model) {
 
     float neg_contactor_mul = fabs(model->neg_contactor_mul) > 0.001f ? model->neg_contactor_mul : 0.013f;
     model->high_voltages.neg_contactor_millis = ads1115_get_sample_millis(2);
-    //debug_printf("read samp=%f, offset=%f\n", ads1115_float_sample(2, neg_contactor_mul), model->neg_contactor_offset_mV);
     model->high_voltages.neg_contactor = ads1115_float_sample(2, neg_contactor_mul) + (0.001f * model->neg_contactor_offset_mV);
     model->high_voltages.neg_contactor_deviation = ads1115_float_deviation(2, neg_contactor_mul);
 

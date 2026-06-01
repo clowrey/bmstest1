@@ -89,7 +89,7 @@ uint16_t calculate_cell_voltage_discharge_current_limit(bms_model_t *model) {
     }
 
     // Working range lower limit (simple 100mV hysteresis)
-    uint32_t working_min_with_hysteresis_mV = get_cell_voltage_working_min_mV(model) + ((model->below_working_min) ? 100 : 0);
+    int32_t working_min_with_hysteresis_mV = get_cell_voltage_working_min_mV(model) + ((model->below_working_min) ? 100 : 0);
     if(model->cell_voltage_min_mV < working_min_with_hysteresis_mV) {
         discharge_limit = 0;
         model->below_working_min = true;
@@ -98,6 +98,23 @@ uint16_t calculate_cell_voltage_discharge_current_limit(bms_model_t *model) {
     }
 
     return discharge_limit;
+}
+
+uint16_t calculate_delta_charge_current_limit(bms_model_t *model) {
+    uint16_t charge_limit = UINT16_MAX;
+
+    int16_t cell_voltage_delta_mV = model->cell_voltage_max_mV - model->cell_voltage_min_mV;
+    int16_t delta_threshold_mV = (model->above_delta_threshold) ? CELL_VOLTAGE_DELTA_THRESHOLD_DOWN_mV : CELL_VOLTAGE_DELTA_THRESHOLD_UP_mV;
+    if(cell_voltage_delta_mV > delta_threshold_mV) {
+        if(charge_limit > CELL_VOLTAGE_DELTA_CURRENT_LIMIT_dA) {
+            charge_limit = CELL_VOLTAGE_DELTA_CURRENT_LIMIT_dA;
+        }
+        model->above_delta_threshold = true;
+    } else {
+        model->above_delta_threshold = false;
+    }
+
+    return charge_limit;
 }
 
 uint16_t calculate_temperature_charge_current_limit(float temperature_min, float temperature_max) {

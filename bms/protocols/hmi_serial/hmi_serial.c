@@ -273,6 +273,10 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
             buf[idx++] = HMI_TYPE_UINT16;
             idx += hmi_buf_append_uint16(&buf[idx], get_minimum_balancing_voltage_mV(model));
             break;
+        case HMI_REG_BALANCING_START_VOLTAGE_MV:
+            buf[idx++] = HMI_TYPE_UINT16;
+            idx += hmi_buf_append_uint16(&buf[idx], model->balancing_start_voltage_mV);
+            break;
         case HMI_REG_INVERTER_SOC:
             buf[idx++] = HMI_TYPE_INT16;
             idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->inverter_outputs.soc);
@@ -292,6 +296,53 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
         case HMI_REG_INVERTER_MAX_VOLTAGE_LIMIT_DV:
             buf[idx++] = HMI_TYPE_INT16;
             idx += hmi_buf_append_uint16(&buf[idx], (uint16_t)model->inverter_outputs.max_voltage_limit_dV);
+            break;
+
+        case HMI_REG_USER_CHARGE_CURRENT_LIMIT_DA:
+            buf[idx++] = HMI_TYPE_UINT16;
+            idx += hmi_buf_append_uint16(&buf[idx], model->user_charge_current_limit_dA - 1);
+            break;
+        case HMI_REG_USER_DISCHARGE_CURRENT_LIMIT_DA:
+            buf[idx++] = HMI_TYPE_UINT16;
+            idx += hmi_buf_append_uint16(&buf[idx], model->user_discharge_current_limit_dA - 1);
+            break;
+        case HMI_REG_CHARGE_CURRENT_LIMIT_DA:
+            buf[idx++] = HMI_TYPE_UINT16;
+            idx += hmi_buf_append_uint16(&buf[idx], model->charge_current_limit_dA);
+            break;
+        case HMI_REG_DISCHARGE_CURRENT_LIMIT_DA:
+            buf[idx++] = HMI_TYPE_UINT16;
+            idx += hmi_buf_append_uint16(&buf[idx], model->discharge_current_limit_dA);
+            break;
+        case HMI_REG_TEMP_CHARGE_CURRENT_LIMIT_DA:
+            buf[idx++] = HMI_TYPE_UINT16;
+            idx += hmi_buf_append_uint16(&buf[idx], model->temp_charge_current_limit_dA);
+            break;
+        case HMI_REG_TEMP_DISCHARGE_CURRENT_LIMIT_DA:
+            buf[idx++] = HMI_TYPE_UINT16;
+            idx += hmi_buf_append_uint16(&buf[idx], model->temp_discharge_current_limit_dA);
+            break;
+        case HMI_REG_CELL_VOLTAGE_CHARGE_CURRENT_LIMIT_DA:
+            buf[idx++] = HMI_TYPE_UINT16;
+            idx += hmi_buf_append_uint16(&buf[idx], model->cell_voltage_charge_current_limit_dA);
+            break;
+        case HMI_REG_CELL_VOLTAGE_DISCHARGE_CURRENT_LIMIT_DA:
+            buf[idx++] = HMI_TYPE_UINT16;
+            idx += hmi_buf_append_uint16(&buf[idx], model->cell_voltage_discharge_current_limit_dA);
+            break;
+        case HMI_REG_WORKING_CHARGE_CURRENT_LIMIT_DA:
+            buf[idx++] = HMI_TYPE_UINT16;
+            idx += hmi_buf_append_uint16(&buf[idx], model->working_charge_current_limit_dA);
+            break;
+        case HMI_REG_WORKING_DISCHARGE_CURRENT_LIMIT_DA:
+            buf[idx++] = HMI_TYPE_UINT16;
+            // There isn't actually a field for this, fake it
+            uint16_t discharge_limit = model->below_working_min ? 0 : 0xffff;
+            idx += hmi_buf_append_uint16(&buf[idx], discharge_limit);
+            break;
+        case HMI_REG_DELTA_CHARGE_CURRENT_LIMIT_DA:
+            buf[idx++] = HMI_TYPE_UINT16;
+            idx += hmi_buf_append_uint16(&buf[idx], model->delta_charge_current_limit_dA);
             break;
 
         default:
@@ -468,6 +519,25 @@ static void hmi_handle_write_registers(const uint8_t *rx_buf, size_t len, bms_mo
                 case HMI_REG_MINIMUM_BALANCING_VOLTAGE_MV:
                     if(get_minimum_balancing_voltage_mV(model) != v) {
                         model->minimum_balancing_voltage_mV = v;
+                        needs_flashing = true;
+                    }
+                    break;
+                case HMI_REG_BALANCING_START_VOLTAGE_MV:
+                    if(model->balancing_start_voltage_mV != v) {
+                        model->balancing_start_voltage_mV = v;
+                        needs_flashing = true;
+                    }
+                    break;
+                case HMI_REG_USER_CHARGE_CURRENT_LIMIT_DA:
+                    // These are stored as +1 to allow 0 to indicate "no limit"
+                    if(model->user_charge_current_limit_dA != (v + 1)) {
+                        model->user_charge_current_limit_dA = v + 1;
+                        needs_flashing = true;
+                    }
+                    break;
+                case HMI_REG_USER_DISCHARGE_CURRENT_LIMIT_DA:
+                    if(model->user_discharge_current_limit_dA != (v + 1)) {
+                        model->user_discharge_current_limit_dA = v + 1;
                         needs_flashing = true;
                     }
                     break;

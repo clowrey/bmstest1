@@ -43,8 +43,8 @@ typedef struct {
 typedef struct {
     calibration_data_t;
 
-    uint16_t user_charge_current_limit_dA; // in 0.1A units
-    uint16_t user_discharge_current_limit_dA; // in 0.1A units
+    uint16_t user_charge_current_limit_dA; // in 0.1A units, +1 offset (0 means inactive)
+    uint16_t user_discharge_current_limit_dA; // in 0.1A units, +1 offset (0 means inactive)
 
     uint16_t cell_voltage_soft_min_mV;
     uint16_t cell_voltage_soft_max_mV;
@@ -63,10 +63,11 @@ typedef struct {
     int16_t soc_scaling_max; // in 0.01% units
 
     // Balancing configuration
-    uint32_t auto_balancing_period_ms; // How long to wait between auto-balancing sessions. Zero to disable balancing.
-    uint16_t balancing_periods_per_mV; // How many balancing periods per mV
-    uint16_t balance_min_offset_mV; // Minimum voltage difference to balance
+    uint32_t auto_balancing_period_ms;     // How long to wait between auto-balancing sessions. Zero to disable balancing.
+    uint16_t balancing_periods_per_mV;     // How many balancing periods per mV
+    uint16_t balance_min_offset_mV;        // Minimum voltage difference to balance
     uint16_t minimum_balancing_voltage_mV; // Minimum cell voltage to allow balancing
+    uint16_t balancing_start_voltage_mV;   // Start balancing when highest cell reaches this voltage
 
 } bms_model_persistent_slow_t;
 
@@ -226,6 +227,7 @@ typedef struct bms_model {
     uint16_t pack_voltage_discharge_current_limit_dA; // in 0.1A units
     uint16_t cell_voltage_charge_current_limit_dA; // in 0.1A units
     uint16_t cell_voltage_discharge_current_limit_dA; // in 0.1A units
+    uint16_t delta_charge_current_limit_dA; // in 0.1A units
     uint16_t working_charge_current_limit_dA; // in 0.1A units
     float working_charge_current_limit_filtered_dA;
     // The calculated final current limits
@@ -233,6 +235,7 @@ typedef struct bms_model {
     uint16_t discharge_current_limit_dA; // in 0.1A units
 
     bool below_working_min; // Hysteresis flag
+    bool above_delta_threshold; // Hysteresis flag for voltage delta
 
     // The amount of charge that has passed into the battery in excess of the
     // charge/discharge limits in the soft-limit region (slightly under or
@@ -267,7 +270,6 @@ typedef struct bms_model {
     inverter_outputs_t inverter_outputs;
 
     bool balancing_active; // whether balancing was requested during the past BMB cycle (and so whether any read voltages are unstable)
-    int16_t balancing_voltage_threshold_mV; // Only balance cells above this voltage
 
     bool estop_pressed;
     // Detected via the aux contacts (note that this is actually the precharge bypass contactor)

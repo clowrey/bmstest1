@@ -8,8 +8,8 @@ void pwm_set(uint pin, uint32_t level, bool invert_b) {
 
     if (pwm_gpio_to_channel(pin) == PWM_CHAN_B && invert_b) {
         // Shift phase by 180 degrees (invert) but keep duty cycle the same.
-        // For an inverted channel, physical high time = (Wrap + 1) - RegisterLevel.
-        // With Wrap = 0xFFF, RegisterLevel = 0x1000 - level.
+        // For an inverted channel, physical high time = (wrap + 1) - level.
+        // With wrap = 0xFFF, level = 0x1000 - level.
         pwm_set_gpio_level(pin, 0x1000 - level);
     } else {
         pwm_set_gpio_level(pin, level);
@@ -18,8 +18,8 @@ void pwm_set(uint pin, uint32_t level, bool invert_b) {
 
 void init_pwm_pin(uint pin, bool invert_b) {
     gpio_set_function(pin, GPIO_FUNC_PWM);
-    // Some of our GPIOs will share slices so they need to be configured the
-    // with the same clock/wrap.
+    // Note: some of our GPIOs will share slices so they need to be configured
+    // the with the same clock/wrap/invert.
     uint slice_num = pwm_gpio_to_slice_num(pin);
 
     pwm_config config = pwm_get_default_config();

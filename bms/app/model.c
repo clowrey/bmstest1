@@ -54,7 +54,7 @@ static void model_process_cell_voltages(bms_model_t *model) {
 }
 
 static void model_calculate_cell_current_limits(bms_model_t *model) {
-    model->cell_voltage_charge_current_limit_dA =calculate_cell_voltage_charge_current_limit(
+    model->cell_voltage_charge_current_limit_dA = calculate_cell_voltage_charge_current_limit(
         model
     );
     model->cell_voltage_discharge_current_limit_dA = calculate_cell_voltage_discharge_current_limit(
@@ -62,6 +62,7 @@ static void model_calculate_cell_current_limits(bms_model_t *model) {
     );
     
     model->working_charge_current_limit_dA = calculate_working_charge_current_limit(model);
+    model->delta_charge_current_limit_dA = calculate_delta_charge_current_limit(model);
 }
 
 static void model_apply_current_limits(bms_model_t *model) {
@@ -102,13 +103,17 @@ static void model_apply_current_limits(bms_model_t *model) {
         charge_limit = model->working_charge_current_limit_dA;
     }
 
+    if(charge_limit > model->delta_charge_current_limit_dA) {
+        charge_limit = model->delta_charge_current_limit_dA;
+    }
+
     // User limits
-    // if(charge_limit > model->user_charge_current_limit_dA) {
-    //     charge_limit = model->user_charge_current_limit_dA;
-    // }
-    // if(discharge_limit > model->user_discharge_current_limit_dA) {
-    //     discharge_limit = model->user_discharge_current_limit_dA;
-    // }
+    if(charge_limit > model->user_charge_current_limit_dA && model->user_charge_current_limit_dA > 0) {
+        charge_limit = model->user_charge_current_limit_dA - 1;
+    }
+    if(discharge_limit > model->user_discharge_current_limit_dA && model->user_discharge_current_limit_dA > 0) {
+        discharge_limit = model->user_discharge_current_limit_dA - 1;
+    }
 
     model->charge_current_limit_dA = charge_limit;
     model->discharge_current_limit_dA = discharge_limit;
