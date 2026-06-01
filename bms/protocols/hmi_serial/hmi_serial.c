@@ -344,6 +344,14 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
             buf[idx++] = HMI_TYPE_UINT16;
             idx += hmi_buf_append_uint16(&buf[idx], model->delta_charge_current_limit_dA);
             break;
+        case HMI_REG_HARD_CHARGE_CURRENT_LIMIT_DA:
+            buf[idx++] = HMI_TYPE_UINT16;
+            idx += hmi_buf_append_uint16(&buf[idx], CHARGE_MAX_CURRENT_dA);
+            break;
+        case HMI_REG_HARD_DISCHARGE_CURRENT_LIMIT_DA:
+            buf[idx++] = HMI_TYPE_UINT16;
+            idx += hmi_buf_append_uint16(&buf[idx], DISCHARGE_MAX_CURRENT_dA);
+            break;
 
         default:
             if (reg_id >= HMI_REG_CELL_VOLTAGES_START && reg_id <= HMI_REG_CELL_VOLTAGES_END) {
