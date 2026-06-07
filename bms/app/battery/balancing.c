@@ -116,14 +116,14 @@ static void update_balance_requests(balancing_sm_t *balancing_sm, int16_t decrem
 
 // Calculate how long to balance a cell for, based on its voltage above the
 // minimum cell voltage, in BMB update periods.
-int16_t calculate_balance_time(int16_t voltage_mV, int16_t min_voltage_mV, bms_model_t *model) {
+int32_t calculate_balance_time(int16_t voltage_mV, int16_t min_voltage_mV, bms_model_t *model) {
     // Calculate balance time in BMB-update-periods based on voltage difference
 
     // TODO - figure out multiplier, and base on SoC/OCV curve
 
     //return 10;
 
-    int16_t diff = voltage_mV - min_voltage_mV - model->balance_min_offset_mV;
+    int32_t diff = voltage_mV - min_voltage_mV - model->balance_min_offset_mV;
     if(diff < 0) {
         return 0;
     }
@@ -151,15 +151,32 @@ static bool start_balancing(bms_model_t *model) {
         }
     }
 
+    // Temporary higher-res storage
+    uint32_t balance_time_remaining[120];
+    int32_t max_balance_time = 0;
+
     // Set balance times based on how far above minimum voltage each cell is
-    
+
     for(int cell=0; cell<NUM_CELLS; cell++) {
         int16_t voltage = model->cell_voltages_mV[cell];
-        model->balancing_sm.balance_time_remaining[cell] = calculate_balance_time(voltage, min_cell_voltage, model);
-        // if(model->balancing_sm.balance_time_remaining[cell] > 0) {
-        //     printf("Cell %d voltage %d mV, balancing for %d periods\n",
-        //         cell, voltage, model->balancing_sm.balance_time_remaining[cell]);
-        // }
+        balance_time_remaining[cell] = calculate_balance_time(voltage, min_cell_voltage, model);
+        if(balance_time_remaining[cell] > max_balance_time) {
+            max_balance_time = balance_time_remaining[cell];
+        }
+    }
+
+    // Make sure we fit within int16_t for the balance times
+    if(max_balance_time > INT16_MAX) {
+        // We don't fit, scale all the times down proportionally
+        float scale = (float)INT16_MAX / max_balance_time;
+        for(int cell=0; cell<NUM_CELLS; cell++) {
+            int32_t scaled_time = (int32_t)(balance_time_remaining[cell] * scale);
+            model->balancing_sm.balance_time_remaining[cell] = (int16_t)(scaled_time > INT16_MAX ? INT16_MAX : scaled_time);
+        }
+    } else {
+        for(int cell=0; cell<NUM_CELLS; cell++) {
+            model->balancing_sm.balance_time_remaining[cell] = (int16_t)balance_time_remaining[cell];
+        }
     }
 
     update_balance_requests(balancing_sm, 0, false);
@@ -171,6 +188,12 @@ static bool start_balancing(bms_model_t *model) {
 // balancing, and update the request mask accordingly.
 static void decrement_balance_times_and_update(balancing_sm_t *balancing_sm) {
     update_balance_requests(balancing_sm, 1, false);
+}
+
+void clear_balancing_times(balancing_sm_t *balancing_sm) {
+    for(int cell=0; cell<120; cell++) {
+        balancing_sm->balance_time_remaining[cell] = 0;
+    }
 }
 
 void pause_balancing(balancing_sm_t *balancing_sm) {
@@ -223,6 +246,7 @@ void balancing_sm_tick(bms_model_t *model) {
                 // Stop balancing if conditions are no longer good
                 pause_balancing(balancing_sm);
                 state_transition((sm_t*)balancing_sm, BALANCING_STATE_IDLE);
+                clear_balancing_times(balancing_sm);
                 return;
             }
 
