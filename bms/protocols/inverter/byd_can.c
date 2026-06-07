@@ -8,15 +8,19 @@
 #include "can2040.h"
 #include "protocols/inverter/can.h"
 
+#include <assert.h>
 #include <pico/stdlib.h>
 
 static const int battery_capacity_Wh = 60000;
 static const int FW_MAJOR_VERSION = 0x03;
 static const int FW_MINOR_VERSION = 0x29;
+
+static const uint32_t INVERTER_TIMEOUT_MS = 300000; // 5 minutes
   
 static bool inverter_present = false;
 static bool inverter_initialized = false;
 static int inverter_init_state = 0;
+static uint32_t last_received_millis = 0;
 // offsets to avoid sending all messages on the same timestep
 static uint32_t timestep_1 = 0;
 static uint32_t timestep_2 = 1;
@@ -57,7 +61,6 @@ static void can2040_cb(struct can2040 *cd, uint32_t notify, struct can2040_msg *
     if (notify != CAN2040_NOTIFY_RX) return;
     (void)cd;
     
-    // Add message processing code here...
     // rx 151 (contains brand name)
     // rx 91 (contains voltage/current/temp)
     // rx d1 (contains inverter SoC?)
@@ -95,10 +98,8 @@ static void can2040_cb(struct can2040 *cd, uint32_t notify, struct can2040_msg *
     //printf("Got CAN message %03X DLC %d\n", msg->id, msg->dlc);
 
     raise_bms_event(ERR_INVERTER_DETECTED, msg->id);
-
     inverter_present = true;
-
-    // TODO: store last received time for timeout detection
+    last_received_millis = millis();
 }
 
 void init_inverter() {
@@ -201,7 +202,7 @@ static void send_inverter_init_messages() {
 
     inverter_initialized = true;
     inverter_init_state = 0;
-    timestep_1 = timestep();
+    timestep_1 = timestep() + 1;
     timestep_2 = timestep_1 + 1;
     timestep_3 = timestep_1 + 2;
 }
@@ -334,13 +335,16 @@ static int send_190(inverter_outputs_t *outputs) {
     return inverter_can_transmit(&msg);
 }
 
-static uint8_t transmit_cycle = 0;
-
 void inverter_tick(inverter_outputs_t *outputs) {
     // This should get called every 100ms
 
-    // inverter_present = true; // for testing
-    // inverter_initialized = true; // for testing
+    if(inverter_present && (millis() - last_received_millis > INVERTER_TIMEOUT_MS)) {
+        // We haven't received any messages from the inverter for a while
+        info_printf("BYD_CAN: Inverter timeout, no messages received for %u ms\n", millis() - last_received_millis);
+        inverter_present = false;
+        inverter_initialized = false;
+        inverter_init_state = 0;
+    }
 
     if(!inverter_present) {
         // We haven't received any CAN messages from the inverter yet
@@ -367,18 +371,4 @@ void inverter_tick(inverter_outputs_t *outputs) {
         // send regular messages every 60s
         send_190(outputs);
     }
-
-    // transmit_cycle++;
-    // if((transmit_cycle % 20) == 0) { // every 2s
-    //     send_110();
-    // }
-    // if((transmit_cycle % 100) == 0) { // every 10s
-    //     send_150();
-    //     send_1d0();
-    //     send_210();
-    // }
-    // if((transmit_cycle % 600) == 0) { // every 60s
-    //     send_190();
-    //     transmit_cycle = 0;
-    // }
 }
