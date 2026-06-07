@@ -103,6 +103,27 @@ damage where possible. External safety equipment should be used for more
 time-critical protection against overcurrent (fuses) or leakage (an RCD).
 
 
+## Balancing
+
+There are five settings that control balancing:
+
+1. Auto balancing interval (ms)
+   This is how regularly the balancing routine tries to start a new balancing cycle. It acts as a short interval between balancing cycles, which can be useful to let cell voltages recover before the voltages are sampled for the next cycle. Setting to 0 disables balancing. Values of 10000ms - 60000ms are typical.
+
+2. Balance periods per mV (periods/mV)
+   This affects how long each cell is balanced for, during a balancing cycle, according on its voltage delta above the minimum - higher cells get balanced for longer. A period is 1.28s long. This can be set low (eg: 1), which results in regular short balancing cycles of a minute or less, or very high (eg: 1000) which can result in a single balancing cycle lasting 20 hours or more. 
+
+3. Balancing minimum offset (mv)
+   This is the minimum delta, below which balancing won't start. To avoid unnecessary balancing cycles triggered by noise, this should be at least 2mV.
+
+4. Minimum balance voltage (mV)
+   If any cell falls below this voltage during balancing, the balancing will stop immediately.
+
+5. Balance start voltage (mV)
+   Balancing won't start until a single cell voltage is above this threshold.
+
+It is usual to top-balance a pack, evening the cell voltages when the pack is full. Conventionally this needs the pack to be kept nearly full during the balancing process. However CellKeeper allows balancing cycles to run for hours, whilst the pack is discharging, as long as they start when the pack is near full (at least one cell is above the 'Balance start voltage' threshold). This is especially useful with LFP, where the delta is only visible above 99% SoC.
+
 
 
 
@@ -132,4 +153,5 @@ when flash memory operations are performed.
 A system-wide watchdog timer is set up with a 5 second deadline, which gets
 reset every tick. If the main loop stalls for more than 5 seconds, the chip will
 reboot and raise a WARNING event.
+
 
