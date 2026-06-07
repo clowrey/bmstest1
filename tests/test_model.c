@@ -51,7 +51,7 @@ static void setup_model_operating(bms_model_t *m) {
     m->contactor_sm.enable_current = true;
     
     // Set fresh timestamps
-    m->battery_voltage_millis = stored_millis;
+    m->high_voltages.battery_millis = stored_millis;
     m->cell_voltage_millis = stored_millis;
     m->cell_voltages_millis = stored_millis;
     m->temperature_millis = stored_millis;
@@ -59,15 +59,16 @@ static void setup_model_operating(bms_model_t *m) {
     m->current_millis = stored_millis;
     
     // Normal operating values
-    m->battery_voltage = (float)(3700 * NUM_CELLS);
-    m->temperature_min_dC = 250;
-    m->temperature_max_dC = 250;
+    m->high_voltages.battery = (float)(3.7f * NUM_CELLS);
+    m->temperature_min = 25.0f;
+    m->temperature_max = 25.0f;
     
     for (int i = 0; i < NUM_CELLS; i++) {
         m->cell_voltages_mV[i] = 3700;
     }
     for (int i = 0; i < NUM_MODULE_TEMPS; i++) {
-        m->module_temperatures_dC[i] = 250;
+        m->module_temperatures_raw_dC[i] = 250;
+        m->module_temperatures[i] = 25.0f;
     }
 }
 
@@ -122,16 +123,19 @@ static void test_temperature_min_max_extraction(void **state) {
     bms_model_t m = {0};
     setup_model_operating(&m);
     
-    m.module_temperatures_dC[0] = 200;  // min (20.0C)
-    m.module_temperatures_dC[1] = 350;  // max (35.0C)
+    m.module_temperatures_raw_dC[0] = 200;  // min (20.0C)
+    m.module_temperatures[0] = 20.0f;
+    m.module_temperatures_raw_dC[1] = 350;  // max (35.0C)
+    m.module_temperatures[1] = 35.0f;
     for (int i = 2; i < NUM_MODULE_TEMPS; i++) {
-        m.module_temperatures_dC[i] = 250;
+        m.module_temperatures_raw_dC[i] = 250;
+        m.module_temperatures[i] = 25.0f;
     }
     
     model_tick(&m);
     
-    assert_int_equal(m.temperature_min_dC, 200);
-    assert_int_equal(m.temperature_max_dC, 350);
+    assert_true(m.temperature_min >= 19.9f && m.temperature_min <= 20.1f);
+    assert_true(m.temperature_max >= 34.9f && m.temperature_max <= 35.1f);
 }
 
 // ============================================================================
@@ -157,7 +161,8 @@ static void test_temperature_limits_applied(void **state) {
     setup_model_operating(&m);
     
     // Set hot temperature that should derate
-    m.module_temperatures_dC[0] = 480;  // 48.0C, near max of 50C
+    m.module_temperatures_raw_dC[0] = 480;  // 48.0C, near max of 50C
+    m.module_temperatures[0] = 48.0f;
     m.module_temperatures_millis = stored_millis;
     
     model_tick(&m);
@@ -196,7 +201,8 @@ static void test_overcurrent_accumulation_charge(void **state) {
     // Set hot temperature to limit charging to a low value
     // At 490 dC, limit = (500 - 490) * 2 = 20 dA = 2A
     for (int i = 0; i < NUM_MODULE_TEMPS; i++) {
-        m.module_temperatures_dC[i] = 490;
+        m.module_temperatures_raw_dC[i] = 490;
+        m.module_temperatures[i] = 49.0f;
     }
     
     // Set charge current well above what temperature will allow
@@ -217,7 +223,8 @@ static void test_overcurrent_accumulation_discharge(void **state) {
     // Set hot temperature to limit discharging
     // At 540 dC (near max 550), limit = (550 - 540) * 2 = 20 dA = 2A
     for (int i = 0; i < NUM_MODULE_TEMPS; i++) {
-        m.module_temperatures_dC[i] = 540;
+        m.module_temperatures_raw_dC[i] = 540;
+        m.module_temperatures[i] = 54.0f;
     }
     
     // Discharge at 50A when limit is ~2A
@@ -297,9 +304,9 @@ static void test_voltage_mismatch_not_triggered_when_matched(void **state) {
     for (int i = 0; i < NUM_CELLS; i++) {
         m.cell_voltages_mV[i] = cell_voltage;
     }
-    m.battery_voltage_millis = stored_millis;
+    m.high_voltages.battery_millis = stored_millis;
     m.cell_voltage_millis = stored_millis;
-    m.battery_voltage = (float)cell_voltage * NUM_CELLS * 0.001f;
+    m.high_voltages.battery = (float)cell_voltage * NUM_CELLS * 0.001f;
 
     model_tick(&m);
     confirm_battery_safety(&m);
@@ -317,7 +324,8 @@ static void test_voltage_mismatch_triggered_on_large_difference(void **state) {
         m.cell_voltages_mV[i] = 3700;
     }
     // Battery voltage way off
-    m.battery_voltage = 3700 * NUM_CELLS + VOLTAGE_MISMATCH_THRESHOLD_mV + 1000;
+    m.high_voltages.battery = (3700 * NUM_CELLS + VOLTAGE_MISMATCH_THRESHOLD_mV + 1000) * 0.001f;
+    m.high_voltages.battery_millis = stored_millis;
     
     model_tick(&m);
     confirm_battery_safety(&m);
@@ -370,7 +378,7 @@ static void test_stale_data_not_faulted_during_init(void **state) {
     m.system_sm.state = SYSTEM_STATE_INITIALIZING;
     
     // Make data stale
-    m.battery_voltage_millis = stored_millis - BATTERY_VOLTAGE_STALE_THRESHOLD_MS - 100;
+    m.high_voltages.battery_millis = stored_millis - BATTERY_VOLTAGE_STALE_THRESHOLD_MS - 100;
     
     confirm_battery_safety(&m);
     
@@ -384,7 +392,7 @@ static void test_stale_data_faulted_when_operating(void **state) {
     setup_model_operating(&m);
     
     // Make data stale
-    m.battery_voltage_millis = stored_millis - BATTERY_VOLTAGE_STALE_THRESHOLD_MS - 100;
+    m.high_voltages.battery_millis = stored_millis - BATTERY_VOLTAGE_STALE_THRESHOLD_MS - 100;
     
     confirm_battery_safety(&m);
     

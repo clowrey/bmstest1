@@ -43,14 +43,14 @@ static void setup_model(bms_model_t *model) {
     // Basic operating state
 
     model->system_sm.state = SYSTEM_STATE_OPERATING;
-    model->battery_voltage_millis = stored_millis;
+    model->high_voltages.battery_millis = stored_millis;
     model->cell_voltage_millis = stored_millis;
     model->temperature_millis = stored_millis;
 
     model->cell_voltage_min_mV = 3500;
     model->cell_voltage_max_mV = 3500;
     for(int i = 0; i < 8; i++) {
-        model->module_temperatures_dC[i] = 250; // 25.0C
+        model->module_temperatures_raw_dC[i] = 250; // 25.0C
     }
     model->contactor_sm.enable_current = true;
 }
@@ -73,7 +73,7 @@ static void test_safety_voltage_events(void **state) {
     (void) state;
     bms_model_t model = {0};
     model.system_sm.state = SYSTEM_STATE_OPERATING;
-    model.battery_voltage_millis = stored_millis;
+    model.high_voltages.battery_millis = stored_millis;
     model.cell_voltage_millis = stored_millis;
     model.temperature_millis = stored_millis;
 
@@ -81,16 +81,16 @@ static void test_safety_voltage_events(void **state) {
     model.cell_voltage_min_mV = 3300;
     model.cell_voltage_max_mV = 3300;
     model.cell_voltage_total_mV = model.cell_voltage_max_mV * NUM_CELLS;
-    model.battery_voltage = (float)model.cell_voltage_max_mV * NUM_CELLS * 0.001f;
+    model.high_voltages.battery = (float)model.cell_voltage_max_mV * NUM_CELLS * 0.001f;
     model.cell_voltages_millis = stored_millis;
-    model.battery_voltage_millis = stored_millis;
+    model.high_voltages.battery_millis = stored_millis;
     model.module_temperatures_millis = stored_millis;
     model.temperature_millis = stored_millis;
     model.current_millis = stored_millis;
-    model.supply_voltage_3V3_millis = stored_millis;
-    model.supply_voltage_5V_millis = stored_millis;
-    model.supply_voltage_12V_millis = stored_millis;
-    model.supply_voltage_contactor_millis = stored_millis;
+    model.supply_voltages.voltage_3V3_millis = stored_millis;
+    model.supply_voltages.voltage_5V_millis = stored_millis;
+    model.supply_voltages.voltage_12V_millis = stored_millis;
+    model.supply_voltages.voltage_contactor_millis = stored_millis;
 
     // Set all cell voltages to same value so total matches battery voltage
     for(int i=0; i<NUM_CELLS; i++) model.cell_voltages_mV[i] = 3300;
@@ -137,24 +137,24 @@ static void test_safety_temp_events(void **state) {
     model.temperature_millis = stored_millis;
 
     // High temp
-    model.temperature_max_dC = TEMPERATURE_SOFT_MAX_dC + 1;
+    model.temperature_max = TEMPERATURE_SOFT_MAX + 0.1f;
     confirm_battery_safety(&model);
     assert_int_equal(get_event_level(ERR_BATTERY_TEMPERATURE_HIGH), LEVEL_WARNING);
 
     // Very high temp
-    model.temperature_max_dC = TEMPERATURE_HARD_MAX_dC + 1;
+    model.temperature_max = TEMPERATURE_HARD_MAX + 0.1f;
     confirm_battery_safety(&model);
     assert_int_equal(get_event_level(ERR_BATTERY_TEMPERATURE_VERY_HIGH), LEVEL_CRITICAL);
 
     // Low temp
-    model.temperature_max_dC = 250;
-    model.temperature_min_dC = TEMPERATURE_SOFT_MIN_dC - 1;
+    model.temperature_max = 25.0f;
+    model.temperature_min = TEMPERATURE_SOFT_MIN - 0.1f;
     model.temperature_millis = stored_millis;
     confirm_battery_safety(&model);
     assert_int_equal(get_event_level(ERR_BATTERY_TEMPERATURE_LOW), LEVEL_WARNING);
 
     // Very low temp
-    model.temperature_min_dC = TEMPERATURE_HARD_MIN_dC - 1;
+    model.temperature_min = TEMPERATURE_HARD_MIN - 0.1f;
     model.temperature_millis = stored_millis;
     confirm_battery_safety(&model);
     assert_int_equal(get_event_level(ERR_BATTERY_TEMPERATURE_VERY_LOW), LEVEL_CRITICAL);
@@ -165,16 +165,16 @@ static void test_battery_pack_voltage_hard_limits(void **state) {
     bms_model_t model = {0};
     setup_model(&model);
 
-    model.battery_voltage_millis = stored_millis;
+    model.high_voltages.battery_millis = stored_millis;
 
     // Very high pack voltage
-    model.battery_voltage = (BATTERY_VOLTAGE_HARD_MAX_mV + 1) * 0.001f;
+    model.high_voltages.battery = (BATTERY_VOLTAGE_HARD_MAX_mV + 1) * 0.001f;
     confirm_battery_safety(&model);
     assert_int_equal(get_event_level(ERR_BATTERY_VOLTAGE_VERY_HIGH), LEVEL_CRITICAL);
 
     // Very low pack voltage
-    model.battery_voltage = (BATTERY_VOLTAGE_HARD_MIN_mV - 1) * 0.001f;
-    model.battery_voltage_millis = stored_millis;
+    model.high_voltages.battery = (BATTERY_VOLTAGE_HARD_MIN_mV - 1) * 0.001f;
+    model.high_voltages.battery_millis = stored_millis;
     confirm_battery_safety(&model);
     assert_int_equal(get_event_level(ERR_BATTERY_VOLTAGE_VERY_LOW), LEVEL_CRITICAL);
 }
@@ -212,75 +212,75 @@ static void test_estop_event(void **state) {
 static void test_hardware_voltage_events(void **state) {
     (void) state;
     bms_model_t model = {0};
-    model.supply_voltage_3V3_millis = stored_millis;
-    model.supply_voltage_5V_millis = stored_millis;
-    model.supply_voltage_12V_millis = stored_millis;
-    model.supply_voltage_contactor_millis = stored_millis;
+    model.supply_voltages.voltage_3V3_millis = stored_millis;
+    model.supply_voltages.voltage_5V_millis = stored_millis;
+    model.supply_voltages.voltage_12V_millis = stored_millis;
+    model.supply_voltages.voltage_contactor_millis = stored_millis;
 
     // Start from nominal values for all rails
-    model.supply_voltage_3V3_mV = (SUPPLY_VOLTAGE_3V3_MIN_MV + SUPPLY_VOLTAGE_3V3_MAX_MV) / 2;
-    model.supply_voltage_5V_mV = (SUPPLY_VOLTAGE_5V_MIN_MV + SUPPLY_VOLTAGE_5V_MAX_MV) / 2;
-    model.supply_voltage_12V_mV = (SUPPLY_VOLTAGE_12V_MIN_MV + SUPPLY_VOLTAGE_12V_MAX_MV) / 2;
-    model.supply_voltage_contactor_mV = (SUPPLY_VOLTAGE_CONTACTOR_SOFT_MIN_MV + SUPPLY_VOLTAGE_CONTACTOR_MAX_MV) / 2;
+    model.supply_voltages.voltage_3V3_mV = (SUPPLY_VOLTAGE_3V3_MIN_MV + SUPPLY_VOLTAGE_3V3_MAX_MV) / 2;
+    model.supply_voltages.voltage_5V_mV = (SUPPLY_VOLTAGE_5V_MIN_MV + SUPPLY_VOLTAGE_5V_MAX_MV) / 2;
+    model.supply_voltages.voltage_12V_mV = (SUPPLY_VOLTAGE_12V_MIN_MV + SUPPLY_VOLTAGE_12V_MAX_MV) / 2;
+    model.supply_voltages.voltage_contactor_mV = (SUPPLY_VOLTAGE_CONTACTOR_SOFT_MIN_MV + SUPPLY_VOLTAGE_CONTACTOR_MAX_MV) / 2;
 
     // 3.3V Low
-    model.supply_voltage_3V3_mV = SUPPLY_VOLTAGE_3V3_MIN_MV - 1;
+    model.supply_voltages.voltage_3V3_mV = SUPPLY_VOLTAGE_3V3_MIN_MV - 1;
     confirm_hardware_integrity(&model);
     assert_int_equal(get_event_level(ERR_SUPPLY_VOLTAGE_3V3_LOW), LEVEL_WARNING);
-    model.supply_voltage_3V3_mV = (SUPPLY_VOLTAGE_3V3_MIN_MV + SUPPLY_VOLTAGE_3V3_MAX_MV) / 2;
+    model.supply_voltages.voltage_3V3_mV = (SUPPLY_VOLTAGE_3V3_MIN_MV + SUPPLY_VOLTAGE_3V3_MAX_MV) / 2;
     clear_bms_event(ERR_SUPPLY_VOLTAGE_3V3_LOW);
 
     // 3.3V High
-    model.supply_voltage_3V3_mV = SUPPLY_VOLTAGE_3V3_MAX_MV + 1;
+    model.supply_voltages.voltage_3V3_mV = SUPPLY_VOLTAGE_3V3_MAX_MV + 1;
     confirm_hardware_integrity(&model);
     assert_int_equal(get_event_level(ERR_SUPPLY_VOLTAGE_3V3_HIGH), LEVEL_WARNING);
-    model.supply_voltage_3V3_mV = (SUPPLY_VOLTAGE_3V3_MIN_MV + SUPPLY_VOLTAGE_3V3_MAX_MV) / 2;
+    model.supply_voltages.voltage_3V3_mV = (SUPPLY_VOLTAGE_3V3_MIN_MV + SUPPLY_VOLTAGE_3V3_MAX_MV) / 2;
     clear_bms_event(ERR_SUPPLY_VOLTAGE_3V3_HIGH);
 
     // 5V Low
-    model.supply_voltage_5V_mV = SUPPLY_VOLTAGE_5V_MIN_MV - 1;
+    model.supply_voltages.voltage_5V_mV = SUPPLY_VOLTAGE_5V_MIN_MV - 1;
     confirm_hardware_integrity(&model);
     assert_int_equal(get_event_level(ERR_SUPPLY_VOLTAGE_5V_LOW), LEVEL_WARNING);
-    model.supply_voltage_5V_mV = (SUPPLY_VOLTAGE_5V_MIN_MV + SUPPLY_VOLTAGE_5V_MAX_MV) / 2;
+    model.supply_voltages.voltage_5V_mV = (SUPPLY_VOLTAGE_5V_MIN_MV + SUPPLY_VOLTAGE_5V_MAX_MV) / 2;
     clear_bms_event(ERR_SUPPLY_VOLTAGE_5V_LOW);
 
     // 5V High
-    model.supply_voltage_5V_mV = SUPPLY_VOLTAGE_5V_MAX_MV + 1;
+    model.supply_voltages.voltage_5V_mV = SUPPLY_VOLTAGE_5V_MAX_MV + 1;
     confirm_hardware_integrity(&model);
     assert_int_equal(get_event_level(ERR_SUPPLY_VOLTAGE_5V_HIGH), LEVEL_WARNING);
-    model.supply_voltage_5V_mV = (SUPPLY_VOLTAGE_5V_MIN_MV + SUPPLY_VOLTAGE_5V_MAX_MV) / 2;
+    model.supply_voltages.voltage_5V_mV = (SUPPLY_VOLTAGE_5V_MIN_MV + SUPPLY_VOLTAGE_5V_MAX_MV) / 2;
     clear_bms_event(ERR_SUPPLY_VOLTAGE_5V_HIGH);
 
     // 12V Low
-    model.supply_voltage_12V_mV = SUPPLY_VOLTAGE_12V_MIN_MV - 1;
+    model.supply_voltages.voltage_12V_mV = SUPPLY_VOLTAGE_12V_MIN_MV - 1;
     confirm_hardware_integrity(&model);
     assert_int_equal(get_event_level(ERR_SUPPLY_VOLTAGE_12V_LOW), LEVEL_WARNING);
-    model.supply_voltage_12V_mV = (SUPPLY_VOLTAGE_12V_MIN_MV + SUPPLY_VOLTAGE_12V_MAX_MV) / 2;
+    model.supply_voltages.voltage_12V_mV = (SUPPLY_VOLTAGE_12V_MIN_MV + SUPPLY_VOLTAGE_12V_MAX_MV) / 2;
     clear_bms_event(ERR_SUPPLY_VOLTAGE_12V_LOW);
 
     // 12V High
-    model.supply_voltage_12V_mV = SUPPLY_VOLTAGE_12V_MAX_MV + 1;
+    model.supply_voltages.voltage_12V_mV = SUPPLY_VOLTAGE_12V_MAX_MV + 1;
     confirm_hardware_integrity(&model);
     assert_int_equal(get_event_level(ERR_SUPPLY_VOLTAGE_12V_HIGH), LEVEL_WARNING);
-    model.supply_voltage_12V_mV = (SUPPLY_VOLTAGE_12V_MIN_MV + SUPPLY_VOLTAGE_12V_MAX_MV) / 2;
+    model.supply_voltages.voltage_12V_mV = (SUPPLY_VOLTAGE_12V_MIN_MV + SUPPLY_VOLTAGE_12V_MAX_MV) / 2;
     clear_bms_event(ERR_SUPPLY_VOLTAGE_12V_HIGH);
 
     // Contactor Voltage Low (soft threshold)
-    model.supply_voltage_contactor_mV = SUPPLY_VOLTAGE_CONTACTOR_SOFT_MIN_MV - 1;
+    model.supply_voltages.voltage_contactor_mV = SUPPLY_VOLTAGE_CONTACTOR_SOFT_MIN_MV - 1;
     confirm_hardware_integrity(&model);
     assert_int_equal(get_event_level(ERR_SUPPLY_VOLTAGE_CONTACTOR_LOW), LEVEL_WARNING);
-    model.supply_voltage_contactor_mV = (SUPPLY_VOLTAGE_CONTACTOR_SOFT_MIN_MV + SUPPLY_VOLTAGE_CONTACTOR_MAX_MV) / 2;
+    model.supply_voltages.voltage_contactor_mV = (SUPPLY_VOLTAGE_CONTACTOR_SOFT_MIN_MV + SUPPLY_VOLTAGE_CONTACTOR_MAX_MV) / 2;
     clear_bms_event(ERR_SUPPLY_VOLTAGE_CONTACTOR_LOW);
 
     // Contactor Voltage Very Low
-    model.supply_voltage_contactor_mV = SUPPLY_VOLTAGE_CONTACTOR_HARD_MIN_MV - 1;
+    model.supply_voltages.voltage_contactor_mV = SUPPLY_VOLTAGE_CONTACTOR_HARD_MIN_MV - 1;
     confirm_hardware_integrity(&model);
     assert_int_equal(get_event_level(ERR_SUPPLY_VOLTAGE_CONTACTOR_VERY_LOW), LEVEL_CRITICAL);
-    model.supply_voltage_contactor_mV = (SUPPLY_VOLTAGE_CONTACTOR_SOFT_MIN_MV + SUPPLY_VOLTAGE_CONTACTOR_MAX_MV) / 2;
+    model.supply_voltages.voltage_contactor_mV = (SUPPLY_VOLTAGE_CONTACTOR_SOFT_MIN_MV + SUPPLY_VOLTAGE_CONTACTOR_MAX_MV) / 2;
     clear_bms_event(ERR_SUPPLY_VOLTAGE_CONTACTOR_VERY_LOW);
 
     // Contactor Voltage High
-    model.supply_voltage_contactor_mV = SUPPLY_VOLTAGE_CONTACTOR_MAX_MV + 1;
+    model.supply_voltages.voltage_contactor_mV = SUPPLY_VOLTAGE_CONTACTOR_MAX_MV + 1;
     confirm_hardware_integrity(&model);
     assert_int_equal(get_event_level(ERR_SUPPLY_VOLTAGE_CONTACTOR_HIGH), LEVEL_WARNING);
 }
@@ -291,7 +291,7 @@ static void test_stale_data_events(void **state) {
     model.system_sm.state = SYSTEM_STATE_OPERATING;
     
     // Set all timestamps to old
-    model.battery_voltage_millis = stored_millis - BATTERY_VOLTAGE_STALE_THRESHOLD_MS - 1;
+    model.high_voltages.battery_millis = stored_millis - BATTERY_VOLTAGE_STALE_THRESHOLD_MS - 1;
     model.cell_voltage_millis = stored_millis - CELL_VOLTAGE_STALE_THRESHOLD_MS - 1;
     model.temperature_millis = stored_millis - TEMPERATURE_STALE_THRESHOLD_MS(&model) - 1;
     
@@ -319,9 +319,9 @@ static void test_voltage_mismatch_ignored_when_timestamps_far_apart(void **state
 
     // Make voltages badly mismatched, but timestamps too far apart for check
     model.cell_voltage_total_mV = 3300 * NUM_CELLS;
-    model.battery_voltage = 4200.0f * NUM_CELLS * 0.001f;
+    model.high_voltages.battery = 4200.0f * NUM_CELLS * 0.001f;
     model.cell_voltage_millis = stored_millis;
-    model.battery_voltage_millis = stored_millis + 1500;
+    model.high_voltages.battery_millis = stored_millis + 1500;
 
     confirm_battery_safety(&model);
     assert_int_equal(get_event_level(ERR_VOLTAGE_MISMATCH), LEVEL_NONE);
@@ -345,10 +345,10 @@ static void test_hardware_checks_ignored_before_first_supply_read(void **state) 
     bms_model_t model = {0};
 
     // Explicitly in uninitialized hardware state
-    model.supply_voltage_contactor_millis = 0;
-    model.supply_voltage_3V3_millis = 0;
-    model.supply_voltage_5V_millis = 0;
-    model.supply_voltage_12V_millis = 0;
+    model.supply_voltages.voltage_contactor_millis = 0;
+    model.supply_voltages.voltage_3V3_millis = 0;
+    model.supply_voltages.voltage_5V_millis = 0;
+    model.supply_voltages.voltage_12V_millis = 0;
 
     confirm_hardware_integrity(&model);
     assert_int_equal(get_event_level(ERR_SUPPLY_VOLTAGE_STALE), LEVEL_NONE);
@@ -363,15 +363,15 @@ static void test_hardware_stale_event_when_all_rails_stale(void **state) {
     stored_millis += SUPPLY_VOLTAGE_STALE_THRESHOLD_MS + 10;
     stored_millis64 += SUPPLY_VOLTAGE_STALE_THRESHOLD_MS + 10;
 
-    model.supply_voltage_contactor_millis = old_sample;
-    model.supply_voltage_3V3_millis = old_sample;
-    model.supply_voltage_5V_millis = old_sample;
-    model.supply_voltage_12V_millis = old_sample;
+    model.supply_voltages.voltage_contactor_millis = old_sample;
+    model.supply_voltages.voltage_3V3_millis = old_sample;
+    model.supply_voltages.voltage_5V_millis = old_sample;
+    model.supply_voltages.voltage_12V_millis = old_sample;
 
-    model.supply_voltage_3V3_mV = 3300;
-    model.supply_voltage_5V_mV = 5000;
-    model.supply_voltage_12V_mV = 12000;
-    model.supply_voltage_contactor_mV = SUPPLY_VOLTAGE_CONTACTOR_SOFT_MIN_MV;
+    model.supply_voltages.voltage_3V3_mV = 3300;
+    model.supply_voltages.voltage_5V_mV = 5000;
+    model.supply_voltages.voltage_12V_mV = 12000;
+    model.supply_voltages.voltage_contactor_mV = SUPPLY_VOLTAGE_CONTACTOR_SOFT_MIN_MV;
 
     confirm_hardware_integrity(&model);
     assert_int_not_equal(get_event_level(ERR_SUPPLY_VOLTAGE_STALE), LEVEL_NONE);
@@ -415,7 +415,7 @@ static void test_overcurrent_accumulation(void **state) {
     bms_model_t model = {0};
     setup_model(&model);
     model.cell_voltages_millis = stored_millis;
-    model.battery_voltage_millis = stored_millis;
+    model.high_voltages.battery_millis = stored_millis;
 
     // Normal current (within limits + margin)
     // 50A limit + 0.5A margin = 50.5A = 50500mA

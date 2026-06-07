@@ -46,10 +46,10 @@ static void advance_time(uint32_t ms) {
 }
 
 static void setup_fresh_timestamps(bms_model_t *m) {
-    m->battery_voltage_millis = stored_millis;
-    m->output_voltage_millis = stored_millis;
-    m->neg_contactor_voltage_millis = stored_millis;
-    m->pos_contactor_voltage_millis = stored_millis;
+    m->high_voltages.battery_millis = stored_millis;
+    m->high_voltages.output_millis = stored_millis;
+    m->high_voltages.neg_contactor_millis = stored_millis;
+    m->high_voltages.pos_contactor_millis = stored_millis;
     m->current_millis = stored_millis;
     m->cell_voltage_millis = stored_millis;
     m->temperature_millis = stored_millis;
@@ -59,8 +59,8 @@ static void setup_fresh_timestamps(bms_model_t *m) {
 static void reset_model_for_test(bms_model_t *m) {
     memset(m, 0, sizeof(bms_model_t));
     setup_fresh_timestamps(m);
-    m->temperature_max_dC = 250;
-    m->temperature_min_dC = 250;
+    m->temperature_max = 25.0f;
+    m->temperature_min = 25.0f;
 }
 
 static void reset_events(void) {
@@ -112,7 +112,7 @@ static void test_system_stays_initializing_without_data(void **state) {
     m.system_sm.state = SYSTEM_STATE_INITIALIZING;
     
     // Make data stale
-    m.battery_voltage_millis = 0;
+    m.high_voltages.battery_millis = 0;
     
     advance_time(5000);
     system_sm_tick(&m);

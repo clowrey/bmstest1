@@ -123,25 +123,26 @@ static void test_inverter_soc_scaling(void **state) {
     model.system_sm.state = SYSTEM_STATE_OPERATING;
     model.contactor_sm.enable_current = true;
     model.soc_millis = stored_millis;
-    model.battery_voltage_millis = stored_millis;
+    model.high_voltages.battery_millis = stored_millis;
     model.cell_voltage_millis = stored_millis;
     model.cell_voltages_millis = stored_millis;
     model.temperature_millis = stored_millis;
     model.module_temperatures_millis = stored_millis;
     model.current_millis = stored_millis;
-    model.temperature_min_dC = 250;
-    model.temperature_max_dC = 250;
+    model.temperature_min = 25.0f;
+    model.temperature_max = 25.0f;
     for (int i = 0; i < NUM_CELLS; i++) {
         model.cell_voltages_mV[i] = 3700;
     }
     for (int i = 0; i < NUM_MODULE_TEMPS; i++) {
-        model.module_temperatures_dC[i] = 250;
+        model.module_temperatures_raw_dC[i] = 250;
+        model.module_temperatures[i] = 25.0f;
     }
-    model.battery_voltage = 3700.0f * NUM_CELLS * 0.001f;
+    model.high_voltages.battery = 3700.0f * NUM_CELLS * 0.001f;
 
     // Run init sequence to completion (one stage per tick)
     for (int i = 0; i < 10; i++) {
-        inverter_tick(&model);
+        inverter_tick(&model.inverter_outputs);
     }
 
     // Test 55% SoC with scaling 50% to 100%
@@ -154,7 +155,7 @@ static void test_inverter_soc_scaling(void **state) {
 
     last_150.id = 0;
     stored_timestep += 1000;
-    inverter_tick(&model);
+    inverter_tick(&model.inverter_outputs);
 
     // Expect 10% SoC reported
     assert_int_equal(last_150.id, 0x150);
@@ -170,7 +171,7 @@ static void test_inverter_soc_scaling(void **state) {
     model_tick(&model);
 
     stored_timestep += 1000;
-    inverter_tick(&model);
+    inverter_tick(&model.inverter_outputs);
 
     // Expect 100% SoC reported
     assert_int_equal(last_150.id, 0x150);

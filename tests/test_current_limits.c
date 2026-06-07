@@ -185,8 +185,8 @@ static void test_discharge_limit_at_high_cell_voltage(void **state) {
 static void test_temp_charge_limit_normal_temperature(void **state) {
     (void) state;
     
-    // Normal temperature range (25C = 250 dC)
-    uint16_t limit = calculate_temperature_charge_current_limit(250, 300);
+    // Normal temperature range
+    uint16_t limit = calculate_temperature_charge_current_limit(25.0f, 30.0f);
     
     // Should have a reasonable limit
     assert_true(limit > 0);
@@ -196,7 +196,7 @@ static void test_temp_charge_limit_at_max_temp(void **state) {
     (void) state;
     
     // At max charge temperature limit
-    uint16_t limit = calculate_temperature_charge_current_limit(250, MAX_CHARGE_TEMPERATURE_LIMIT_dC);
+    uint16_t limit = calculate_temperature_charge_current_limit(25.0f, MAX_CHARGE_TEMPERATURE_LIMIT);
     
     assert_int_equal(limit, 0);
 }
@@ -205,7 +205,7 @@ static void test_temp_charge_limit_at_min_temp(void **state) {
     (void) state;
     
     // At min charge temperature limit  
-    uint16_t limit = calculate_temperature_charge_current_limit(MIN_CHARGE_TEMPERATURE_LIMIT_dC, 250);
+    uint16_t limit = calculate_temperature_charge_current_limit(MIN_CHARGE_TEMPERATURE_LIMIT, 25.0f);
     
     assert_int_equal(limit, 0);
 }
@@ -214,11 +214,11 @@ static void test_temp_charge_limit_cold_derate(void **state) {
     (void) state;
     
     // Cold battery - should derate
-    // 5C = 50 dC, slightly above min limit (0)
-    uint16_t limit = calculate_temperature_charge_current_limit(50, 200);
+    // 5C = 5.0f, slightly above min limit (0)
+    uint16_t limit = calculate_temperature_charge_current_limit(5.0f, 20.0f);
     
     // Should be limited based on proximity to min temp
-    uint16_t expected = (50 - (uint16_t)MIN_CHARGE_TEMPERATURE_LIMIT_dC) * CHARGE_TEMPERATURE_DERATE_dA_PER_dC;
+    uint16_t expected = (uint16_t)((5.0f - MIN_CHARGE_TEMPERATURE_LIMIT) * CHARGE_TEMPERATURE_DERATE_A_PER_C * 10.0f);
     assert_int_equal(limit, expected);
 }
 
@@ -226,11 +226,11 @@ static void test_temp_charge_limit_hot_derate(void **state) {
     (void) state;
     
     // Hot battery - should derate
-    // 45C = 450 dC, approaching max limit (500)
-    uint16_t limit = calculate_temperature_charge_current_limit(250, 450);
+    // 45C = 45.0f, approaching max limit (50.0f)
+    uint16_t limit = calculate_temperature_charge_current_limit(25.0f, 45.0f);
     
     // Should be limited based on proximity to max temp
-    uint16_t expected = (MAX_CHARGE_TEMPERATURE_LIMIT_dC - 450) * CHARGE_TEMPERATURE_DERATE_dA_PER_dC;
+    uint16_t expected = (uint16_t)((MAX_CHARGE_TEMPERATURE_LIMIT - 45.0f) * CHARGE_TEMPERATURE_DERATE_A_PER_C * 10.0f);
     assert_int_equal(limit, expected);
 }
 
@@ -242,7 +242,7 @@ static void test_temp_discharge_limit_normal_temperature(void **state) {
     (void) state;
     
     // Normal temperature range
-    uint16_t limit = calculate_temperature_discharge_current_limit(250, 300);
+    uint16_t limit = calculate_temperature_discharge_current_limit(25.0f, 30.0f);
     
     assert_true(limit > 0);
 }
@@ -251,7 +251,7 @@ static void test_temp_discharge_limit_at_max_temp(void **state) {
     (void) state;
     
     // At max discharge temperature
-    uint16_t limit = calculate_temperature_discharge_current_limit(250, MAX_DISCHARGE_TEMPERATURE_LIMIT_dC);
+    uint16_t limit = calculate_temperature_discharge_current_limit(25.0f, MAX_DISCHARGE_TEMPERATURE_LIMIT);
     
     assert_int_equal(limit, 0);
 }
@@ -260,7 +260,7 @@ static void test_temp_discharge_limit_at_min_temp(void **state) {
     (void) state;
     
     // At min discharge temperature
-    uint16_t limit = calculate_temperature_discharge_current_limit(MIN_DISCHARGE_TEMPERATURE_LIMIT_dC, 250);
+    uint16_t limit = calculate_temperature_discharge_current_limit(MIN_DISCHARGE_TEMPERATURE_LIMIT, 25.0f);
     
     assert_int_equal(limit, 0);
 }
@@ -269,9 +269,9 @@ static void test_temp_discharge_allows_colder_than_charge(void **state) {
     (void) state;
     
     // Discharge allows colder temps than charge
-    // -3C = -30 dC (below charge min of 0, but above discharge min of -50)
-    uint16_t charge_limit = calculate_temperature_charge_current_limit(-30, 200);
-    uint16_t discharge_limit = calculate_temperature_discharge_current_limit(-30, 200);
+    // -3C = -3.0f (below charge min of 0, but above discharge min of -5)
+    uint16_t charge_limit = calculate_temperature_charge_current_limit(-3.0f, 20.0f);
+    uint16_t discharge_limit = calculate_temperature_discharge_current_limit(-3.0f, 20.0f);
     
     // Charge should be cut off
     assert_int_equal(charge_limit, 0);

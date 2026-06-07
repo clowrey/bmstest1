@@ -115,12 +115,12 @@ static void test_low_voltage_protection(void **state) {
     model.system_sm.state = SYSTEM_STATE_OPERATING;
     
     // Set some initial timestamps to avoid "stale" errors immediately
-    model.battery_voltage_millis = stored_millis;
+    model.high_voltages.battery_millis = stored_millis;
     model.cell_voltage_millis = stored_millis;
     model.module_temperatures_millis = stored_millis;
     model.current_millis = stored_millis;
-    model.temperature_max_dC = 250; // 25.0C
-    model.temperature_min_dC = 250;
+    model.temperature_max = 25.0f; // 25.0C
+    model.temperature_min = 25.0f;
     model.contactor_sm.enable_current = true;
 
     // 1. Initially safe
