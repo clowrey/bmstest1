@@ -102,6 +102,49 @@ static void test_ekf_soc_scaling_top(void **state) {
 
 void print_bms_events();
 
+static void test_ekf_init_full_charge(void **state) {
+    (void)state;
+
+    memset(&model, 0, sizeof(bms_model_t));
+    model.nameplate_capacity_mC = 100 * 3600 * 1000; // 100 Ah
+
+    // Working range that reaches near 100% absolute SoC on the NMC curve.
+    // working_max 4175 mV is the ceiling after soft-limit clamping (soft_max=4200, -25).
+    model.cell_voltage_working_min_mV = 3300;
+    model.cell_voltage_working_max_mV = 4175;
+
+    // Stored: 0 Ah used = 100% SoC. The old code skipped this because of
+    // the `!= 0.0f` guard; the new code uses it because diff vs voltage is ~2.6%.
+    model.charge_used_Ah = 0.0f;
+
+    // Voltage at 4150 mV/cell — 97.4% absolute SoC on NMC curve, inside working range.
+    uint32_t soc_out = ekf_tick(&model, 0, 0, 4150);
+
+    // With the fix: initialises from stored (100%), result clamped to 100.00% → 10000.
+    // Without the fix: initialises from voltage (~97.4%), result ≈ 98.8% → ~9880.
+    assert_true(soc_out > 9950);
+}
+ 
+static void test_ekf_init_uninitialized_falls_back_to_voltage(void **state) {
+    (void)state;
+ 
+    memset(&model, 0, sizeof(bms_model_t));
+    model.nameplate_capacity_mC = 100 * 3600 * 1000; // 100 Ah
+ 
+    // Wide working range covering 0-100%
+    model.cell_voltage_working_min_mV = 3300;
+    model.cell_voltage_working_max_mV = 4175;
+ 
+    // Uninitialized struct: charge_used_Ah = 0.0f (stored would say 100%),
+    // but voltage says ~50% NMC. Diff = ~50% >> 10% tolerance → must use voltage.
+    model.charge_used_Ah = 0.0f;
+ 
+    uint32_t soc_out = ekf_tick(&model, 0, 0, 3700); // ~50% NMC cell voltage
+ 
+    // Must NOT latch to 100% from the uninitialized stored value
+    assert_true(soc_out < 6000);
+}
+ 
 static void test_inverter_soc_scaling(void **state) {
     (void) state;
     
@@ -183,6 +226,8 @@ int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_ekf_soc_scaling_midrange),
         cmocka_unit_test(test_ekf_soc_scaling_top),
+        cmocka_unit_test(test_ekf_init_full_charge),
+        cmocka_unit_test(test_ekf_init_uninitialized_falls_back_to_voltage),
         cmocka_unit_test(test_inverter_soc_scaling),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

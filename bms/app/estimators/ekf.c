@@ -438,27 +438,29 @@ float ekf_get_soc(ekf_t *ekf) {
     return 1.0f - (ah / cap);
 }
 
-static void ekf_auto_init(bms_model_t *model, float voltage_volts) {
-    if (model->ekf.initialized || voltage_volts <= 0.0f) {
-        return;
+static float estimate_initial_soc(const bms_model_t *model, float voltage_volts, float capacity_ah) {
+    float voltage_soc = ocv_to_soc(voltage_volts);
+    if (capacity_ah <= 0.0f) return voltage_soc;
+    if (model->charge_used_Ah >= 0.0f && model->charge_used_Ah <= capacity_ah) {
+        float stored_soc = 1.0f - (model->charge_used_Ah / capacity_ah);
+        // Accept stored value only if within 10% of voltage estimate.
+        // Tightened from 20% to reduce the window where a stale persistent value
+        // overrides a fresh OCV reading after a reboot.
+        // No != 0 guard needed: zero Ah used is valid at 100% SoC, and the tolerance
+        // already rejects an uninitialized zero (stored=100%, voltage≈50% → 0.5 diff).
+        if (fabsf(stored_soc - voltage_soc) < 0.1f)
+            return stored_soc;
     }
+    return voltage_soc;
+}
 
-    float initial_capacity_ah = (float)model->nameplate_capacity_mC / 3600000.0f; // in Ah
-    float estimated_soc = ocv_to_soc(voltage_volts);
-    float initial_soc = estimated_soc;
-
-    // TODO: is zero charge_used_Ah a valid indicator of uninitialized?
-    if (model->charge_used_Ah != 0.0f && model->charge_used_Ah < initial_capacity_ah) {
-        // Use stored charge_used if it seems realistic (within 20% of voltage-based estimate)
-        float stored_soc = 1.0f - (model->charge_used_Ah / initial_capacity_ah);
-        if (fabsf(stored_soc - estimated_soc) < 0.2f) {
-            initial_soc = stored_soc;
-        }
-    }
-
-    info_printf("EKF Initial SOC: %2.2f %% (Voltage: %2.3f V, Charge Used: %f Ah)\n",
+static void ekf_init_from_model(bms_model_t *model, float voltage_volts) {
+    if (model->ekf.initialized || voltage_volts <= 0.0f) return;
+    float capacity_ah = (float)model->nameplate_capacity_mC / 3600000.0f;
+    float initial_soc = estimate_initial_soc(model, voltage_volts, capacity_ah);
+    info_printf("EKF init: SOC %.2f%% (voltage %.3fV, stored %.4fAh)\n",
                 initial_soc * 100.0f, voltage_volts, model->charge_used_Ah);
-    ekf_init(&model->ekf, initial_soc, initial_capacity_ah);
+    ekf_init(&model->ekf, initial_soc, capacity_ah);
 }
 
 static void ekf_update_limits(bms_model_t *model) {
@@ -488,7 +490,7 @@ uint32_t ekf_tick(bms_model_t *model, float charge_Ah, int32_t current_mA, int32
     float current_amps = (float)current_mA * 0.001f;
     float voltage_volts = (float)voltage_mV * 0.001f;
 
-    ekf_auto_init(model, voltage_volts);
+    ekf_init_from_model(model, voltage_volts);
 
     if (!model->ekf.initialized) {
         return 0xFFFFFFFF;
