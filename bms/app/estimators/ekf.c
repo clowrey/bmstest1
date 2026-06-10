@@ -256,12 +256,7 @@ void ekf_init(ekf_t *ekf, float initial_soc, float initial_capacity) {
     // Measurement Noise R
     ekf->R = 0.01f;        // Voltage sensor variance (e.g. 0.14V std dev)
 
-    // Model Parameters (Example Cell)
-    ekf->R0 = 0.02f;
-    ekf->R1 = 0.03f;
-    ekf->C1 = 2000.0f;
-
-    // Bluetesla fitted params (badly)
+    // Fitted RC model parameters
     ekf->R0 = 0.00076f;
     ekf->R1 = 0.00054f;
     ekf->C1 = 150000.0f;
@@ -482,7 +477,9 @@ static void ekf_update_limits(bms_model_t *model) {
     info_printf("EKF Scaling: %d-%d mV (SOC: %2.2f-%2.2f %%, Mul: %2.3f)\n",
                 min_mV, max_mV, model->ekf.prev_soc_min * 100.0f, soc_max * 100.0f, model->ekf.prev_soc_mul);
 
-    // TODO - Move this capacity calculation somewhere more appropriate
+    // working_capacity_mC is the usable subset of nameplate capacity given the current
+    // working voltage range. Computed here because it shares the same min/max limit
+    // inputs as the SOC scaling factors above.
     model->working_capacity_mC = (soc_max - model->ekf.prev_soc_min) * (float)model->nameplate_capacity_mC;
 }
 
