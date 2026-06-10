@@ -484,29 +484,29 @@ static void ekf_update_limits(bms_model_t *model) {
     model->working_capacity_mC = (soc_max - model->ekf.prev_soc_min) * (float)model->nameplate_capacity_mC;
 }
 
-uint32_t ekf_tick(float charge_Ah, int32_t current_mA, int32_t voltage_mV) {
+uint32_t ekf_tick(bms_model_t *model, float charge_Ah, int32_t current_mA, int32_t voltage_mV) {
     float current_amps = (float)current_mA * 0.001f;
     float voltage_volts = (float)voltage_mV * 0.001f;
 
-    ekf_auto_init(&model, voltage_volts);
+    ekf_auto_init(model, voltage_volts);
 
-    if (!model.ekf.initialized) {
+    if (!model->ekf.initialized) {
         return 0xFFFFFFFF;
     }
 
-    ekf_step(&model.ekf, charge_Ah, current_amps, voltage_volts);
+    ekf_step(&model->ekf, charge_Ah, current_amps, voltage_volts);
 
-    float soc = ekf_get_soc(&model.ekf);
+    float soc = ekf_get_soc(&model->ekf);
 
-    ekf_update_limits(&model);
+    ekf_update_limits(model);
 
     // Apply scaling
-    soc = (soc - model.ekf.prev_soc_min) * model.ekf.prev_soc_mul;
+    soc = (soc - model->ekf.prev_soc_min) * model->ekf.prev_soc_mul;
 
     if (soc < 0.0f) soc = 0.0f;
     if (soc > 1.0f) soc = 1.0f;
 
-    model.charge_used_Ah = model.ekf.x[0];
+    model->charge_used_Ah = model->ekf.x[0];
 
     return (uint32_t)(soc * 10000.0f); // Return SOC in 0.01% units
 }

@@ -170,6 +170,7 @@ void bms_tick() {
     millis_t now = millis();
     if(now - model.soc_millis >= 1000) {
         uint32_t soc = ekf_tick(
+            &model,
             raw_charge_to_Ah(model.charge_raw - last_charge_raw),
             model.current_mA,
             model.cell_voltage_total_mV / NUM_CELLS

@@ -76,7 +76,7 @@ static void test_ekf_soc_scaling_midrange(void **state) {
     model.cell_voltage_working_max_mV = 4100; // ~90% SoC in NMC curve
 
     // Set voltage near the lower end
-    uint32_t soc_out = ekf_tick(0, 0, 3750); 
+    uint32_t soc_out = ekf_tick(&model, 0, 0, 3750); 
 
     // Current EKF scaling puts this around ~12%
     assert_true(soc_out > 900);  // >9.00%
@@ -95,7 +95,7 @@ static void test_ekf_soc_scaling_top(void **state) {
     model.cell_voltage_working_max_mV = 3690; // ~50% SoC in NMC curve
 
     // Set voltage at the upper limit
-    uint32_t soc_out = ekf_tick(0, 0, 3690);
+    uint32_t soc_out = ekf_tick(&model, 0, 0, 3690);
 
     assert_true(soc_out == 10000); // 100.00%
 }
