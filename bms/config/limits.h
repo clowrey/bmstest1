@@ -243,6 +243,11 @@
 #define CELL_TEMPERATURE_STALE_THRESHOLD_MS 5000
 #define CELL_TEMPERATURE_STALE_THRESHOLD_SLOW_MS 270000
 
+// Threshold for detecting a cell voltage glitch (sudden jump in one cycle)
+#define CELL_VOLTAGE_GLITCH_THRESHOLD_mV 100
+
+// Threshold for detecting a module temperature glitch (sudden jump in one cycle)
+#define MODULE_TEMPERATURE_GLITCH_THRESHOLD_dC 100
 
 // The 3V3 measurement is really just measuring the divider resistor tolerances...
 #define SUPPLY_VOLTAGE_3V3_MIN_MV 3200

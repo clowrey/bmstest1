@@ -284,6 +284,8 @@ typedef struct bms_model {
 extern bms_model_t model;
 
 void model_tick(bms_model_t *model);
+void store_cell_voltage(uint8_t logical_index, int16_t voltage_mV);
+void store_module_temperature(uint8_t module_index, int16_t raw_temp_dC);
 
 static inline uint16_t get_cell_voltage_soft_min_mV(const bms_model_t *model) {
     return max(

@@ -118,6 +118,8 @@ typedef enum {
                                                                 \
     X(BMB_READ_ERROR, LEVEL_WARNING, 0)                         \
     X(BMB_CRC_MISMATCH, LEVEL_WARNING, 0)                       \
+    X(CELL_VOLTAGE_GLITCH, LEVEL_WARNING, 0)                    \
+    X(MODULE_TEMPERATURE_GLITCH, LEVEL_WARNING, 0)              \
                                                                 \
     X(INVERTER_DETECTED, LEVEL_INFO, 0)                         \
                                                                 \

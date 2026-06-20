@@ -3,10 +3,12 @@
 #include "battery/current_limits.h"
 #include "../config/limits.h"
 #include "../lib/math.h"
+#include "../lib/aema.h"
 
 #include <string.h>
 
 #include "sys/logging/logging.h"
+#include "sys/events/events.h"
 
 bms_model_t model = {0};
 
@@ -51,6 +53,60 @@ static void model_process_cell_voltages(bms_model_t *model) {
         }
     }
     model->cell_voltage_millis = model->cell_voltages_millis;
+}
+
+void store_cell_voltage(uint8_t logical_index, int16_t voltage_mV) {
+    if(logical_index >= NUM_CELLS) {
+        return;
+    }
+
+    int16_t previous_voltage = model.cell_voltages_mV[logical_index];
+
+    if(previous_voltage > 0) {
+        int16_t delta = voltage_mV - previous_voltage;
+        if(delta < 0) delta = -delta;
+
+        if(delta >= CELL_VOLTAGE_GLITCH_THRESHOLD_mV) {
+            uint64_t event_data = ((uint64_t)logical_index << 32) |
+                                  ((uint16_t)previous_voltage << 16) |
+                                  (uint16_t)voltage_mV;
+            count_bms_event(ERR_CELL_VOLTAGE_GLITCH, event_data);
+        }
+    }
+
+    model.cell_voltages_mV[logical_index] = voltage_mV;
+}
+
+void store_module_temperature(uint8_t module_index, int16_t raw_temp_dC) {
+    if(module_index >= NUM_MODULE_TEMPS) {
+        return;
+    }
+
+    int16_t previous_raw_temp = model.module_temperatures_raw_dC[module_index];
+
+    if(previous_raw_temp != 0) {
+        int16_t delta = raw_temp_dC - previous_raw_temp;
+        if(delta < 0) delta = -delta;
+
+        if(delta >= MODULE_TEMPERATURE_GLITCH_THRESHOLD_dC) {
+            uint64_t event_data = ((uint64_t)module_index << 32) |
+                                  ((uint16_t)previous_raw_temp << 16) |
+                                  (uint16_t)raw_temp_dC;
+            count_bms_event(ERR_MODULE_TEMPERATURE_GLITCH, event_data);
+        }
+    }
+
+    model.module_temperatures_raw_dC[module_index] = raw_temp_dC;
+
+    aema_update(
+        &model.module_temperatures[module_index],
+        NULL,
+        raw_temp_dC * 0.1f,
+        0.05f,  // slow alpha
+        0.75f,  // fast alpha
+        2.0f,   // slow threshold
+        10.0f   // fast threshold
+    );
 }
 
 static void model_calculate_cell_current_limits(bms_model_t *model) {
