@@ -2,6 +2,7 @@
 #include "sys/time/time.h"
 #include "config/pins.h"
 #include "lib/sampler.h"
+#include "sys/logging/logging.h"
 
 #include "hardware/adc.h"
 
@@ -19,17 +20,41 @@
 #define OVERSAMPLING 256
 
 static sampler_t samples[9] = {0};
+static bool adc_sync_failure = false;
+int sample_index = 0;
 
 void __isr __not_in_flash_func(adc_irq_handler)() {
-    int i = 0;
-    for(int i=0; i < 8 && !adc_fifo_is_empty(); i++) {
+    while (!adc_fifo_is_empty()) {
+        // If the FIFO overflowed, we are now out of sync, so need to reset the FIFO
+        // and start over
+        if (adc_hw->fcs & ADC_FCS_OVER_BITS) {
+            adc_run(false);
+            adc_irq_set_enabled(false);
+            adc_sync_failure = true;
+            //hw_set_bits(&adc_hw->fcs, ADC_FCS_OVER_BITS);
+            return;
+        }
+
         uint32_t sample = adc_fifo_get();
+        
         // Feed to sampler
-        sampler_add(&samples[i], (int32_t)sample, OVERSAMPLING, 0);
+        sampler_add(&samples[sample_index], (int32_t)sample, OVERSAMPLING, 0);
+        
+        if (++sample_index >= 5) {
+            sample_index = 0;
+        }
     }
 
-    // Always reset to first channel so we don't get out of sync
-    adc_select_input(0);
+
+    // int i = 0;
+    // for(int i=0; i < 8 && !adc_fifo_is_empty(); i++) {
+    //     uint32_t sample = adc_fifo_get();
+    //     // Feed to sampler
+    //     sampler_add(&samples[i], (int32_t)sample, OVERSAMPLING, 0);
+    // }
+
+    // // Always reset to first channel so we don't get out of sync
+    // adc_select_input(0);
 }
 
 int32_t get_temperature_c_times10() {
@@ -79,6 +104,22 @@ void init_internal_adc() {
     adc_select_input(0);//PIN_12V_SENSE - ADC_CHANNEL_GPIO_OFFSET);
     adc_fifo_drain();
     adc_run(true);
+}
+
+void internal_adc_check() {
+    if(adc_sync_failure) {
+        adc_run(false);
+        adc_fifo_drain();
+
+        debug_printf("ADC sync failure, resetting FIFO\n");
+
+        hw_set_bits(&adc_hw->fcs, ADC_FCS_OVER_BITS);
+        sample_index = 0;
+        adc_sync_failure = false;
+        adc_select_input(0);
+        adc_irq_set_enabled(true);        
+        adc_run(true);
+    }
 }
 
 int32_t internal_adc_read(uint8_t channel) {

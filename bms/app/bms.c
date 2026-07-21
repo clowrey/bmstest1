@@ -116,6 +116,7 @@ void bms_tick() {
     // Phase 0: Preamble
 
     watchdog_update();
+    internal_adc_check();
 
     if(timestep() & 32) {
         gpio_put(PIN_LED, true);
