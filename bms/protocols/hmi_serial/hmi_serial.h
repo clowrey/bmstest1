@@ -216,4 +216,5 @@ The format is:
 
 typedef struct bms_model bms_model_t;
 
+void init_hmi_serial(void);
 void hmi_serial_tick(bms_model_t *model);

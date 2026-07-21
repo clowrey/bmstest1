@@ -2,6 +2,7 @@
 #include "app/estimators/ekf.h"
 #include "app/model.h"
 #include "app/state_machines/system.h"
+#include "drivers/sensors/internal_adc.h"
 #include "sys/events/events.h"
 #include "sys/logging/logging.h"
 
@@ -102,6 +103,19 @@ static void cli_handle_command(const char *cmd) {
                      model.ekf.R, model.ekf.R0, model.ekf.R1, model.ekf.C1);
         debug_printf("EKF State: Ah_used=%.4f Ah, V_c1=%.4f V, Capacity=%.2f Ah\n",
            model.ekf.x[0], model.ekf.x[1], model.ekf.x[2]);
+    } else if(strcmp(cmd, "adc") == 0) {
+        // printf directly (not debug_printf) so the response is visible even
+        // when the buffered logger is saturated by other errors
+        millis_t now = millis();
+        printf("ADC: now=%lu ms | Temp: %ld dC\n", now, get_temperature_c_times10());
+        printf("ADC: 3V3: %4ld mV (age %lu ms)\n",
+            internal_adc_read_3v3_mv(), now - internal_adc_read_3v3_millis());
+        printf("ADC: 5V:  %4ld mV (age %lu ms)\n",
+            internal_adc_read_5v_mv(), now - internal_adc_read_5v_millis());
+        printf("ADC: 12V: %5ld mV (age %lu ms)\n",
+            internal_adc_read_12v_mv(), now - internal_adc_read_12v_millis());
+        printf("ADC: Ctr: %5ld mV (age %lu ms)\n",
+            internal_adc_read_contactor_mv(), now - internal_adc_read_contactor_millis());
     } else if(strcmp(cmd, "print_working_charge_settings") == 0) {
         debug_printf("working_charge_internal_resistance_uR = %f\n", working_charge_internal_resistance_uR);
         debug_printf("working_charge_ceiling_dA = %f\n", working_charge_ceiling_dA);

@@ -6,6 +6,7 @@
 #include "drivers/sensors/ina228.h"
 #include "app/estimators/ekf.h"
 #include "app/model.h"
+#include "drivers/chip/nvm.h"
 #include "sys/events/events.h"
 #include "sys/logging/logging.h"
 
