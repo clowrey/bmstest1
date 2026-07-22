@@ -8,7 +8,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define ADS1115_OVERSAMPLING 8
+// How many scan cycles the sampler accumulates before publishing its averaged
+// value and min/max range. Freshness timestamps and the filtered values that
+// the application consumes update every cycle (~85ms), independent of this.
+#define ADS1115_OVERSAMPLING 4
 
 #define ADS1115_REG_CONVERSION 0x00
 #define ADS1115_REG_CONFIG     0x01

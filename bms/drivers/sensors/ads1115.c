@@ -30,13 +30,17 @@ static const int ADS1115_CONVERSION_TIME_EXTRA_MS = 1;
 // Max devices converting concurrently in one round
 #define ADS1115_MAX_PER_ROUND 2
 
-// How often we do a full sampling cycle
-static const int ADS1115_SAMPLING_PERIOD = (ADS1115_CONVERSION_TIME_MS + ADS1115_CONVERSION_TIME_EXTRA_MS) * ADS1115_SCAN_ROUNDS + 10;
+// The scan is free-running: each cycle starts the next as soon as it
+// completes. A full cycle takes ~85ms in practice (6 rounds of ~9ms
+// conversion wait plus I2C transaction overhead), so that is the effective
+// sample period per channel. This timer only acts as a watchdog to restart
+// the scan if it was abandoned after an I2C error.
+static const int ADS1115_WATCHDOG_PERIOD_MS = 100;
 // I2C timeout for blocking calls
 static const uint32_t ADS1115_I2C_TIMEOUT_US = 10000;
 
-// We are oversampling by 8, so effective sample timestamps update every
-// 8 cycles (~512ms) +/- some jitter
+// Sample timestamps update every cycle (~85ms); the oversampling accumulator
+// only affects the (currently unused) averaged value and min/max range
 
 static void ads1115_i2c_callback(i2c_inst_t *i2c, bool success, void *user_data);
 static int64_t ads1115_conversion_timer_callback(alarm_id_t id, void *user_data);
@@ -94,11 +98,6 @@ static struct {
         SCAN_STATE_READING_CONVERSION,
     } state;
     bool busy;
-    // The periodic timer fired while a cycle was still in progress; start the
-    // next cycle as soon as this one completes instead of losing a whole
-    // period (a full cycle can take slightly longer than the timer period,
-    // and skipping would double the effective publish interval)
-    bool pending;
     int round;
     // Channels being converted this round (one per present device)
     int round_channels[ADS1115_MAX_PER_ROUND];
@@ -131,10 +130,11 @@ bool ads1115_init(ads1115_t *dev, uint8_t addr) {
     }
     dev->present = true;
 
-    // Start periodic sampling once any device is present
+    // Start the scan watchdog once any device is present; its first fire
+    // kicks off the free-running scan
     if (!timer_started) {
         static struct repeating_timer timer;
-        add_repeating_timer_ms(ADS1115_SAMPLING_PERIOD, ads1115_periodic_timer_callback, NULL, &timer);
+        add_repeating_timer_ms(ADS1115_WATCHDOG_PERIOD_MS, ads1115_periodic_timer_callback, NULL, &timer);
         timer_started = true;
     }
 
@@ -195,17 +195,19 @@ static void ads1115_start_round(void) {
     scan.busy = false;
     scan.state = SCAN_STATE_IDLE;
 
-    if (scan.pending) {
-        scan.pending = false;
+    // Free-running: start the next cycle straight away. Guarded by a device
+    // being present so this can't recurse endlessly with nothing to scan.
+    if (ads1115_dev.present
+#ifdef HAS_ADS1115_SECONDARY
+        || ads1115_dev_b.present
+#endif
+    ) {
         ads1115_start_sampling();
     }
 }
 
 static void ads1115_start_sampling(void) {
-    if (scan.busy) {
-        scan.pending = true;
-        return;
-    }
+    if (scan.busy) return;
     scan.busy = true;
     scan.round = 0;
     ads1115_start_round();
@@ -213,6 +215,11 @@ static void ads1115_start_sampling(void) {
 
 static void ads1115_store_sample(int channel, int16_t sample) {
     sampler_add(&samples[channel], (int32_t)sample, ADS1115_OVERSAMPLING, 0);
+
+    // Publish freshness per sample rather than per accumulator rollover: the
+    // values the application consumes (filtered_samples) update every cycle,
+    // so the staleness timestamp should too
+    samples[channel].timestamp = millis();
 
     aema_update(
         &filtered_samples[channel],
@@ -235,9 +242,8 @@ static void ads1115_i2c_callback(i2c_inst_t *i2c, bool success, void *user_data)
     (void)user_data;
 
     if (!success) {
-        // Abandon this cycle; the periodic timer will start a fresh one
+        // Abandon this cycle; the watchdog timer will start a fresh one
         scan.busy = false;
-        scan.pending = false;
         scan.state = SCAN_STATE_IDLE;
         return;
     }
