@@ -41,6 +41,7 @@ static const uint32_t ADS1115_I2C_TIMEOUT_US = 10000;
 static void ads1115_i2c_callback(i2c_inst_t *i2c, bool success, void *user_data);
 static int64_t ads1115_conversion_timer_callback(alarm_id_t id, void *user_data);
 static bool ads1115_periodic_timer_callback(struct repeating_timer *t);
+static void ads1115_start_sampling(void);
 
 sampler_t samples[ADS1115_CHANNEL_COUNT] = {0};
 float filtered_samples[ADS1115_CHANNEL_COUNT] = { [0 ... (ADS1115_CHANNEL_COUNT-1)] = NAN };
@@ -93,6 +94,11 @@ static struct {
         SCAN_STATE_READING_CONVERSION,
     } state;
     bool busy;
+    // The periodic timer fired while a cycle was still in progress; start the
+    // next cycle as soon as this one completes instead of losing a whole
+    // period (a full cycle can take slightly longer than the timer period,
+    // and skipping would double the effective publish interval)
+    bool pending;
     int round;
     // Channels being converted this round (one per present device)
     int round_channels[ADS1115_MAX_PER_ROUND];
@@ -188,10 +194,18 @@ static void ads1115_start_round(void) {
     // Cycle complete
     scan.busy = false;
     scan.state = SCAN_STATE_IDLE;
+
+    if (scan.pending) {
+        scan.pending = false;
+        ads1115_start_sampling();
+    }
 }
 
 static void ads1115_start_sampling(void) {
-    if (scan.busy) return;
+    if (scan.busy) {
+        scan.pending = true;
+        return;
+    }
     scan.busy = true;
     scan.round = 0;
     ads1115_start_round();
@@ -223,6 +237,7 @@ static void ads1115_i2c_callback(i2c_inst_t *i2c, bool success, void *user_data)
     if (!success) {
         // Abandon this cycle; the periodic timer will start a fresh one
         scan.busy = false;
+        scan.pending = false;
         scan.state = SCAN_STATE_IDLE;
         return;
     }

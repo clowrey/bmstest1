@@ -83,8 +83,6 @@ typedef enum {
     X(CONTACTOR_POS_UNEXPECTED_OPEN, LEVEL_WARNING, 0)          \
     X(CONTACTOR_NEG_UNEXPECTED_OPEN, LEVEL_WARNING, 0)          \
     X(CONTACTOR_CLOSING_FAILED, LEVEL_WARNING, 20)              \
-    X(LINK_VOLTAGE_MISMATCH, LEVEL_WARNING, 0)                  \
-    X(FUSE_VOLTAGE_DROP_HIGH, LEVEL_WARNING, 0)                 \
     X(SUPPLY_VOLTAGE_STALE, LEVEL_CRITICAL, 2000)               \
     X(BATTERY_VOLTAGE_STALE, LEVEL_CRITICAL, 2000)              \
     X(BATTERY_TEMPERATURE_STALE, LEVEL_CRITICAL, 20000)         \
@@ -130,7 +128,13 @@ typedef enum {
     X(BOOT_NORMAL, LEVEL_INFO, 0)                               \
     X(BOOT_WATCHDOG, LEVEL_WARNING, 0)                          \
     X(LOOP_OVERRUN, LEVEL_WARNING, 0)                           \
-    X(RESTARTING, LEVEL_FATAL, 0)
+    X(RESTARTING, LEVEL_FATAL, 0)                               \
+                                                                \
+    /* Rev1 board events. New events must be appended at the */ \
+    /* end of this list: the numeric event IDs are consumed  */ \
+    /* by the HMI, so inserting mid-list breaks its decoding */ \
+    X(LINK_VOLTAGE_MISMATCH, LEVEL_WARNING, 0)                  \
+    X(FUSE_VOLTAGE_DROP_HIGH, LEVEL_WARNING, 0)
 
 typedef enum {
 #define X(name, _1, _2) ERR_##name,
