@@ -399,6 +399,21 @@ or a single broadcast to node `0xFF`.
 
 ## 8. Implementing a controller
 
+A complete Python reference implementation lives in
+[`tools/custom_can/`](../tools/custom_can/): `controller.py` is the controller
+described below, `battery_sim.py` is a simulated battery that behaves like the
+firmware, and `protocol.py` is the wire format. It needs only the standard
+library for the in-process demo and tests; `pip install python-can` connects
+it to a real adapter. From the repository root:
+
+```bash
+python -m tools.custom_can demo                                  # scripted scenario, no hardware
+python -m tools.custom_can controller --bus slcan:COM3 --desired run   # drive real batteries
+python -m tools.custom_can simulate --bus socketcan:can0 --batteries 2 # fake batteries for a real controller
+python -m tools.custom_can sniff --bus socketcan:can0            # decode bus traffic
+python -m unittest tools.custom_can.test_custom_can              # protocol/controller tests
+```
+
 Minimal, correct controller loop:
 
 ```text

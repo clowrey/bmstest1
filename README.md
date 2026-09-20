@@ -139,7 +139,9 @@ implementations, selected at build time with `-DINVERTER_PROTOCOL=<name>`:
   state (limits, measurements, cell voltages, balancing, events, ...) while
   accepting RUN/STOP requests. See
   [docs/custom_can_protocol.md](docs/custom_can_protocol.md) for the
-  specification and controller implementation guide.
+  specification and controller implementation guide, and
+  [tools/custom_can/](tools/custom_can/) for a Python reference controller,
+  battery simulator and demo (`python -m tools.custom_can demo`).
 
 
 ## Internal architecture
