@@ -25,6 +25,17 @@ set(PICO_FLASH_SIZE_BYTES 1572864)
 
 include_directories(bms vendor/can2040/src)
 
+# Inverter CAN protocol implementation (bms/protocols/inverter/<name>.c):
+#   byd_can    - emulate a BYD Battery-Box directly to an inverter (default)
+#   custom_can - multi-battery protocol for an upstream controller such as
+#                Battery Emulator (see docs/custom_can_protocol.md)
+set(INVERTER_PROTOCOL "byd_can" CACHE STRING "Inverter CAN protocol implementation")
+set_property(CACHE INVERTER_PROTOCOL PROPERTY STRINGS byd_can custom_can)
+if(NOT EXISTS ${CMAKE_CURRENT_LIST_DIR}/bms/protocols/inverter/${INVERTER_PROTOCOL}.c)
+    message(FATAL_ERROR "Unknown INVERTER_PROTOCOL '${INVERTER_PROTOCOL}'")
+endif()
+message(STATUS "Inverter protocol: ${INVERTER_PROTOCOL}")
+
 add_executable(bms
     bms/app/bms.c
     bms/app/hardware_checks.c
@@ -58,7 +69,7 @@ add_executable(bms
     bms/protocols/hmi_serial/hmi_serial.c
     bms/protocols/internal_serial/internal_serial.c
     bms/protocols/inverter/can.c
-    bms/protocols/inverter/byd_can.c
+    bms/protocols/inverter/${INVERTER_PROTOCOL}.c
     bms/drivers/isospi/isospi_master.c
     bms/drivers/isospi/isospi_master_async.c
     bms/drivers/isospi/isosnoop.c
@@ -104,6 +115,7 @@ target_link_libraries(bms
     pico_multicore
     pico_flash
     pico_float
+    pico_unique_id
     hardware_adc
     hardware_dma
     hardware_flash

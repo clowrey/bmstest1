@@ -127,6 +127,21 @@ It is usual to top-balance a pack, evening the cell voltages when the pack is fu
 
 
 
+## Inverter integration
+
+The BMS talks CAN to the outside world via one of two protocol
+implementations, selected at build time with `-DINVERTER_PROTOCOL=<name>`:
+
+- `byd_can` (default) emulates a BYD Battery-Box directly to an inverter.
+- `custom_can` is a multi-battery protocol for an upstream controller such as
+  Battery Emulator: batteries auto-announce on a fixed discovery ID, the
+  controller assigns addresses, and the battery streams its complete internal
+  state (limits, measurements, cell voltages, balancing, events, ...) while
+  accepting RUN/STOP requests. See
+  [docs/custom_can_protocol.md](docs/custom_can_protocol.md) for the
+  specification and controller implementation guide.
+
+
 ## Internal architecture
 
 The BMS has a conventional single-threaded loop architecture, with a 50Hz loop
