@@ -40,6 +40,16 @@ cmake -DINVERTER_PROTOCOL=custom_can ..
 
 (the default `byd_can` emulates a BYD Battery-Box directly to an inverter).
 
+On CellKeeper hardware this protocol runs on the **inter-BMS port, CAN2**
+(GPIO 4 TX / GPIO 5 RX, `PIN_INTERCAN_*`). CAN1 (`PIN_CAN_*`) remains the
+inverter interface. Because can2040 needs a whole PIO block, CAN2 takes PIO2
+from the `isosnoop` ISOSPI debugging aid, which is compiled out in any build
+that enables CAN2 (`BMS_INTERCAN=1`, set automatically by CMake).
+
+Two controllers are available for the CAN2 side: another CellKeeper built in
+**master mode** (section 9), or an external controller such as Battery
+Emulator following section 8.
+
 ---
 
 ## 1. Bus conventions
@@ -378,7 +388,8 @@ detectable. Current table:
 | 22 | SUPPLY_VOLTAGE_CONTACTOR_LOW | 48 | BOOT_WATCHDOG |
 | 23 | SUPPLY_VOLTAGE_CONTACTOR_VERY_LOW | 49 | LOOP_OVERRUN |
 | 24 | SUPPLY_VOLTAGE_CONTACTOR_HIGH | 50 | RESTARTING |
-| 25 | BATTERY_VOLTAGE_HIGH | | |
+| 25 | BATTERY_VOLTAGE_HIGH | 51 | CAN_SLAVE_LOST (master mode) |
+| | | 52 | CAN_SLAVE_FAULT (master mode) |
 
 ## 7. Scheduling and bus load
 
@@ -454,7 +465,76 @@ Common mistakes this protocol is designed to make obvious:
 * **Reading the event table with a stale mapping.** Check `EVENT` byte 6
   against the size of your table.
 
-## 9. Versioning and extension rules
+## 9. Master mode: a CellKeeper as the controller
+
+A CellKeeper built with `-DCAN_MASTER=ON` controls its own battery *and* a
+fleet of slave CellKeepers, and presents the whole parallel HV bus to the
+inverter as one battery. Implementation:
+[`bms/protocols/inverter/can_master.c`](../bms/protocols/inverter/can_master.c),
+tests: [`tests/test_can_master.c`](../tests/test_can_master.c).
+
+```
+                 inverter
+                    │ CAN1 (BYD protocol, unchanged)
+   ┌────────────────┴──┐
+   │  master CellKeeper│──── HV ────┬──────────────┬──── ... parallel HV bus
+   └────────────────┬──┘            │              │
+                    │ CAN2      ┌───┴────┐     ┌───┴────┐
+                    └───────────┤ slave 1├──┬──┤ slave 2├── ... CAN2 fleet bus
+                                └────────┘  │  └────────┘
+```
+
+| | Build | Bus use |
+|---|---|---|
+| Master | `cmake -DINVERTER_PROTOCOL=byd_can -DCAN_MASTER=ON ..` | CAN1 → inverter, CAN2 → slaves |
+| Slave | `cmake -DINVERTER_PROTOCOL=custom_can ..` | CAN2 → master (CAN1 unused) |
+
+The master is the controller of sections 3–5 with these policies:
+
+* **Discovery**: slaves are assigned nodes `1..CAN_MASTER_MAX_SLAVES` (8) on
+  `CAN_MASTER_PREFIX` (`0x0300`). After a master reboot, slaves that still
+  hold an assignment on that prefix are adopted as they are, so they never
+  drop their link. A slave offline for `CAN_MASTER_RETIRE_MS` (60 s) gives up
+  its node number.
+* **Run intent**: the heartbeat carries `RUN` while the master's persisted
+  `operating` flag is set and `STOP` otherwise. So the operator's RUN/STOP on
+  the master (HMI, CLI `toggle`) applies to the fleet, a power cycle restores
+  it, and a FATAL fault on the master (which clears `operating`) stops the
+  fleet. By default slaves are assigned without `STOP_ON_TIMEOUT`, i.e. they
+  keep running if the master itself dies — the inverter loses its BMS at the
+  same moment and stops on its own. Set `CAN_MASTER_ASSIGN_FLAGS` to change
+  this.
+* **Aggregation** into `model.fleet_outputs`, which `byd_can` sends instead of
+  the local values. A member *contributes* when it is online, has
+  `CURRENT_ENABLED` and no CRITICAL/FATAL event (the master's own battery is
+  judged by the same rule). Over contributing members: current limits and
+  capacities are **summed**, voltage limits are the **tightest** (min of the
+  maxima, max of the minima), SoC is **capacity-weighted**. Over all online
+  members: current is summed, temperatures are the extremes. Pack voltage is
+  the master's own measurement (the fleet mean if unavailable). As for a
+  single battery, SoC is forced to 0 %/100 % when the fleet cannot
+  discharge/charge so SoC-driven inverters also stop.
+* **Events on the master**: `CAN_SLAVE_LOST` (WARNING, data = serial) when an
+  online slave stops sending `STATUS` for 2 s, cleared when every known slave
+  is back; `CAN_SLAVE_FAULT` (WARNING) while any online slave reports FATAL.
+  Neither escalates; the lost/faulted slave is simply subtracted from what the
+  inverter is allowed to do.
+* **Bus budget**: at most two frames per 20 ms tick on CAN2, all frame types
+  other than `STATUS`/`LIMITS`/`MEASUREMENTS`/`ENERGY`/`TEMPERATURES` are
+  ignored at interrupt level.
+
+The CLI command `fleet` (and the periodic debug dump) prints the slave table:
+serial, node, liveness, states, measurements, limits and command round-trip
+time.
+
+A stop from the master therefore looks like this on the HV bus: the operator
+stops the master → `operating` clears → slaves receive `STOP` within 500 ms →
+all members' limits go to zero → the inverter, told 0 A / 0 %, stops drawing
+→ each battery's contactors open once its own current has fallen (section
+5.2). At no point does any battery open under load unless its own 30 s
+timeout has passed.
+
+## 10. Versioning and extension rules
 
 * The protocol version is carried in `ANNOUNCE` and `CONFIG`. It changes only
   when an existing field changes meaning or layout.

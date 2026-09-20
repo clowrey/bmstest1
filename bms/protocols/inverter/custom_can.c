@@ -3,9 +3,10 @@
  * =================================================
  *
  * Several batteries share one DC bus and one CAN bus with an upstream
- * controller (e.g. Battery Emulator) which talks to the actual inverter. This
- * module implements the battery end of the protocol defined in custom_can.h
- * and documented in docs/custom_can_protocol.md.
+ * controller (a CellKeeper in master mode, see can_master.c, or e.g. Battery
+ * Emulator) which talks to the actual inverter. This module implements the
+ * battery end of the protocol defined in custom_can.h and documented in
+ * docs/custom_can_protocol.md. It runs on the inter-BMS bus (CAN2).
  *
  * Lifecycle
  * ---------
@@ -58,6 +59,12 @@
 
 #include <math.h>
 #include <string.h>
+
+// The fleet protocol normally runs on the dedicated inter-BMS bus (CAN2,
+// PIN_INTERCAN_*), leaving the inverter bus free.
+#ifndef CUSTOM_CAN_BUS
+#define CUSTOM_CAN_BUS CAN_BUS_INTER
+#endif
 
 #define MAX_TX_PER_TICK 3
 #define RX_RING_SIZE 8
@@ -188,7 +195,7 @@ static int send_frame(uint32_t id, const uint8_t data[8], uint8_t dlc) {
     msg.id = CAN2040_ID_EFF | id;
     msg.dlc = dlc;
     memcpy(msg.data, data, dlc);
-    int ret = inverter_can_transmit(&msg);
+    int ret = can_bus_transmit(CUSTOM_CAN_BUS, &msg);
     if(ret < 0) link.tx_failed++;
     return ret;
 }
@@ -820,7 +827,7 @@ void init_inverter() {
     // collisions are unlikely to be simultaneous
     link.next_announce_timestep = timestep() + (link.serial32 % ANNOUNCE_JITTER_TICKS);
 
-    init_inverter_can(can2040_cb);
+    can_bus_init(CUSTOM_CAN_BUS, can2040_cb);
     info_printf("Custom CAN: initialised, serial 0x%08lX, announcing on 0x%08lX\n",
         (unsigned long)link.serial32,
         (unsigned long)(CUSTOM_CAN_ID_ANNOUNCE_BASE | (link.serial32 & 0xFF)));

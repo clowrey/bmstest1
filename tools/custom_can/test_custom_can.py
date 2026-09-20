@@ -136,7 +136,9 @@ class ProtocolTests(unittest.TestCase):
 
     def test_event_names_match_firmware(self):
         self.assertEqual(P.EVENT_NAMES[P.EVENT_INVERTER_DETECTED], "INVERTER_DETECTED")
-        self.assertEqual(P.EVENT_NAMES[-1], "RESTARTING")
+        self.assertEqual(P.EVENT_NAMES[50], "RESTARTING")
+        # The table parsed from events.h and the embedded fallback must agree
+        self.assertEqual(P.EVENT_NAMES, P._FALLBACK_EVENT_NAMES)
         self.assertEqual(P.event_name(0xFF), "-")
 
 
