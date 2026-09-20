@@ -269,7 +269,9 @@ void bms_tick() {
     if((timestep() & 0x3f) == 32) {
         // every 64 ticks, output stuff
         //isosnoop_print_buffer();
+        debug_printf("Now: %lu ms (uptime %llu ms)\n", (unsigned long)millis(), (unsigned long long)millis64());
         print_bms_events();
+        inverter_debug_print();
         
         debug_printf("MCU: %3ld dC | 3V3: %4ld mV | 5V: %4ld mV | 12V: %5ld mV | CtrV: %5ld mV\n",
             get_temperature_c_times10(),
