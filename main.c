@@ -10,13 +10,11 @@
 // this device go away and keeps talking to the old one. Drive SE0 for a moment
 // so the host registers a disconnect and enumerates again.
 static void usb_force_reenumerate(void) {
-    const uint32_t ovr = USB_USBPHY_DIRECT_OVERRIDE_TX_DP_OE_OVERRIDE_EN_BITS | USB_USBPHY_DIRECT_OVERRIDE_TX_DM_OE_OVERRIDE_EN_BITS |
-                         USB_USBPHY_DIRECT_OVERRIDE_TX_DP_OVERRIDE_EN_BITS | USB_USBPHY_DIRECT_OVERRIDE_TX_DM_OVERRIDE_EN_BITS;
-    hw_clear_bits(&usb_hw->phy_direct, USB_USBPHY_DIRECT_TX_DP_BITS | USB_USBPHY_DIRECT_TX_DM_BITS);
-    hw_set_bits(&usb_hw->phy_direct, USB_USBPHY_DIRECT_TX_DP_OE_BITS | USB_USBPHY_DIRECT_TX_DM_OE_BITS);
-    hw_set_bits(&usb_hw->phy_direct_override, ovr);
-    sleep_ms(20);
-    hw_clear_bits(&usb_hw->phy_direct_override, ovr);
+    // SIE direct bus drive: DP and DM both low = SE0
+    hw_clear_bits(&usb_hw->sie_ctrl, USB_SIE_CTRL_DIRECT_DP_BITS | USB_SIE_CTRL_DIRECT_DM_BITS);
+    hw_set_bits(&usb_hw->sie_ctrl, USB_SIE_CTRL_DIRECT_EN_BITS);
+    sleep_ms(50);
+    hw_clear_bits(&usb_hw->sie_ctrl, USB_SIE_CTRL_DIRECT_EN_BITS);
 }
 #endif
 
