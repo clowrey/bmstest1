@@ -7,6 +7,7 @@
 #include "drivers/sensors/internal_adc.h"
 #include "drivers/sensors/ads1115.h"
 #include "hardware_checks.h"
+#include "isolation.h"
 #include "config/limits.h"
 #include "config/pins.h"
 #include "estimators/ekf.h"
@@ -104,15 +105,23 @@ void read_inputs(bms_model_t *model) {
     model->high_voltages.isolation_pos_raw = ads1115_float_sample(4, 1.0f);
     model->high_voltages.isolation_neg_raw = ads1115_float_sample(5, 1.0f);
     {
-        float cal_midpoint = 22496.4f;
-        float cal_midpoint_temp_dC = 285.0f;
-        cal_midpoint += (get_temperature_c_times10() - cal_midpoint_temp_dC) * 0.28f; //compensate for temp drift
-
-        float vpos = (model->high_voltages.isolation_pos_raw - cal_midpoint) * (4.096f/32768);
-        float vneg = (cal_midpoint - model->high_voltages.isolation_neg_raw) * (4.096f/32768);
-        float r = vpos / vneg;
-        // Cap at 1Gohm
-        model->high_voltages.isolation_resistance_ohms = 10000000 * fminf(r / fmaxf(fabsf(1.0f - r), 0.009f), 100.0f);
+        int32_t temp_dC = get_temperature_c_times10();
+        if (model->isolation_zero_cal_pending) {
+            model->isolation_zero_cal_pending = false;
+            float pos = model->high_voltages.isolation_pos_raw;
+            float neg = model->high_voltages.isolation_neg_raw;
+            if (model->high_voltages.isolation_millis > 0 && pos - neg > ISOLATION_MIN_SPAN_COUNTS) {
+                model->persistent_slow.isolation_zero_ref_counts = isolation_zero_ref_from_counts((pos + neg) / 2.0f, temp_dC);
+                nvm_save_persistent_slow(model);
+            }
+        }
+        float zero = isolation_zero_counts(model->persistent_slow.isolation_zero_ref_counts, temp_dC);
+        isolation_result_t iso = isolation_compute(
+            model->high_voltages.isolation_pos_raw, model->high_voltages.isolation_neg_raw, zero,
+            model->high_voltages.battery, model->contactor_sm.state == CONTACTORS_STATE_OPEN);
+        model->high_voltages.pack_pos_to_chassis = iso.pos_to_chassis_V;
+        model->high_voltages.pack_neg_to_chassis = iso.neg_to_chassis_V;
+        model->high_voltages.isolation_resistance_ohms = iso.resistance_ohms;
     }
 
     // INA228 current and charge readings
@@ -369,20 +378,13 @@ void bms_tick() {
         //     debug_counters.uart1_packets_received, debug_counters.uart1_crc_errors
         // );
 
-        float cal_midpoint = 22496.4f;
-        float cal_midpoint_temp_dC = 285.0f;
-
-        cal_midpoint += (get_temperature_c_times10() - cal_midpoint_temp_dC) * 0.28f; //compensate for temp drift
-
         float vp = model.high_voltages.isolation_pos_raw;
         float vn = model.high_voltages.isolation_neg_raw;
-        debug_printf("midpoint is %1.1f | ", (vp + vn)/2.0f);
-
-        float vpos = (vp - cal_midpoint) * (4.096f/32768);
-        float vneg = (cal_midpoint - vn) * (4.096f/32768);
-
-        debug_printf("Vpos: %1.3f V | Vneg: %1.3f V | Riso: %1.2f Mohm\n",
-            vpos, vneg, model.high_voltages.isolation_resistance_ohms/1000000
+        debug_printf("Isolation raw pos %1.1f neg %1.1f (mid %1.1f, zero %1.1f) | Pack+ %1.1f V | Pack- %1.1f V | Riso: %1.2f Mohm\n",
+            vp, vn, (vp + vn)/2.0f,
+            isolation_zero_counts(model.persistent_slow.isolation_zero_ref_counts, get_temperature_c_times10()),
+            model.high_voltages.pack_pos_to_chassis, model.high_voltages.pack_neg_to_chassis,
+            model.high_voltages.isolation_resistance_ohms/1000000
         );
 
     }

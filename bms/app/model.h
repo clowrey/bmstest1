@@ -75,6 +75,10 @@ typedef struct {
     float link_voltage_mul;
     float fuse_drop_mul;
 
+    // Isolation monitor zero in ADC counts, referred to ISOLATION_ZERO_CAL_TEMP_DC
+    // (appended; zero on older saves means "use the board default")
+    float isolation_zero_ref_counts;
+
 } bms_model_persistent_slow_t;
 
 static const uint32_t BMS_MODEL_PERSISTENT_SLOW_VERSION = 2;
@@ -113,12 +117,13 @@ typedef struct high_voltages {
     float fuse_drop;
     float fuse_drop_deviation;
     millis_t fuse_drop_millis;
-    // Isolation monitor: raw ADC counts of the battery+ and battery- isolation
-    // channels, and the resistance estimated from them (ohms, capped at 1 Gohm).
-    // The calibration midpoint is fixed in read_inputs(), so the resistance is
-    // only meaningful on boards it was calibrated for; the raw counts always are.
+    // Isolation monitor (see app/isolation.h): raw ADC counts of the battery+
+    // and battery- channels, the pack terminals relative to chassis, and the
+    // leakage estimate (ohms, capped at 100 Mohm; NAN unless contactors are open).
     float isolation_pos_raw;
     float isolation_neg_raw;
+    float pack_pos_to_chassis;
+    float pack_neg_to_chassis;
     float isolation_resistance_ohms;
     millis_t isolation_millis;
 } high_voltages_t;
@@ -309,6 +314,7 @@ typedef struct bms_model {
     // Whether we should ignore a potential loop overrun at the end of this tick
     // (eg, due to a slow flash write). This is reset each tick.
     bool ignore_missed_deadline;
+    bool isolation_zero_cal_pending; // set by the system SM, done in read_inputs()
     
   
 } bms_model_t;

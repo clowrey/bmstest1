@@ -228,3 +228,20 @@ add_custom_target(coverage
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     COMMENT "Run built tests and generate gcov coverage summary"
 )
+
+foreach(board_suffix IN ITEMS "" "_rev1")
+    add_executable(test_isolation${board_suffix}
+        test_isolation.c
+        ../bms/app/isolation.c
+    )
+    if(board_suffix STREQUAL "_rev1")
+        target_compile_definitions(test_isolation${board_suffix} PRIVATE BMS_BOARD=2)
+    endif()
+    target_link_libraries(test_isolation${board_suffix} PRIVATE cmocka m)
+    target_include_directories(test_isolation${board_suffix} PRIVATE
+        ${cmocka_SOURCE_DIR}/include
+        include
+        ../bms
+    )
+    add_test(NAME test_isolation${board_suffix} COMMAND ${MEMORY_CHECK} test_isolation${board_suffix})
+endforeach()

@@ -68,12 +68,27 @@
 #endif
 // Rev1 uses 501:1 dividers (12M/24k): 501 * 1.024/32768 V per count
 #define ADS1115_DEFAULT_MUL 0.015656f
+// Isolation monitor zero (ADC counts with the pack floating), measured on ck0
+// with the contactors open; no temperature drift measured yet
+#define ISOLATION_ZERO_DEFAULT_COUNTS 13317.0f
+#define ISOLATION_ZERO_TEMPCO_COUNTS_PER_DC 0.0f
 #elif BMS_BOARD == BMS_BOARD_REV0
 // Rev0 divider ratio is ~416:1
 #define ADS1115_DEFAULT_MUL 0.013f
+// Isolation monitor zero from the original Rev0 calibration, with its drift
+#define ISOLATION_ZERO_DEFAULT_COUNTS 22496.4f
+#define ISOLATION_ZERO_TEMPCO_COUNTS_PER_DC 0.28f
 #else
     #error "Unsupported BMS_BOARD"
 #endif
+
+// Isolation monitor, all boards. The divider ratio is derived at run time from
+// the battery voltage and the channel span, so only the zero needs calibrating.
+#define ISOLATION_ZERO_CAL_TEMP_DC 285.0f       // temperature the zero is referred to
+#define ISOLATION_DIVIDER_BOTTOM_OHMS 24000.0f  // bottom resistor of each HV divider
+#define ISOLATION_RESISTANCE_CAP_OHMS 100e6f    // report at most 100 Mohm
+#define ISOLATION_MIN_SPAN_COUNTS 100.0f        // below this the channels are unusable
+#define ISOLATION_MIN_BATTERY_V 20.0f
 
 
 // TODO - derate voltage limits based on temperature

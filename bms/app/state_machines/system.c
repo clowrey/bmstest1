@@ -62,6 +62,15 @@ void system_sm_tick(bms_model_t *model) {
         }
     }
 
+    // The isolation zero is the reading with the pack floating, so it can only
+    // be taken while inactive with the contactors open; read_inputs() does it.
+    if(model->system_req == SYSTEM_REQUEST_CALIBRATE_ISOLATION_ZERO) {
+        model->system_req = SYSTEM_REQUEST_NULL;
+        if(system_sm->state == SYSTEM_STATE_INACTIVE && model->contactor_sm.state == CONTACTORS_STATE_OPEN) {
+            model->isolation_zero_cal_pending = true;
+        }
+    }
+
     switch(system_sm->state) {
         case SYSTEM_STATE_UNINITIALIZED:
             state_transition((sm_t*)system_sm, SYSTEM_STATE_INITIALIZING);
