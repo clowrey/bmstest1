@@ -88,6 +88,15 @@ if(BMS_BOARD)
     add_compile_definitions(BMS_BOARD=${BMS_BOARD})
 endif()
 
+# Boards modified with an external D+ pull-up powered from the host's VBUS (so a
+# switched-off host is never back-powered through D+). The chip's own pull-up,
+# powered by the BMS, must then stay off. Leave OFF on unmodified boards, or the
+# host never sees the device.
+option(BMS_USB_EXTERNAL_PULLUP "Board has a VBUS-powered external USB D+ pull-up" OFF)
+if(BMS_USB_EXTERNAL_PULLUP)
+    add_compile_definitions(BMS_USB_EXTERNAL_PULLUP=1)
+endif()
+
 target_compile_options(bms PUBLIC
     -Wall
     -Wextra

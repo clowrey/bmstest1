@@ -1,6 +1,7 @@
 #include "pico/flash.h"
 #include "pico/multicore.h"
 #include "pico/stdlib.h"
+#include "tusb.h"
 
 #include <stdbool.h>
 
@@ -14,6 +15,12 @@ void core1_entry() {
 
 int main() {
     stdio_usb_init();
+
+#ifdef BMS_USB_EXTERNAL_PULLUP
+    // The external D+ pull-up is powered from VBUS; switch the chip's own one
+    // (enabled by the USB stack at init) off so it can't back-power the host.
+    tud_disconnect();
+#endif
 
     // Give a chance for USB to enumerate before we start printing.
     sleep_ms(1000);
