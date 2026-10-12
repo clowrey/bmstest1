@@ -2,6 +2,7 @@
 
 #include "hardware/watchdog.h"
 #include "pico/stdlib.h"
+#include "tusb.h"
 
 #include <stdio.h>
 
@@ -99,6 +100,12 @@ void supervisor_tick() {
 
 int main() {
     stdio_usb_init();
+
+#ifdef BMS_USB_EXTERNAL_PULLUP
+    // The external D+ pull-up is powered from VBUS; switch the chip's own one
+    // (enabled by the USB stack at init) off so it can't back-power the host.
+    tud_disconnect();
+#endif
 
     sleep_ms(4000);
 
