@@ -94,6 +94,78 @@ static void test_unusable_inputs_give_nan(void **state) {
     assert_true(isnan(r.pos_to_chassis_V));
 }
 
+
+// Feeds a constant reading for `ms` at 100 ms steps; returns the last status
+static isolation_autozero_status_t run_autozero(isolation_autozero_t *az, uint32_t *now, uint32_t ms,
+                                                bool usable, bool window_over, float pos, float neg,
+                                                float zero, float *new_zero, float *mid) {
+    isolation_autozero_status_t st = ISOLATION_AUTOZERO_PENDING;
+    for (uint32_t t = 0; t < ms && (st == ISOLATION_AUTOZERO_PENDING); t += 100) {
+        *now += 100;
+        st = isolation_autozero_step(az, *now, usable, window_over, pos, neg, zero, new_zero, mid);
+    }
+    return st;
+}
+
+static void test_autozero_blends_small_drift(void **state) {
+    (void)state;
+    isolation_autozero_t az = {0};
+    uint32_t now = 1000;
+    float new_zero = 0, mid = 0;
+    // midpoint 13377, 60 counts above the zero: accepted, half blended in
+    isolation_autozero_status_t st = run_autozero(&az, &now, 10000, true, false, 16465.0f, 10289.0f,
+                                                  13317.0f, &new_zero, &mid);
+    assert_int_equal(st, ISOLATION_AUTOZERO_ACCEPTED);
+    assert_float_equal(mid, 13377.0f, 0.01f);
+    assert_float_equal(new_zero, 13317.0f + 60.0f * ISOLATION_AUTOZERO_BLEND, 0.01f);
+    // only once per boot
+    assert_int_equal(isolation_autozero_step(&az, now + 100, true, false, 16465.0f, 10289.0f, 13317.0f,
+                                             &new_zero, &mid), ISOLATION_AUTOZERO_DONE);
+}
+
+static void test_autozero_rejects_large_offset(void **state) {
+    (void)state;
+    isolation_autozero_t az = {0};
+    uint32_t now = 1000;
+    float new_zero = -1, mid = 0;
+    // midpoint 400 counts off: treated as a possible leak, zero untouched
+    isolation_autozero_status_t st = run_autozero(&az, &now, 10000, true, false, 16805.0f, 10629.0f,
+                                                  13317.0f, &new_zero, &mid);
+    assert_int_equal(st, ISOLATION_AUTOZERO_REJECTED);
+    assert_float_equal(mid, 13717.0f, 0.01f);
+    assert_float_equal(new_zero, -1.0f, 0.0f);
+}
+
+static void test_autozero_waits_for_settling_and_aborts_when_window_ends(void **state) {
+    (void)state;
+    isolation_autozero_t az = {0};
+    uint32_t now = 1000;
+    float new_zero = 0, mid = 0;
+    // not long enough to settle + average
+    isolation_autozero_status_t st = run_autozero(&az, &now, ISOLATION_AUTOZERO_SETTLE_MS, true, false,
+                                                  16405.0f, 10229.0f, 13317.0f, &new_zero, &mid);
+    assert_int_equal(st, ISOLATION_AUTOZERO_PENDING);
+    // contactors closed / system operating before it finished
+    st = isolation_autozero_step(&az, now + 100, false, true, 16405.0f, 10229.0f, 13317.0f, &new_zero, &mid);
+    assert_int_equal(st, ISOLATION_AUTOZERO_ABORTED);
+}
+
+static void test_autozero_restarts_on_noise(void **state) {
+    (void)state;
+    isolation_autozero_t az = {0};
+    uint32_t now = 1000;
+    float new_zero = 0, mid = 0;
+    isolation_autozero_status_t st = ISOLATION_AUTOZERO_PENDING;
+    // alternating midpoints 100 counts apart never give a stable average
+    for (int i = 0; i < 200 && st == ISOLATION_AUTOZERO_PENDING; i++) {
+        now += 100;
+        float off = (i & 1) ? 50.0f : -50.0f;
+        st = isolation_autozero_step(&az, now, true, false, 16405.0f + off, 10229.0f + off, 13317.0f,
+                                     &new_zero, &mid);
+    }
+    assert_int_equal(st, ISOLATION_AUTOZERO_PENDING);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_zero_default_and_drift),
@@ -103,6 +175,10 @@ int main(void) {
         cmocka_unit_test(test_single_sided_leaks),
         cmocka_unit_test(test_hard_short_reads_zero),
         cmocka_unit_test(test_unusable_inputs_give_nan),
+        cmocka_unit_test(test_autozero_blends_small_drift),
+        cmocka_unit_test(test_autozero_rejects_large_offset),
+        cmocka_unit_test(test_autozero_waits_for_settling_and_aborts_when_window_ends),
+        cmocka_unit_test(test_autozero_restarts_on_noise),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

@@ -30,6 +30,7 @@
 #include "pico/stdlib.h"
 #include "../vendor/littlefs/lfs.h"
 
+#include <math.h>
 #include <stdio.h>
 
 void read_supply_voltages(supply_voltages_t *supply_voltages) {
@@ -116,12 +117,49 @@ void read_inputs(bms_model_t *model) {
             }
         }
         float zero = isolation_zero_counts(model->persistent_slow.isolation_zero_ref_counts, temp_dC);
-        isolation_result_t iso = isolation_compute(
-            model->high_voltages.isolation_pos_raw, model->high_voltages.isolation_neg_raw, zero,
-            model->high_voltages.battery, model->contactor_sm.state == CONTACTORS_STATE_OPEN);
+        float pos = model->high_voltages.isolation_pos_raw;
+        float neg = model->high_voltages.isolation_neg_raw;
+        bool contactors_open = model->contactor_sm.state == CONTACTORS_STATE_OPEN;
+
+        // Automatic zero check, once per boot while the pack floats: only with
+        // the contactors open, before the system starts operating, and with
+        // valid readings. Large offsets are reported as a possible leak.
+        {
+            static isolation_autozero_t autozero;
+            int sys = model->system_sm.state;
+            bool boot_states = sys == SYSTEM_STATE_UNINITIALIZED || sys == SYSTEM_STATE_INITIALIZING ||
+                               sys == SYSTEM_STATE_INACTIVE;
+            bool usable = contactors_open && boot_states && model->high_voltages.isolation_millis > 0 &&
+                          model->high_voltages.battery > ISOLATION_MIN_BATTERY_V && pos - neg > ISOLATION_MIN_SPAN_COUNTS;
+            float new_zero = zero, measured_mid = zero;
+            isolation_autozero_status_t az = isolation_autozero_step(&autozero, millis(), usable, !boot_states,
+                                                                     pos, neg, zero, &new_zero, &measured_mid);
+            if (az == ISOLATION_AUTOZERO_ACCEPTED) {
+                float new_ref = isolation_zero_ref_from_counts(new_zero, temp_dC);
+                if (fabsf(new_ref - model->persistent_slow.isolation_zero_ref_counts) >= 1.0f) {
+                    model->persistent_slow.isolation_zero_ref_counts = new_ref;
+                    nvm_save_persistent_slow(model);
+                }
+                clear_bms_event(ERR_ISOLATION_ASYMMETRY);
+                debug_printf("Isolation zero check: midpoint %1.1f, zero %1.1f -> %1.1f\n", measured_mid, zero, new_zero);
+                zero = new_zero;
+            } else if (az == ISOLATION_AUTOZERO_REJECTED) {
+                raise_bms_event(ERR_ISOLATION_ASYMMETRY, (uint64_t)(int64_t)lroundf(measured_mid - zero));
+                debug_printf("Isolation zero check: midpoint %1.1f is %1.1f counts from zero %1.1f, possible leak\n",
+                             measured_mid, measured_mid - zero, zero);
+            }
+        }
+
+        isolation_result_t iso = isolation_compute(pos, neg, zero, model->high_voltages.battery, contactors_open);
         model->high_voltages.pack_pos_to_chassis = iso.pos_to_chassis_V;
         model->high_voltages.pack_neg_to_chassis = iso.neg_to_chassis_V;
-        model->high_voltages.isolation_resistance_ohms = iso.resistance_ohms;
+        if (contactors_open && !isnan(iso.resistance_ohms)) {
+            model->high_voltages.isolation_open_resistance_ohms = iso.resistance_ohms;
+            model->high_voltages.isolation_open_millis = millis() ? millis() : 1;
+        }
+        // Live while the contactors are open, otherwise the last open reading
+        model->high_voltages.isolation_resistance_ohms = contactors_open ? iso.resistance_ohms
+            : (model->high_voltages.isolation_open_millis ? model->high_voltages.isolation_open_resistance_ohms : NAN);
     }
 
     // INA228 current and charge readings

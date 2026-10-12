@@ -59,3 +59,58 @@ isolation_result_t isolation_compute(float pos_raw, float neg_raw, float zero,
     res.resistance_ohms = fminf(r_ohms, ISOLATION_RESISTANCE_CAP_OHMS);
     return res;
 }
+
+static void autozero_restart(isolation_autozero_t *az, uint32_t now_ms) {
+    az->usable_since_ms = now_ms ? now_ms : 1;
+    az->mid_sum = 0.0f;
+    az->samples = 0;
+}
+
+isolation_autozero_status_t isolation_autozero_step(isolation_autozero_t *az, uint32_t now_ms,
+                                                    bool usable, bool window_over,
+                                                    float pos_raw, float neg_raw, float current_zero,
+                                                    float *new_zero, float *measured_mid) {
+    if (az->done) return ISOLATION_AUTOZERO_DONE;
+
+    if (!usable) {
+        az->usable_since_ms = 0;
+        az->samples = 0;
+        if (window_over) {
+            az->done = true;
+            return ISOLATION_AUTOZERO_ABORTED;
+        }
+        return ISOLATION_AUTOZERO_PENDING;
+    }
+
+    if (az->usable_since_ms == 0) autozero_restart(az, now_ms);
+    uint32_t elapsed = now_ms - az->usable_since_ms;
+    if (elapsed < ISOLATION_AUTOZERO_SETTLE_MS) return ISOLATION_AUTOZERO_PENDING;
+
+    float mid = (pos_raw + neg_raw) / 2.0f;
+    if (az->samples == 0) {
+        az->mid_min = mid;
+        az->mid_max = mid;
+    }
+    az->mid_sum += mid;
+    az->mid_min = fminf(az->mid_min, mid);
+    az->mid_max = fmaxf(az->mid_max, mid);
+    az->samples++;
+
+    if (elapsed < ISOLATION_AUTOZERO_SETTLE_MS + ISOLATION_AUTOZERO_WINDOW_MS) return ISOLATION_AUTOZERO_PENDING;
+
+    if (az->mid_max - az->mid_min > ISOLATION_AUTOZERO_MAX_NOISE_COUNTS) {
+        // Still moving: start another settle + average period
+        autozero_restart(az, now_ms);
+        return ISOLATION_AUTOZERO_PENDING;
+    }
+
+    float mean = az->mid_sum / (float)az->samples;
+    *measured_mid = mean;
+    az->done = true;
+    float diff = mean - current_zero;
+    if (fabsf(diff) > ISOLATION_AUTOZERO_MAX_STEP_COUNTS) {
+        return ISOLATION_AUTOZERO_REJECTED;
+    }
+    *new_zero = current_zero + diff * ISOLATION_AUTOZERO_BLEND;
+    return ISOLATION_AUTOZERO_ACCEPTED;
+}

@@ -97,9 +97,10 @@
 
 #define HMI_REG_ISOLATION_POS_RAW      60 // float (ADC counts), battery+ isolation channel
 #define HMI_REG_ISOLATION_NEG_RAW      61 // float (ADC counts), battery- isolation channel
-#define HMI_REG_ISOLATION_RESISTANCE   62 // float (ohms), leakage estimate, NAN unless contactors open
+#define HMI_REG_ISOLATION_RESISTANCE   62 // float (ohms), leakage estimate; live with contactors open, else the last open reading
 #define HMI_REG_PACK_POS_TO_CHASSIS    63 // float (V), battery+ relative to chassis
 #define HMI_REG_PACK_NEG_TO_CHASSIS    64 // float (V), battery- relative to chassis
+#define HMI_REG_ISOLATION_CHECK_AGE    65 // float (s) since the resistance was measured; 0 = live, NAN = not yet this boot
 
 
 #define HMI_REG_CELL_VOLTAGES_START 0x100

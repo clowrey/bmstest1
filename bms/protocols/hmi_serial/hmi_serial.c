@@ -13,6 +13,8 @@
 #include "pico/stdlib.h"
 #include "pico/unique_id.h"
 
+#include <math.h>
+
 // BMS defaults to address 1
 uint8_t device_address = 1;
 uint32_t next_announce_timestep = 0;
@@ -116,6 +118,7 @@ static bool hmi_register_is_available(uint16_t reg_id, bms_model_t *model) {
         case HMI_REG_ISOLATION_RESISTANCE:
         case HMI_REG_PACK_POS_TO_CHASSIS:
         case HMI_REG_PACK_NEG_TO_CHASSIS:
+        case HMI_REG_ISOLATION_CHECK_AGE:
             return model->high_voltages.isolation_millis > 0;
         case HMI_REG_TEMPERATURE_MIN:
         case HMI_REG_TEMPERATURE_MAX:
@@ -223,6 +226,17 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
             buf[idx++] = HMI_TYPE_FLOAT;
             idx += hmi_buf_append_float(&buf[idx], model->high_voltages.pack_neg_to_chassis);
             break;
+        case HMI_REG_ISOLATION_CHECK_AGE: {
+            float age = NAN;
+            if (model->contactor_sm.state == CONTACTORS_STATE_OPEN && !isnan(model->high_voltages.isolation_resistance_ohms)) {
+                age = 0.0f;
+            } else if (model->high_voltages.isolation_open_millis) {
+                age = (millis() - model->high_voltages.isolation_open_millis) / 1000.0f;
+            }
+            buf[idx++] = HMI_TYPE_FLOAT;
+            idx += hmi_buf_append_float(&buf[idx], age);
+            break;
+        }
         case HMI_REG_TEMPERATURE_MIN:
             buf[idx++] = HMI_TYPE_FLOAT;
             idx += hmi_buf_append_float(&buf[idx], (uint16_t)model->temperature_min);

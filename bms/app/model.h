@@ -124,8 +124,10 @@ typedef struct high_voltages {
     float isolation_neg_raw;
     float pack_pos_to_chassis;
     float pack_neg_to_chassis;
-    float isolation_resistance_ohms;
+    float isolation_resistance_ohms;   // live with contactors open, else the last open reading
     millis_t isolation_millis;
+    float isolation_open_resistance_ohms; // last reading with the contactors open (NAN = none yet)
+    millis_t isolation_open_millis;       // when it was taken (0 = never)
 } high_voltages_t;
 
 typedef struct inverter_outputs {

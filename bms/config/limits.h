@@ -89,6 +89,12 @@
 #define ISOLATION_RESISTANCE_CAP_OHMS 100e6f    // report at most 100 Mohm
 #define ISOLATION_MIN_SPAN_COUNTS 100.0f        // below this the channels are unusable
 #define ISOLATION_MIN_BATTERY_V 20.0f
+// Automatic zero check at boot (see isolation_autozero_step)
+#define ISOLATION_AUTOZERO_SETTLE_MS 3000        // contactors open this long before averaging
+#define ISOLATION_AUTOZERO_WINDOW_MS 3000        // averaging period
+#define ISOLATION_AUTOZERO_MAX_NOISE_COUNTS 40.0f // midpoint must stay within this band
+#define ISOLATION_AUTOZERO_MAX_STEP_COUNTS 150.0f // larger offsets are treated as a leak
+#define ISOLATION_AUTOZERO_BLEND 0.5f            // fraction of the offset taken per boot
 
 
 // TODO - derate voltage limits based on temperature
