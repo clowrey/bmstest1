@@ -50,6 +50,16 @@ The NVM/LittleFS area stays exactly where it is, so settings and the event log s
 
 The current image is ~150 KB (`build-bluetesla-rev1/bms.bin`), so 768 KB slots leave plenty of room. `PICO_FLASH_SIZE_BYTES` (1.5 MB) stays as the link-time guard. Add a CMake check that the image fits in a slot.
 
+## USB / drag-and-drop after migration
+
+USB stays available as a normal update path and as the recovery path. BOOTSEL mode is in ROM, so it can't be lost.
+
+- **Drag-and-drop UF2 still works.** With a partition table, the boot ROM writes a UF2 of a family that slots A and B accept (`rp2350-arm-s`) into the slot that is *not* currently booted. It then reboots into it as a flash update, exactly as the serial OTA does.
+- **`picotool load` still works,** with or without `-p <partition>`.
+- **Every build needs an increasing image version.** On a normal boot the ROM picks between A and B by version, so without one a newer image can lose to an older one on the next reboot. Set it with `pico_set_binary_version` or the picotool seal option, using the build time or a counter. The same rule applies to the serial OTA. (Verify the exact A/B tie-break rule in the RP2350 datasheet, "Partition tables / A/B".)
+- **Don't drop a pre-migration build onto a migrated board.** Old builds have no TBYB buy, no version, and still read NVM through the translated XIP window (Task 2). They could boot with blank-looking settings, and might reformat LittleFS.
+- **Full reset:** `picotool erase`, then reload the partition table and the image. Same as the migration.
+
 ## Transfer protocol (new HMI message types)
 
 The existing frame is `0xFF, len-1, payload…, CRC16` with a payload of at most 255 bytes. All new messages carry the BMS address in byte 1, like the others. Integers are little-endian.
@@ -130,6 +140,7 @@ Ship this before Task 3. It is harmless on the old layout and required on the ne
 - [ ] Step 1: Write the table JSON, build, and inspect it with `picotool partition info`.
 - [ ] Step 2: Desk board: migrate. Check that it boots from slot A, settings are intact (Task 2), and HMI comms work.
 - [ ] Step 3: Desk board: load a second build into slot B with picotool and reboot into it. Check both slots boot.
+- [ ] Step 4: Give every build an increasing image version (build time or a counter). Check that drag-and-drop of a newer UF2 lands in the other slot and is still the one booted after a plain power cycle.
 
 ## Task 4: Firmware receiver in the BMS
 
@@ -199,6 +210,7 @@ Ship this before Task 3. It is harmless on the old layout and required on the ne
 ## Task 7: Bench test matrix (desk board, `build-desk-rev1`)
 
 - [ ] Normal update: A→B, then B→A. Check the hash, the settings and the event log afterwards.
+- [ ] USB drag-and-drop and `picotool load` after migration both land in the inactive slot and boot.
 - [ ] Power cut during DATA, during END and during ACTIVATE. The old image must still boot every time.
 - [ ] Bad image (never buys) → automatic rollback.
 - [ ] Wrong profile or board → REFUSED_TARGET. Contactors closed → REFUSED_STATE.
