@@ -111,6 +111,10 @@ static bool hmi_register_is_available(uint16_t reg_id, bms_model_t *model) {
         case HMI_REG_SHUNT_NTC_TEMP:
         case HMI_REG_SHUNT_NTC_RESISTANCE:
             return model->shunt_ntc_millis > 0;
+        case HMI_REG_ISOLATION_POS_RAW:
+        case HMI_REG_ISOLATION_NEG_RAW:
+        case HMI_REG_ISOLATION_RESISTANCE:
+            return model->high_voltages.isolation_millis > 0;
         case HMI_REG_TEMPERATURE_MIN:
         case HMI_REG_TEMPERATURE_MAX:
             return model->temperature_millis > 0;
@@ -196,6 +200,18 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
         case HMI_REG_SHUNT_NTC_RESISTANCE:
             buf[idx++] = HMI_TYPE_FLOAT;
             idx += hmi_buf_append_float(&buf[idx], model->shunt_ntc_resistance_ohms);
+            break;
+        case HMI_REG_ISOLATION_POS_RAW:
+            buf[idx++] = HMI_TYPE_FLOAT;
+            idx += hmi_buf_append_float(&buf[idx], model->high_voltages.isolation_pos_raw);
+            break;
+        case HMI_REG_ISOLATION_NEG_RAW:
+            buf[idx++] = HMI_TYPE_FLOAT;
+            idx += hmi_buf_append_float(&buf[idx], model->high_voltages.isolation_neg_raw);
+            break;
+        case HMI_REG_ISOLATION_RESISTANCE:
+            buf[idx++] = HMI_TYPE_FLOAT;
+            idx += hmi_buf_append_float(&buf[idx], model->high_voltages.isolation_resistance_ohms);
             break;
         case HMI_REG_TEMPERATURE_MIN:
             buf[idx++] = HMI_TYPE_FLOAT;

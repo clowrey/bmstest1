@@ -98,7 +98,23 @@ void read_inputs(bms_model_t *model) {
     model->high_voltages.pos_contactor = raw_bat_plus_to_out_neg - model->high_voltages.output;
     model->high_voltages.pos_contactor_deviation = ads1115_float_deviation(3, pos_contactor_mul) + model->high_voltages.output_deviation;
 #endif
-    
+
+    // Isolation monitor (ADS1115 channels 4/5, battery+ and battery- to chassis)
+    model->high_voltages.isolation_millis = min(ads1115_get_sample_millis(4), ads1115_get_sample_millis(5));
+    model->high_voltages.isolation_pos_raw = ads1115_float_sample(4, 1.0f);
+    model->high_voltages.isolation_neg_raw = ads1115_float_sample(5, 1.0f);
+    {
+        float cal_midpoint = 22496.4f;
+        float cal_midpoint_temp_dC = 285.0f;
+        cal_midpoint += (get_temperature_c_times10() - cal_midpoint_temp_dC) * 0.28f; //compensate for temp drift
+
+        float vpos = (model->high_voltages.isolation_pos_raw - cal_midpoint) * (4.096f/32768);
+        float vneg = (cal_midpoint - model->high_voltages.isolation_neg_raw) * (4.096f/32768);
+        float r = vpos / vneg;
+        // Cap at 1Gohm
+        model->high_voltages.isolation_resistance_ohms = 10000000 * fminf(r / fmaxf(fabsf(1.0f - r), 0.009f), 100.0f);
+    }
+
     // INA228 current and charge readings
     
     //if((timestep() & 0x7) == 0) {
@@ -358,18 +374,15 @@ void bms_tick() {
 
         cal_midpoint += (get_temperature_c_times10() - cal_midpoint_temp_dC) * 0.28f; //compensate for temp drift
 
-        float vp = ads1115_float_sample(4, 1.0f);
-        float vn = ads1115_float_sample(5, 1.0f);
+        float vp = model.high_voltages.isolation_pos_raw;
+        float vn = model.high_voltages.isolation_neg_raw;
         debug_printf("midpoint is %1.1f | ", (vp + vn)/2.0f);
 
         float vpos = (vp - cal_midpoint) * (4.096f/32768);
         float vneg = (cal_midpoint - vn) * (4.096f/32768);
-        float r = vpos / vneg;
-        // Cap at 1Gohm
-        float r_iso = 10000000 * fminf(r / fmaxf(fabsf(1.0f - r), 0.009f), 100.0f);
 
         debug_printf("Vpos: %1.3f V | Vneg: %1.3f V | Riso: %1.2f Mohm\n",
-            vpos, vneg, r_iso/1000000
+            vpos, vneg, model.high_voltages.isolation_resistance_ohms/1000000
         );
 
     }

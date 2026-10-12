@@ -113,6 +113,14 @@ typedef struct high_voltages {
     float fuse_drop;
     float fuse_drop_deviation;
     millis_t fuse_drop_millis;
+    // Isolation monitor: raw ADC counts of the battery+ and battery- isolation
+    // channels, and the resistance estimated from them (ohms, capped at 1 Gohm).
+    // The calibration midpoint is fixed in read_inputs(), so the resistance is
+    // only meaningful on boards it was calibrated for; the raw counts always are.
+    float isolation_pos_raw;
+    float isolation_neg_raw;
+    float isolation_resistance_ohms;
+    millis_t isolation_millis;
 } high_voltages_t;
 
 typedef struct inverter_outputs {
