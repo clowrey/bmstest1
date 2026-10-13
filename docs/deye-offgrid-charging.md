@@ -157,5 +157,8 @@ The Deye has two independent battery ports: BAT1 is ck1, BAT2 is ck0.
   DSP treats a battery port below 152 V, or below its shutdown voltage/SoC, as a system-wide
   shutdown. To take one battery out without that, keep its contactors closed and send charge and
   discharge limits of 0. Details: `Deye-Firmware/50K/notes/BatteryLowShutdown.md`.
+- **Contactor self-test failures while the inverter runs.** The Deye keeps an enabled battery
+  port at about pack voltage, so the BMS's "contactor open" check reads a welded contactor
+  (FATAL `CONTACTOR_POS_STUCK_CLOSED`). See [contactor-test-energized-port.md](contactor-test-energized-port.md).
 - **Don't stop a full battery by dropping the CCL to 0.** It forces the reported SoC to 100 % and
   removes the inverter's transient sink (see the F26 notes). Let the CVL do it.
