@@ -3,7 +3,7 @@
 **Status:** fixed in `bug-fix` (2026-10-12). See "The fix" below.
 
 - **What changed:** with both contactors commanded open, an output of at least 80 % of the battery
-  voltage now raises the warning `CONTACTOR_PORT_ENERGIZED` instead of a FATAL weld.
+  voltage now records the info event `CONTACTOR_PORT_ENERGIZED` instead of a FATAL weld.
 - **Hot-join:** for that start the BMS skips the weld test and precharges onto the energized port.
   Precharge must still succeed (≤ 16 V difference, ≤ 225 mA) before the main contactors close.
 - **A dead output** still runs the full weld test.
@@ -86,7 +86,7 @@ latch the FATAL weld anyway.
 - **Detecting an energized port:** in `TESTING_NEG_OPEN` / `TESTING_POS_OPEN`, both contactors are
   commanded open. If the output is ≥ `CONTACTORS_PORT_ENERGIZED_FRACTION` (0.8) × battery voltage,
   the port is energized from outside. A single welded contactor can't produce that.
-- **What it does then:** count `CONTACTOR_PORT_ENERGIZED` (warning, data = output mV), skip the
+- **What it does then:** count `CONTACTOR_PORT_ENERGIZED` (info, data = output mV), skip the
   remaining weld tests and go to `PRECHARGING_INIT`.
 - **Precharge still guards the close:** the main contactors only close once battery − output
   ≤ 16 V and the precharge current is ≤ 225 mA.
