@@ -153,5 +153,9 @@ The Deye has two independent battery ports: BAT1 is ck1, BAT2 is ck0.
   `bug-fix` branch firmware handles it. F58 cleared within seconds of updating ck1 (2026-10-12).
 - **Raising the CCL is not a charge risk** with this inverter: the end of charge is set by the
   voltage loop. Keep the BMS soft and hard limits sensible as the backstop.
+- **Opening one battery's contactors restarts the inverter** (or latches F56 without PV). The
+  DSP treats a battery port below 152 V, or below its shutdown voltage/SoC, as a system-wide
+  shutdown. To take one battery out without that, keep its contactors closed and send charge and
+  discharge limits of 0. Details: `Deye-Firmware/50K/notes/BatteryLowShutdown.md`.
 - **Don't stop a full battery by dropping the CCL to 0.** It forces the reported SoC to 100 % and
   removes the inverter's transient sink (see the F26 notes). Let the CVL do it.
