@@ -1,6 +1,16 @@
 # Contactor self-test fails while the Deye keeps its battery port energized
 
-**Status:** understood, **not fixed yet** (2026-10-12). Workaround below.
+**Status:** fixed in `bug-fix` 9c3676b (2026-10-12). ck0 has been flashed with it; ck1 hasn't
+yet, because flashing ck1 means another inverter restart.
+
+- **What changed:** with both contactors commanded open, an output of at least 80 % of the battery
+  voltage now raises the warning `CONTACTOR_PORT_ENERGIZED` instead of a FATAL weld.
+- **Retry:** the self-test waits 20 s and runs again, up to 30 times. After that it judges the
+  contactors as before.
+- **A dead output** still detects a weld immediately.
+
+A battery that already latched FAULT still needs a controller reboot. Run alone doesn't leave the
+FAULT state.
 
 ## Symptom
 
@@ -66,7 +76,7 @@ The result depends on timing, which is why the same battery sometimes passes and
 - **Avoid opening a battery's contactors while the inverter is running.** Opening them also
   triggers the Deye's low-battery restart (see `deye-offgrid-charging.md`).
 
-## Proposed fix (not implemented)
+## The fix (as implemented)
 
 Tell an externally energized port apart from a welded contactor:
 
