@@ -301,6 +301,35 @@ static void test_energized_port_skips_weld_test(void **state) {
     assert_int_equal(get_event_count(ERR_CONTACTOR_POS_STUCK_CLOSED), welds_before);
     assert_int_equal(get_event_count(ERR_CONTACTOR_PORT_ENERGIZED), energized_before + 1);
     assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_PRECHARGING_INIT);
+    // The later "still closed" check must tolerate the pos channel's small
+    // offset once closed, as it does after a normal (dead-port) test
+    assert_float_equal(model.contactor_sm.pre_close_pos_contactor_voltage, 388.0f, 0.01f);
+}
+
+// After a hot-join the contactors must stay CLOSED even though the pos channel
+// reads a few volts (seen on ck0: -3.2 V with the contactor closed)
+static void test_hot_join_stays_closed(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    model.contactor_sm.state = CONTACTORS_STATE_CLOSED;
+    model.contactor_sm.last_transition_time = stored_millis64;
+    model.contactor_sm.pre_close_pos_contactor_voltage = 388.0f; // as set by the hot-join
+    model.high_voltages.battery = 388.8f;
+    model.high_voltages.output = 384.0f;
+    model.high_voltages.pos_contactor = -3.2f;
+    model.high_voltages.neg_contactor = 0.2f;
+#if BMS_BOARD == BMS_BOARD_REV1
+    model.high_voltages.link = 382.5f;
+    model.high_voltages.fuse_drop = 1.0f;
+#endif
+
+    expect_value(contactors_set_pos_pre_neg, pos, true);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, true);
+    tick_sm(&model, 2500);
+
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_CLOSED);
 }
 
 // A dead output (no inverter energizing it) still detects a weld immediately
@@ -510,6 +539,7 @@ int main(void) {
 #endif
         cmocka_unit_test(test_pos_weld_failure_detection),
         cmocka_unit_test(test_energized_port_skips_weld_test),
+        cmocka_unit_test(test_hot_join_stays_closed),
         cmocka_unit_test(test_dead_port_weld_still_detected),
         cmocka_unit_test(test_open_request_from_closed),
         cmocka_unit_test(test_delayed_open_request_from_closed),

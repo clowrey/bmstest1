@@ -338,7 +338,12 @@ static bool hot_join_energized_port(bms_model_t *model) {
     count_bms_event(ERR_CONTACTOR_PORT_ENERGIZED, (uint64_t)(int64_t)(model->high_voltages.output * 1000));
     debug_printf("Output %1.1f V with contactors open: port energized externally, skipping weld test\n",
                  model->high_voltages.output);
-    contactor_sm->pre_close_pos_contactor_voltage = model->high_voltages.pos_contactor;
+    // The "still closed" check accepts a pos contactor reading below half of
+    // this. On a dead port the test stores about the pack voltage here; the
+    // energized-port reading is only a few volts (and can carry the channel's
+    // offset), which would make a closed contactor look open, so use the
+    // battery voltage the normal path would have seen.
+    contactor_sm->pre_close_pos_contactor_voltage = model->high_voltages.battery;
     state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_PRECHARGING_INIT);
     return true;
 }
