@@ -135,7 +135,8 @@ typedef enum {
     /* by the HMI, so inserting mid-list breaks its decoding */ \
     X(LINK_VOLTAGE_MISMATCH, LEVEL_WARNING, 0)                  \
     X(FUSE_VOLTAGE_DROP_HIGH, LEVEL_WARNING, 0)                 \
-    X(ISOLATION_ASYMMETRY, LEVEL_WARNING, 0)
+    X(ISOLATION_ASYMMETRY, LEVEL_WARNING, 0)                    \
+    X(CONTACTOR_PORT_ENERGIZED, LEVEL_WARNING, 0)
 
 typedef enum {
 #define X(name, _1, _2) ERR_##name,

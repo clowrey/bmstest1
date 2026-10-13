@@ -311,6 +311,36 @@ bool confirm_contactors_staying_closed(const bms_model_t *model) {
     return ret;
 }
 
+// An inverter can hold its battery port at about pack voltage while our
+// contactors are open (a Deye HV keeps an enabled battery port energized). A
+// single welded contactor can't put that voltage across the output with the
+// other one open, so this means "energized from outside", not "welded".
+static bool output_energized_externally(const bms_model_t *model) {
+    if(!millis_recent_enough(model->high_voltages.output_millis, OUTPUT_VOLTAGE_STALE_THRESHOLD_MS) ||
+       !millis_recent_enough(model->high_voltages.battery_millis, BATTERY_VOLTAGE_STALE_THRESHOLD_MS)) {
+        return false;
+    }
+    return model->high_voltages.battery > 0.0f &&
+           fabsf(model->high_voltages.output) >= model->high_voltages.battery * CONTACTORS_PORT_ENERGIZED_FRACTION;
+}
+
+// Called where the self-test checks that both contactors are open. If the port
+// is energized from outside, the "open" checks can't be trusted: wait and test
+// again (a limited number of times) instead of reporting a weld.
+static bool defer_open_test_for_energized_port(bms_model_t *model) {
+    contactors_sm_t *contactor_sm = &(model->contactor_sm);
+    if(!output_energized_externally(model) ||
+       contactor_sm->port_energized_retries >= CONTACTORS_PORT_ENERGIZED_MAX_RETRIES) {
+        return false;
+    }
+    contactor_sm->port_energized_retries++;
+    count_bms_event(ERR_CONTACTOR_PORT_ENERGIZED, (uint64_t)(int64_t)(model->high_voltages.output * 1000));
+    debug_printf("Output %1.1f V with contactors open: port energized externally, retrying test (%u)\n",
+                 model->high_voltages.output, contactor_sm->port_energized_retries);
+    state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_TESTING_FAILED);
+    return true;
+}
+
 void contactor_sm_tick(bms_model_t *model) {
     contactors_sm_t *contactor_sm = &(model->contactor_sm);
 
@@ -319,6 +349,7 @@ void contactor_sm_tick(bms_model_t *model) {
 
     // React to open requests immediately
     if(model->contactor_req == CONTACTORS_REQUEST_OPEN || model->contactor_req == CONTACTORS_REQUEST_FORCE_OPEN) {
+        contactor_sm->port_energized_retries = 0;
         switch(contactor_sm->state) {
             case CONTACTORS_STATE_PRECHARGING_INIT:
             case CONTACTORS_STATE_PRECHARGING:
@@ -440,7 +471,9 @@ void contactor_sm_tick(bms_model_t *model) {
             contactors_set_pos_pre_neg(false, false, false);
 
             if(state_timeout((sm_t*)contactor_sm, CONTACTORS_TEST_WAIT_MS)) {
-                if(confirm_contactor_pos_and_neg_seems_open(model)) {
+                if(defer_open_test_for_energized_port(model)) {
+                    // port energized from outside, test again later
+                } else if(confirm_contactor_pos_and_neg_seems_open(model)) {
                     // passed
                     state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_TESTING_NEG_CLOSED);
                 } else {
@@ -481,7 +514,9 @@ void contactor_sm_tick(bms_model_t *model) {
             contactors_set_pos_pre_neg(false, false, false);
 
             if(state_timeout((sm_t*)contactor_sm, CONTACTORS_TEST_WAIT_MS)) {
-                if(confirm_contactor_pos_and_neg_seems_open(model)) {
+                if(defer_open_test_for_energized_port(model)) {
+                    // port energized from outside, test again later
+                } else if(confirm_contactor_pos_and_neg_seems_open(model)) {
                     // all tests passed
                     // store pre-close voltage reading for later comparison
                     contactor_sm->pre_close_pos_contactor_voltage = model->high_voltages.pos_contactor;
@@ -512,6 +547,7 @@ void contactor_sm_tick(bms_model_t *model) {
             if(state_timeout((sm_t*)contactor_sm, CONTACTORS_TEST_WAIT_MS)) {
                 if(confirm_contactor_pos_seems_closed(model)) {
                     // all tests passed, go to precharging
+                    contactor_sm->port_energized_retries = 0;
                     state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_PRECHARGING_INIT);
                 } else {
                     // fault detected

@@ -276,6 +276,84 @@ static void test_pos_weld_failure_detection(void **state) {
     assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_FAILED);
 }
 
+// The inverter holds the output at about pack voltage while both contactors are
+// open: the open check would read "stuck closed", so the test must retry
+// instead of raising the FATAL weld event.
+static void test_energized_port_defers_weld_check(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    model.contactor_sm.state = CONTACTORS_STATE_TESTING_POS_OPEN;
+    model.contactor_sm.last_transition_time = stored_millis64;
+    model.high_voltages.battery = 388.0f;
+    model.high_voltages.output = 385.0f;
+    model.high_voltages.pos_contactor = 0.5f; // looks closed
+    model.high_voltages.neg_contactor = 2.9f; // looks closed
+
+    int16_t welds_before = get_event_count(ERR_CONTACTOR_POS_STUCK_CLOSED);
+    int16_t energized_before = get_event_count(ERR_CONTACTOR_PORT_ENERGIZED);
+
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+    tick_sm(&model, 2100);
+
+    assert_int_equal(get_event_count(ERR_CONTACTOR_POS_STUCK_CLOSED), welds_before);
+    assert_int_equal(get_event_count(ERR_CONTACTOR_PORT_ENERGIZED), energized_before + 1);
+    assert_int_equal(model.contactor_sm.port_energized_retries, 1);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_FAILED);
+}
+
+// After the retry budget is spent the weld is reported as before
+static void test_energized_port_retries_are_limited(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    model.contactor_sm.state = CONTACTORS_STATE_TESTING_NEG_OPEN;
+    model.contactor_sm.last_transition_time = stored_millis64;
+    model.contactor_sm.port_energized_retries = CONTACTORS_PORT_ENERGIZED_MAX_RETRIES;
+    model.high_voltages.battery = 388.0f;
+    model.high_voltages.output = 385.0f;
+    model.high_voltages.pos_contactor = 0.5f;
+    model.high_voltages.neg_contactor = 2.9f;
+
+    int16_t welds_before = get_event_count(ERR_CONTACTOR_POS_STUCK_CLOSED);
+
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+    tick_sm(&model, 2100);
+
+    assert_true(get_event_count(ERR_CONTACTOR_POS_STUCK_CLOSED) > welds_before ||
+                get_event_level(ERR_CONTACTOR_POS_STUCK_CLOSED) != LEVEL_NONE);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_FAILED);
+}
+
+// A dead output (no inverter energizing it) still detects a weld immediately
+static void test_dead_port_weld_still_detected(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    model.contactor_sm.state = CONTACTORS_STATE_TESTING_POS_OPEN;
+    model.contactor_sm.last_transition_time = stored_millis64;
+    model.high_voltages.battery = 388.0f;
+    model.high_voltages.output = 0.5f;
+    model.high_voltages.pos_contactor = 0.1f;
+    model.high_voltages.neg_contactor = 200.0f;
+
+    int16_t energized_before = get_event_count(ERR_CONTACTOR_PORT_ENERGIZED);
+
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+    tick_sm(&model, 2100);
+
+    assert_int_equal(get_event_count(ERR_CONTACTOR_PORT_ENERGIZED), energized_before);
+    assert_int_not_equal(get_event_level(ERR_CONTACTOR_POS_STUCK_CLOSED), LEVEL_NONE);
+    assert_int_equal(model.contactor_sm.port_energized_retries, 0);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_FAILED);
+}
+
 static void test_open_request_from_closed(void **state) {
     (void) state;
     bms_model_t model = {0};
@@ -458,6 +536,9 @@ int main(void) {
         cmocka_unit_test(test_precharge_failure_link_voltage),
 #endif
         cmocka_unit_test(test_pos_weld_failure_detection),
+        cmocka_unit_test(test_energized_port_defers_weld_check),
+        cmocka_unit_test(test_energized_port_retries_are_limited),
+        cmocka_unit_test(test_dead_port_weld_still_detected),
         cmocka_unit_test(test_open_request_from_closed),
         cmocka_unit_test(test_delayed_open_request_from_closed),
         cmocka_unit_test(test_force_open_request),

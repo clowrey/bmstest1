@@ -330,6 +330,14 @@
 #define CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV 2000
 // Min voltage across a contactor to consider it open
 #define CONTACTORS_OPEN_VOLTAGE_THRESHOLD_MV 3000 // was 5000
+// An inverter can keep its battery port energized while the contactors are open
+// (Deye HV). Output at or above this fraction of the battery voltage with both
+// contactors commanded open means "energized from outside", not welded: the
+// self-test waits CONTACTORS_FAILED_TEST_TIMEOUT_MS and runs again, up to
+// CONTACTORS_PORT_ENERGIZED_MAX_RETRIES times, before judging the contactors
+// as usual. See docs/contactor-test-energized-port.md.
+#define CONTACTORS_PORT_ENERGIZED_FRACTION 0.8f
+#define CONTACTORS_PORT_ENERGIZED_MAX_RETRIES 30
 #if BMS_BOARD == BMS_BOARD_REV1
 // Rev1 measures directly across the pos (Link Positive) contactor, so the
 // tight generic thresholds apply
