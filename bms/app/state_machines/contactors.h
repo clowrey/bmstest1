@@ -11,7 +11,6 @@ typedef struct {
     bool enable_current;
     float pre_close_current_mA; // Current reading just before closing contactors
     float pre_close_pos_contactor_voltage; // Pos contactor voltage just before closing it
-    uint16_t port_energized_retries; // self-test retries because the output was energized from outside
 } contactors_sm_t;
 
 #define CONTACTORS_STATES(X)                           \

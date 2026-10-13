@@ -325,19 +325,21 @@ static bool output_energized_externally(const bms_model_t *model) {
 }
 
 // Called where the self-test checks that both contactors are open. If the port
-// is energized from outside, the "open" checks can't be trusted: wait and test
-// again (a limited number of times) instead of reporting a weld.
-static bool defer_open_test_for_energized_port(bms_model_t *model) {
+// is energized from outside, the "open" checks can't be trusted, and the port
+// won't go dead while the inverter holds it (a Deye keeps it at about pack
+// voltage - 3 V for as long as the BMS is on CAN). Skip the weld test for this
+// start and precharge onto the port: precharge still has to succeed (small
+// voltage difference, little current) before the main contactors close.
+static bool hot_join_energized_port(bms_model_t *model) {
     contactors_sm_t *contactor_sm = &(model->contactor_sm);
-    if(!output_energized_externally(model) ||
-       contactor_sm->port_energized_retries >= CONTACTORS_PORT_ENERGIZED_MAX_RETRIES) {
+    if(!output_energized_externally(model)) {
         return false;
     }
-    contactor_sm->port_energized_retries++;
     count_bms_event(ERR_CONTACTOR_PORT_ENERGIZED, (uint64_t)(int64_t)(model->high_voltages.output * 1000));
-    debug_printf("Output %1.1f V with contactors open: port energized externally, retrying test (%u)\n",
-                 model->high_voltages.output, contactor_sm->port_energized_retries);
-    state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_TESTING_FAILED);
+    debug_printf("Output %1.1f V with contactors open: port energized externally, skipping weld test\n",
+                 model->high_voltages.output);
+    contactor_sm->pre_close_pos_contactor_voltage = model->high_voltages.pos_contactor;
+    state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_PRECHARGING_INIT);
     return true;
 }
 
@@ -349,7 +351,6 @@ void contactor_sm_tick(bms_model_t *model) {
 
     // React to open requests immediately
     if(model->contactor_req == CONTACTORS_REQUEST_OPEN || model->contactor_req == CONTACTORS_REQUEST_FORCE_OPEN) {
-        contactor_sm->port_energized_retries = 0;
         switch(contactor_sm->state) {
             case CONTACTORS_STATE_PRECHARGING_INIT:
             case CONTACTORS_STATE_PRECHARGING:
@@ -471,8 +472,8 @@ void contactor_sm_tick(bms_model_t *model) {
             contactors_set_pos_pre_neg(false, false, false);
 
             if(state_timeout((sm_t*)contactor_sm, CONTACTORS_TEST_WAIT_MS)) {
-                if(defer_open_test_for_energized_port(model)) {
-                    // port energized from outside, test again later
+                if(hot_join_energized_port(model)) {
+                    // port energized from outside: weld test skipped, precharging
                 } else if(confirm_contactor_pos_and_neg_seems_open(model)) {
                     // passed
                     state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_TESTING_NEG_CLOSED);
@@ -514,8 +515,8 @@ void contactor_sm_tick(bms_model_t *model) {
             contactors_set_pos_pre_neg(false, false, false);
 
             if(state_timeout((sm_t*)contactor_sm, CONTACTORS_TEST_WAIT_MS)) {
-                if(defer_open_test_for_energized_port(model)) {
-                    // port energized from outside, test again later
+                if(hot_join_energized_port(model)) {
+                    // port energized from outside: weld test skipped, precharging
                 } else if(confirm_contactor_pos_and_neg_seems_open(model)) {
                     // all tests passed
                     // store pre-close voltage reading for later comparison
@@ -547,7 +548,6 @@ void contactor_sm_tick(bms_model_t *model) {
             if(state_timeout((sm_t*)contactor_sm, CONTACTORS_TEST_WAIT_MS)) {
                 if(confirm_contactor_pos_seems_closed(model)) {
                     // all tests passed, go to precharging
-                    contactor_sm->port_energized_retries = 0;
                     state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_PRECHARGING_INIT);
                 } else {
                     // fault detected

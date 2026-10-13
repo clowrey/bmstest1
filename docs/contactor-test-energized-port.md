@@ -1,13 +1,12 @@
 # Contactor self-test fails while the Deye keeps its battery port energized
 
-**Status:** fixed in `bug-fix` 9c3676b (2026-10-12). ck0 has been flashed with it; ck1 hasn't
-yet, because flashing ck1 means another inverter restart.
+**Status:** fixed in `bug-fix` (2026-10-12). See "The fix" below.
 
 - **What changed:** with both contactors commanded open, an output of at least 80 % of the battery
   voltage now raises the warning `CONTACTOR_PORT_ENERGIZED` instead of a FATAL weld.
-- **Retry:** the self-test waits 20 s and runs again, up to 30 times. After that it judges the
-  contactors as before.
-- **A dead output** still detects a weld immediately.
+- **Hot-join:** for that start the BMS skips the weld test and precharges onto the energized port.
+  Precharge must still succeed (≤ 16 V difference, ≤ 225 mA) before the main contactors close.
+- **A dead output** still runs the full weld test.
 
 A battery that already latched FAULT still needs a controller reboot. Run alone doesn't leave the
 FAULT state.
@@ -78,23 +77,25 @@ The result depends on timing, which is why the same battery sometimes passes and
 
 ## The fix (as implemented)
 
-Tell an externally energized port apart from a welded contactor:
+**First attempt (9c3676b):** wait and retry the test. This doesn't work with a Deye: as long as
+the BMS is on CAN, the inverter holds the port at about pack voltage − 3 V. That is its "CCL = 0"
+target, see `BMS_Limits_and_SOC.md`. The port never goes dead, so the retries would run out and
+latch the FATAL weld anyway.
 
-- With **both** contactors commanded open, a single welded contactor cannot put close to full pack
-  voltage across Out+/Out−. Only an external source can, or both contactors welded.
-- **If the output voltage is close to the pack voltage while both are commanded open,** treat it as
-  "port energized externally":
-  - don't raise `*_STUCK_CLOSED` / FATAL;
-  - wait (for example in `TESTING_FAILED` or a new `WAITING_PORT_DEAD` state) and retry the test,
-    rather than going to system FAULT.
-- **Keep real weld detection** for the case where the output is dead or floating, as now.
-- **Optionally,** skip precharge when the port is already within the precharge tolerance of the
-  pack. The inverter has effectively precharged it.
-- **Covered by host tests (`tests/test_contactors.c`):** energized port → retry and no FATAL; a
-  real weld (dead port) → still FATAL.
-
-Related: the planned **standby** request (limits 0, contactors closed) avoids both this and the
-Deye's restart when taking a battery offline.
+**Current fix: hot-join** (`hot_join_energized_port()` in `contactors.c`)
+- **Detecting an energized port:** in `TESTING_NEG_OPEN` / `TESTING_POS_OPEN`, both contactors are
+  commanded open. If the output is ≥ `CONTACTORS_PORT_ENERGIZED_FRACTION` (0.8) × battery voltage,
+  the port is energized from outside. A single welded contactor can't produce that.
+- **What it does then:** count `CONTACTOR_PORT_ENERGIZED` (warning, data = output mV), skip the
+  remaining weld tests and go to `PRECHARGING_INIT`.
+- **Precharge still guards the close:** the main contactors only close once battery − output
+  ≤ 16 V and the precharge current is ≤ 225 mA.
+- **Trade-off:** a double weld (both contactors stuck closed) would also look like an energized
+  port and go unnoticed on that start. The next start with a dead port runs the full test again.
+- **Tests (`tests/test_contactors.c`):**
+  - `test_energized_port_skips_weld_test`: energized port goes to `PRECHARGING_INIT`, no weld
+    event;
+  - `test_dead_port_weld_still_detected`: a dead output still raises the FATAL weld.
 
 ## Open questions
 
