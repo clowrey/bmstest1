@@ -97,6 +97,24 @@ latch the FATAL weld anyway.
     event;
   - `test_dead_port_weld_still_detected`: a dead output still raises the FATAL weld.
 
+## Field test, 2026-10-12 15:51 (ck0, bug-fix 3a31ee6)
+
+ck0 was stopped from its screen, then **Run** was pressed 4 s later while the inverter was
+running.
+
+1. **15:51:07 Stop:** contactors open. The Deye kept BAT2 energized and the BMS read 381 V on the
+   output.
+2. **15:51:11 Run:** `TST_PRE_CL` → `TST_NEG_OP`, then
+   `Output 381.3 V with contactors open: port energized externally, skipping weld test`, then
+   `PRECHARGING`. The difference was 6–8 V, which includes ck0's ~5 V output-channel offset.
+3. **15:51:14 `CLOSED`:** the contactors stayed closed for the rest of the capture (60 s+). The
+   positive-contactor channel read −3.3 V while closed, and the "still closed" check tolerated it.
+4. **The inverter didn't notice:** no fault, no restart, and the load stayed at 167–168 W. The
+   port never dropped, so the Deye's low-battery check (`BatteryLowShutdown.md`) never fired.
+
+So with this firmware, a quick Stop → Run on one battery is a hot restart that doesn't disturb
+the inverter.
+
 ## Open questions
 
 - How long the Deye keeps an enabled port energized after the battery disconnects. ck0's port
