@@ -33,6 +33,11 @@ static const uint32_t REINIT_LOG_INTERVAL_MS = 1000;
 // Written from the CAN callback (ISR context) and read from the main loop
 static volatile bool inverter_present = false;
 static volatile bool inverter_initialized = false;
+// The Deye 50K only counts the battery as identified once it has seen 0x250,
+// 0x290, 0x2D0, 0x3D0, 0x110, 0x150, 0x190 and 0x1D0; until then it keeps
+// repeating its identification request. Send 0x190 straight after the
+// identification sequence instead of waiting up to 60 s for the regular one.
+static bool alarm_frame_due = false;
 static int inverter_init_state = 0;
 static volatile uint32_t last_received_millis = 0;
 // Set by the main loop when a frame is queued while nothing was pending;
@@ -278,6 +283,7 @@ static void send_inverter_init_messages() {
 
     inverter_initialized = true;
     inverter_init_state = 0;
+    alarm_frame_due = true;
     timestep_1 = timestep() + 1;
     timestep_2 = timestep_1 + 1;
     timestep_3 = timestep_1 + 2;
@@ -425,6 +431,10 @@ void inverter_tick(inverter_outputs_t *outputs) {
     if(timestep_every_ms(100, &timestep_1)) {
         // send regular messages every 100ms
         send_110(outputs);
+        if(alarm_frame_due && send_190(outputs) >= 0) {
+            // First regular cycle after identifying
+            alarm_frame_due = false;
+        }
     }
     if(timestep_every_ms(1000, &timestep_2)) {
         // send regular messages every 1s (note: was 10s)
