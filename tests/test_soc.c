@@ -338,6 +338,10 @@ static void test_inverter_restart_reidentifies(void **state) {
     for (int i = 0; i < 10; i++) inverter_step(true);
     assert_true(tx_log_count > 0);
     assert_int_equal(tx_log[0], 0x110);
+    // 0x190 goes out with the first 0x110 rather than up to 60 s later: the
+    // Deye only counts the battery as identified once it has seen it
+    assert_true(tx_log_count >= 2);
+    assert_int_equal(tx_log[1], 0x190);
 
     // RX silence path: frames are acknowledged (someone is on the bus) but the
     // inverter says nothing for longer than the RX timeout.
