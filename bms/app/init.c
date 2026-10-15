@@ -80,12 +80,14 @@ static void init_hw() {
         PIN_ISOSPI_TX_EN,
         PIN_ISOSPI_RX_HIGH
     );
+#ifdef BMS_ISOSNOOP
     isosnoop_setup(
         PIN_ISOSPI_RX_HIGH,
         PIN_ISOSNOOP_RX_DEBUG,
         PIN_ISOSPI_RX_AND,
         PIN_ISOSNOOP_TIMER_DISABLE
     );
+#endif
 }
 
 static void init_comms() {
