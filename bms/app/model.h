@@ -317,6 +317,10 @@ typedef struct bms_model {
     // (eg, due to a slow flash write). This is reset each tick.
     bool ignore_missed_deadline;
     bool isolation_zero_cal_pending; // set by the system SM, done in read_inputs()
+
+    // PCB revision detected from the strap at boot (app/board_id.h)
+    uint16_t board_id;
+    float board_id_counts;
     
   
 } bms_model_t;

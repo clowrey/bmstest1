@@ -101,6 +101,8 @@
 #define HMI_REG_PACK_POS_TO_CHASSIS    63 // float (V), battery+ relative to chassis
 #define HMI_REG_PACK_NEG_TO_CHASSIS    64 // float (V), battery- relative to chassis
 #define HMI_REG_ISOLATION_CHECK_AGE    65 // float (s) since the resistance was measured; 0 = live, NAN = not yet this boot
+#define HMI_REG_BOARD_REVISION         66 // uint16, PCB revision from the strap: major*10+minor (Rev1.3 = 13), 0 = Rev0, 0xFFFF = unknown
+#define HMI_REG_BOARD_STRAP_COUNTS     67 // float (12-bit ADC counts), revision strap reading with no pulls
 
 
 #define HMI_REG_CELL_VOLTAGES_START 0x100

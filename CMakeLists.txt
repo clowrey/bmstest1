@@ -28,6 +28,7 @@ include_directories(bms vendor/can2040/src)
 add_executable(bms
     bms/app/bms.c
     bms/app/isolation.c
+    bms/app/board_id.c
     bms/app/hardware_checks.c
     bms/app/init.c
     bms/app/model.c

@@ -136,7 +136,9 @@ typedef enum {
     X(LINK_VOLTAGE_MISMATCH, LEVEL_WARNING, 0)                  \
     X(FUSE_VOLTAGE_DROP_HIGH, LEVEL_WARNING, 0)                 \
     X(ISOLATION_ASYMMETRY, LEVEL_WARNING, 0)                    \
-    X(CONTACTOR_PORT_ENERGIZED, LEVEL_INFO, 0)
+    X(CONTACTOR_PORT_ENERGIZED, LEVEL_INFO, 0)                  \
+    /* PCB revision strap doesn't match the BMS_BOARD build */  \
+    X(BOARD_MISMATCH, LEVEL_FATAL, 0)
 
 typedef enum {
 #define X(name, _1, _2) ERR_##name,
