@@ -19,6 +19,55 @@ static void usb_force_reenumerate(void) {
 }
 #endif
 
+#ifdef BMS_USB_VBUS_SENSE
+// USB VBUS reaches PIN_USB_VBUS_SENSE through a 3.3k/5.1k divider. The chip's
+// D+ pull-up is only switched on while the host supplies VBUS, so a switched-off
+// host is never back-powered through D+. A reboot drops the pull-up with the
+// USB controller, so the host also sees every reboot.
+#define USB_VBUS_DEBOUNCE_US 50000
+
+static bool usb_vbus_connected;
+static bool usb_vbus_pending;
+static absolute_time_t usb_vbus_changed_at;
+
+static void usb_vbus_sense_init(void) {
+    gpio_init(PIN_USB_VBUS_SENSE);
+    gpio_set_dir(PIN_USB_VBUS_SENSE, GPIO_IN);
+    gpio_disable_pulls(PIN_USB_VBUS_SENSE);
+    sleep_us(100);
+
+    // The USB stack switches the pull-up on at init
+    usb_vbus_connected = gpio_get(PIN_USB_VBUS_SENSE);
+    if(!usb_vbus_connected) {
+        tud_disconnect();
+    }
+}
+
+static void usb_vbus_sense_poll(void) {
+    bool vbus = gpio_get(PIN_USB_VBUS_SENSE);
+    if(vbus == usb_vbus_connected) {
+        usb_vbus_pending = false;
+        return;
+    }
+    if(!usb_vbus_pending) {
+        usb_vbus_pending = true;
+        usb_vbus_changed_at = get_absolute_time();
+        return;
+    }
+    if(absolute_time_diff_us(usb_vbus_changed_at, get_absolute_time()) < USB_VBUS_DEBOUNCE_US) {
+        return;
+    }
+
+    usb_vbus_pending = false;
+    usb_vbus_connected = vbus;
+    if(vbus) {
+        tud_connect();
+    } else {
+        tud_disconnect();
+    }
+}
+#endif
+
 #include <stdio.h>
 
 #define MCU_CHECK_PIN 0
@@ -122,6 +171,9 @@ int main() {
     tud_disconnect();
     usb_force_reenumerate();
 #endif
+#ifdef BMS_USB_VBUS_SENSE
+    usb_vbus_sense_init();
+#endif
 
     sleep_ms(4000);
 
@@ -133,10 +185,6 @@ int main() {
         PIN_ISOSNOOP_RX_DEBUG,
         PIN_ISOSPI_RX_AND,
         PIN_ISOSNOOP_TIMER_DISABLE
-    );
-    isospi_scope_setup(
-        PIN_ISOSPI_RX_HIGH,
-        1
     );
 
     gpio_init(MCU_CHECK_PIN);
@@ -159,9 +207,9 @@ int main() {
 
     while(1) {
         supervisor_tick();
-
-        isosnoop_print_buffer();
-        //print_isospi_scope_output();
+#ifdef BMS_USB_VBUS_SENSE
+        usb_vbus_sense_poll();
+#endif
 
         sleep_ms(30);
     }

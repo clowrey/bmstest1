@@ -36,6 +36,18 @@ if(BMS_USB_EXTERNAL_PULLUP)
     add_compile_definitions(BMS_USB_EXTERNAL_PULLUP=1)
 endif()
 
+# Boards with USB VBUS wired to GPIO3 (J22 pin 2) through a 3.3k/5.1k divider.
+# The chip's D+ pull-up is then only switched on while the host supplies VBUS,
+# so a switched-off host is never back-powered through D+. Leave OFF on boards
+# without the divider, or USB never connects.
+option(BMS_USB_VBUS_SENSE "Board has USB VBUS sensed on GPIO3" OFF)
+if(BMS_USB_VBUS_SENSE)
+    if(BMS_USB_EXTERNAL_PULLUP)
+        message(FATAL_ERROR "BMS_USB_VBUS_SENSE and BMS_USB_EXTERNAL_PULLUP are alternatives")
+    endif()
+    add_compile_definitions(BMS_USB_VBUS_SENSE=1)
+endif()
+
 set(PICO_STDIO_USB_CONNECT_WAIT_TIMEOUT_MS 3000)
 
 # enable usb output, disable uart output
