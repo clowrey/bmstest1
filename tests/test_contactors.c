@@ -15,8 +15,9 @@
 // #define CONTACTORS_TEST_WAIT_MS 1000
 
 // Mock globals
-millis64_t stored_millis64 = 0;
-millis_t stored_millis = 0;
+// Time starts non-zero, as on the BMS (a zero timestamp means "no reading yet")
+millis64_t stored_millis64 = 1;
+millis_t stored_millis = 1;
 
 uint32_t time_us_32() { return stored_millis * 1000; }
 
@@ -58,7 +59,94 @@ void tick_sm(bms_model_t *model, uint32_t ms) {
 #endif
     model->current_millis = stored_millis;
 
+    // The supervisor is enabling the contactor drivers
+    model->supervisor.version = SUP_PROTOCOL_VERSION;
+    model->supervisor.state = SUP_STATE_ON;
+    model->supervisor_millis = stored_millis;
+
     contactor_sm_tick(model);
+}
+
+static void expect_all_open(void) {
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+}
+
+static void test_close_held_until_supervisor_enables(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+    clear_bms_event(ERR_SUPERVISOR_NOT_ENABLED);
+
+    model.contactor_req = CONTACTORS_REQUEST_CLOSE;
+
+    // No supervisor reply yet: stay open, keep the request
+    stored_millis += 100;
+    expect_all_open();
+    contactor_sm_tick(&model);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_OPEN);
+    assert_int_equal(model.contactor_req, CONTACTORS_REQUEST_CLOSE);
+    assert_int_equal(get_event_level(ERR_SUPERVISOR_NOT_ENABLED), LEVEL_WARNING);
+
+    // Supervisor replying but not enabled (still settling)
+    model.supervisor.version = SUP_PROTOCOL_VERSION;
+    model.supervisor.state = SUP_STATE_OFF;
+    model.supervisor.reasons = SUP_REASON_SETTLING;
+    model.supervisor_millis = stored_millis;
+    expect_all_open();
+    contactor_sm_tick(&model);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_OPEN);
+    assert_int_equal(model.contactor_req, CONTACTORS_REQUEST_CLOSE);
+
+    // Enabled: the self-test starts and the warning clears
+    expect_all_open();
+    tick_sm(&model, 100);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_PRE_CLOSED);
+    assert_int_equal(get_event_level(ERR_SUPERVISOR_NOT_ENABLED), LEVEL_NONE);
+}
+
+static void test_stale_supervisor_reply_holds_close(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    model.contactor_req = CONTACTORS_REQUEST_CLOSE;
+    model.supervisor.version = SUP_PROTOCOL_VERSION;
+    model.supervisor.state = SUP_STATE_ON;
+    stored_millis += 100;
+    model.supervisor_millis = stored_millis;
+    stored_millis += SUPERVISOR_REPLY_STALE_MS + 100;
+
+    expect_all_open();
+    contactor_sm_tick(&model);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_OPEN);
+    assert_int_equal(model.contactor_req, CONTACTORS_REQUEST_CLOSE);
+}
+
+static void test_supervisor_drop_while_closed_is_fatal(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+    clear_bms_event(ERR_SUPERVISOR_DISABLED_CONTACTORS);
+
+    model.contactor_sm.state = CONTACTORS_STATE_CLOSED;
+    model.high_voltages.pos_contactor = 0.1f;
+    model.high_voltages.neg_contactor = 0.1f;
+    expect_value(contactors_set_pos_pre_neg, pos, true);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, true);
+    tick_sm(&model, 100);
+    assert_int_equal(get_event_level(ERR_SUPERVISOR_DISABLED_CONTACTORS), LEVEL_NONE);
+
+    // The supervisor latches off
+    model.supervisor.state = SUP_STATE_LATCHED;
+    model.supervisor.latch_reasons = SUP_REASON_CELL_HIGH;
+    stored_millis += 100;
+    model.supervisor_millis = stored_millis;
+    expect_value(contactors_set_pos_pre_neg, pos, true);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, true);
+    contactor_sm_tick(&model);
+    events_tick();
+    assert_int_equal(get_event_level(ERR_SUPERVISOR_DISABLED_CONTACTORS), LEVEL_FATAL);
 }
 
 static void test_initial_state(void **state) {
@@ -532,6 +620,9 @@ int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_initial_state),
         cmocka_unit_test(test_close_request_to_testing_sequence),
+        cmocka_unit_test(test_close_held_until_supervisor_enables),
+        cmocka_unit_test(test_stale_supervisor_reply_holds_close),
+        cmocka_unit_test(test_supervisor_drop_while_closed_is_fatal),
         cmocka_unit_test(test_precharge_success),
         cmocka_unit_test(test_precharge_failure_timeout),
 #if BMS_BOARD == BMS_BOARD_REV1

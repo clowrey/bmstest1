@@ -2,9 +2,11 @@
 #include "app/estimators/ekf.h"
 #include "app/model.h"
 #include "app/state_machines/system.h"
+#include "drivers/bmb3y/bmb3y.h"
 #include "drivers/sensors/internal_adc.h"
 #include "drivers/sensors/ads1115.h"
 #include "drivers/sensors/ina228.h"
+#include "shared/cell_map.h"
 #include "sys/events/events.h"
 #include "sys/logging/logging.h"
 
@@ -105,6 +107,18 @@ static void cli_handle_command(const char *cmd) {
                      model.ekf.R, model.ekf.R0, model.ekf.R1, model.ekf.C1);
         debug_printf("EKF State: Ah_used=%.4f Ah, V_c1=%.4f V, Capacity=%.2f Ah\n",
            model.ekf.x[0], model.ekf.x[1], model.ekf.x[2]);
+    } else if(strcmp(cmd, "cells_raw") == 0) {
+        bmb3y_print_physical_cells();
+    } else if(strcmp(cmd, "supervisor") == 0) {
+        millis_t now = millis();
+        printf("Supervisor: %s, state %u reasons 0x%04x latch 0x%04x, v%u, map %08lx (ours %08lx)\n",
+            supervisor_contactors_enabled(&model) ? "ENABLED" : "disabled",
+            model.supervisor.state, model.supervisor.reasons, model.supervisor.latch_reasons,
+            model.supervisor.version, (unsigned long)model.supervisor.map_hash, (unsigned long)cell_map_hash());
+        printf("Supervisor: snooped %d-%d mV, %u cells ok, %lu scans, reply age %lu ms\n",
+            model.supervisor.cell_min_mV, model.supervisor.cell_max_mV, model.supervisor.cells_ok,
+            (unsigned long)model.supervisor.scans,
+            model.supervisor_millis ? (unsigned long)(now - model.supervisor_millis) : 0UL);
     } else if(strcmp(cmd, "adc") == 0) {
         // printf directly (not debug_printf) so the response is visible even
         // when the buffered logger is saturated by other errors

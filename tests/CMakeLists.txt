@@ -229,6 +229,27 @@ add_custom_target(coverage
     COMMENT "Run built tests and generate gcov coverage summary"
 )
 
+# Supervisor link, cell map and enable logic, for each pack profile
+foreach(profile IN ITEMS 1 2 3)
+    add_executable(test_supervisor_${profile}
+        test_supervisor.c
+        ../bms/shared/cell_map.c
+        ../bms/shared/supervisor_protocol.c
+        ../bms/drivers/bmb3y/crc.c
+        ../supervisor/cell_snoop.c
+        ../supervisor/supervisor_logic.c
+    )
+    target_compile_definitions(test_supervisor_${profile} PRIVATE BMS_PROFILE=${profile})
+    target_link_libraries(test_supervisor_${profile} PRIVATE cmocka)
+    target_include_directories(test_supervisor_${profile} PRIVATE
+        ${cmocka_SOURCE_DIR}/include
+        include
+        ../bms
+        ../supervisor
+    )
+    add_test(NAME test_supervisor_${profile} COMMAND ${MEMORY_CHECK} test_supervisor_${profile})
+endforeach()
+
 foreach(board_suffix IN ITEMS "" "_rev1")
     add_executable(test_isolation${board_suffix}
         test_isolation.c

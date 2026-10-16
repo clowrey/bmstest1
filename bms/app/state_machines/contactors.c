@@ -348,11 +348,35 @@ static bool hot_join_energized_port(bms_model_t *model) {
     return true;
 }
 
+static uint64_t supervisor_event_data(const bms_model_t *model) {
+    return (millis_recent_enough(model->supervisor_millis, SUPERVISOR_REPLY_STALE_MS) ? 0 : 0x1000000000000000)
+        | ((uint64_t)model->supervisor.state << 32)
+        | ((uint32_t)model->supervisor.latch_reasons << 16)
+        | model->supervisor.reasons;
+}
+
+static bool contactors_driven(int state) {
+    return state != CONTACTORS_STATE_OPEN
+        && state != CONTACTORS_STATE_TESTING_FAILED
+        && state != CONTACTORS_STATE_PRECHARGE_FAILED;
+}
+
 void contactor_sm_tick(bms_model_t *model) {
     contactors_sm_t *contactor_sm = &(model->contactor_sm);
 
     // By default, disallow current flow
     contactor_sm->enable_current = false;
+
+    // The supervisor only enables the contactor drivers while its own cell
+    // checks pass. If it cuts them while we're driving the contactors, they
+    // have dropped out under us.
+    if(contactors_driven(contactor_sm->state)) {
+        confirm(
+            supervisor_contactors_enabled(model),
+            ERR_SUPERVISOR_DISABLED_CONTACTORS,
+            supervisor_event_data(model)
+        );
+    }
 
     // React to open requests immediately
     if(model->contactor_req == CONTACTORS_REQUEST_OPEN || model->contactor_req == CONTACTORS_REQUEST_FORCE_OPEN) {
@@ -386,7 +410,23 @@ void contactor_sm_tick(bms_model_t *model) {
     switch(contactor_sm->state) {
         case CONTACTORS_STATE_OPEN:
             contactors_set_pos_pre_neg(false, false, false);
-            if(model->contactor_req == CONTACTORS_REQUEST_CLOSE) {
+
+            bool closing_requested = (
+                model->contactor_req == CONTACTORS_REQUEST_CLOSE ||
+                model->contactor_req == CONTACTORS_REQUEST_CALIBRATE ||
+                model->contactor_req == CONTACTORS_REQUEST_CALIBRATE_ONLY_NEG
+            );
+            // Hold off closing (leaving the request pending) until the
+            // supervisor enables the contactor drivers
+            bool held_by_supervisor = !confirm(
+                !closing_requested || supervisor_contactors_enabled(model),
+                ERR_SUPERVISOR_NOT_ENABLED,
+                supervisor_event_data(model)
+            );
+
+            if(held_by_supervisor) {
+                // waiting for the supervisor
+            } else if(model->contactor_req == CONTACTORS_REQUEST_CLOSE) {
                 model->contactor_req = CONTACTORS_REQUEST_NULL;
 
                 if(confirm_battery_is_healthy(model)) {

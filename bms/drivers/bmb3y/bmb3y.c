@@ -6,10 +6,12 @@
 #include "sys/events/events.h"
 #include "sys/logging/logging.h"
 #include "drivers/isospi/isospi_master.h"
+#include "shared/cell_map.h"
 
 #include "pico/stdlib.h"
 
 #include <stdint.h>
+#include <stdio.h>
 
 const uint8_t CELLS_PER_MODULE = 15;
 const uint8_t CELLS_PER_BANK = 3;
@@ -189,7 +191,36 @@ static const uint16_t SHORT_READ_COMMANDS[] = {
     BMB3Y_CMD_READ_E_SHORT
 };
 
+// Every channel's last reading, populated or not (for checking the cell map)
+static int16_t physical_cell_voltages_mV[CELL_MAP_CHANNELS];
+
+void bmb3y_print_physical_cells(void) {
+    // Present channels are marked with *, and NOT_READ means no valid reading
+    for(int module=0; module<CELL_MAP_MODULES; module++) {
+        printf("BMB %d:", module);
+        for(int cell=0; cell<CELL_MAP_CELLS_PER_MODULE; cell++) {
+            int physical_index = module * CELL_MAP_CELLS_PER_MODULE + cell;
+            int16_t mV = physical_cell_voltages_mV[physical_index];
+            char mark = cell_map_is_present(physical_index) ? '*' : ' ';
+            if(mV == CELL_MV_NOT_READ) {
+                printf(" %c----", mark);
+            } else {
+                printf(" %c%4d", mark, mV);
+            }
+        }
+        printf("\n");
+    }
+}
+
 bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
+    static bool physical_cells_cleared = false;
+    if(!physical_cells_cleared) {
+        for(int i=0; i<CELL_MAP_CHANNELS; i++) {
+            physical_cell_voltages_mV[i] = CELL_MV_NOT_READ;
+        }
+        physical_cells_cleared = true;
+    }
+
     uint8_t rx_buf[72];
     uint32_t cmd = READ_COMMANDS[bank_index];
 #ifdef BMS_ISOSNOOP
@@ -208,8 +239,6 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
     //     return false;
     // }
 
-    uint8_t cell_offset = bank_index * 3;
-    uint32_t cell_presence_mask[] = CELL_PRESENCE_MASK;
     bool crc_ok = true;
 
     for(int module=0; module<NUM_MODULE_VOLTAGES; module++) {
@@ -242,45 +271,22 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
 
         // Go through each cell (three per bank)
         for(int cell=0; cell<3; cell++) {
-            int physical_index = (module * 15) + cell_offset + cell;
-
             // Physical index is the channel number of the cell on the BMBs,
             // however not every channel is populated.
+            int physical_index = cell_map_physical_index(module, bank_index, cell);
 
-            // Logical index is the actual cell number (with no gaps).
-
-            // To calculate logical from physical, we need to count how many
-            // bits are set in the cell presence mask up to the physical index.
-
-            uint8_t logical_index = 0;
-            // Calculate which presence mask word the physical index is in
-            int word_offset = physical_index / 32;
-            // Is this cell actually present according to the presence mask?
-            if((cell_presence_mask[word_offset] & (1U << (physical_index % 32))) == 0) {
-                // Not present, skip
-                continue;
-            }
-            // Count all the bits in previous presence mask words
-            for(int word=0; word<word_offset; word++) {
-                logical_index += __builtin_popcount(cell_presence_mask[word]);
-            }
-            // Count the bits in the presence mask word up to the physical index
-            logical_index += __builtin_popcount(cell_presence_mask[word_offset] & ((1 << (physical_index % 32)) - 1));
-
-            uint16_t voltage = 
+            uint16_t voltage =
                 (uint16_t)(rx_buf[module * 9 + cell * 2]) |
                 (uint16_t)(rx_buf[module * 9 + cell * 2 + 1] << 8);
 
-            int16_t converted = 0;
+            int16_t converted = cell_raw_to_mV(voltage);
+            physical_cell_voltages_mV[physical_index] = converted;
 
-            if(voltage == 0xFFFF) {
-                // A non-existent cell
-                converted = -1;
-            } else if(voltage == 0) {
-                // Record as 1mV to distinguish from unmeasured
-                converted = 1;
-            } else {
-                converted = (voltage * 2) / 25;
+            // Logical index is the actual cell number (with no gaps).
+            int logical_index = cell_map_logical_index(physical_index);
+            if(logical_index < 0) {
+                // Not present, skip
+                continue;
             }
 
             model->raw_cell_voltages_mV[logical_index] = converted;

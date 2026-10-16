@@ -68,6 +68,8 @@ add_executable(bms
     bms/app/state_machines/contactors.c
     bms/app/state_machines/system.c
     bms/lib/sampler.c
+    bms/shared/cell_map.c
+    bms/shared/supervisor_protocol.c
     vendor/can2040/src/can2040.c
     vendor/littlefs/lfs.c
     vendor/littlefs/lfs_util.c
