@@ -66,6 +66,7 @@ typedef struct {
     bool scanning;
     int16_t scan[CELL_MAP_CHANNELS];
     int16_t bms_mV;
+    uint8_t extra_flags; // added to the BMS status flags
     bool enabled;
 } sim_t;
 
@@ -86,6 +87,7 @@ static void sim_run(sim_t *sim, uint32_t ms) {
         if(sim->bms_running) {
             sim->bms_uptime += STATUS_PERIOD_MS;
             sup_bms_status_t status = good_status(sim->bms_uptime, sim->bms_mV);
+            status.flags |= sim->extra_flags;
             sup_logic_on_status(&sim->logic, &status, sim->now);
         }
         if(sim->scanning && (sim->now % SCAN_PERIOD_MS) < STATUS_PERIOD_MS) {
@@ -602,20 +604,44 @@ static void test_bms_restart_while_enabled_rechecks(void **state) {
     sim_enable(&sim);
 }
 
-static void test_scans_stopping_latches(void **state) {
+static void stop_scans_until_dropped(sim_t *sim) {
+    uint32_t last_scan = sim->logic.scan_millis;
+
+    // eg. the BMB chain unplugged: the snooper sees no traffic at all
+    sim->scanning = false;
+    sim_run(sim, SUPERVISOR_SCAN_STALE_DROP_MS - (sim->now - last_scan) - STATUS_PERIOD_MS);
+    assert_true(sim->enabled);
+    sim_run(sim, 2 * STATUS_PERIOD_MS);
+    assert_false(sim->enabled);
+    assert_int_equal(sim->logic.state, SUP_STATE_OFF);
+    assert_int_equal(sim->logic.latch_reasons, 0);
+    assert_true(sim->logic.reasons & SUP_REASON_NO_SCAN);
+}
+
+static void test_scans_stopping_drops_until_fresh_scans(void **state) {
     (void) state;
     sim_t sim;
     sim_init(&sim);
     sim_enable(&sim);
-    uint32_t last_scan = sim.logic.scan_millis;
+    stop_scans_until_dropped(&sim);
 
-    sim.scanning = false;
-    sim_run(&sim, SUPERVISOR_SCAN_STALE_DROP_MS - (sim.now - last_scan) - STATUS_PERIOD_MS);
-    assert_true(sim.enabled);
-    sim_run(&sim, 2 * STATUS_PERIOD_MS);
+    // Plugged back in: needs a fresh run of good scans, no BMS restart
+    sim.scanning = true;
+    sim_run(&sim, SCAN_PERIOD_MS);
     assert_false(sim.enabled);
-    assert_int_equal(sim.logic.state, SUP_STATE_LATCHED);
-    assert_int_equal(sim.logic.latch_reasons, SUP_REASON_SCAN_STALE);
+    assert_true(sim.logic.reasons & SUP_REASON_SETTLING);
+    sim_enable(&sim);
+}
+
+static void test_slow_mode_does_not_extend_scan_timeout(void **state) {
+    (void) state;
+    sim_t sim;
+    sim_init(&sim);
+    sim_enable(&sim);
+
+    // The BMS claiming slow mode (41s between scans) doesn't buy more time
+    sim.extra_flags = SUP_BMS_FLAG_SLOW_MODE;
+    stop_scans_until_dropped(&sim);
 }
 
 static void test_delays_are_twice_the_bms(void **state) {
@@ -649,7 +675,8 @@ int main(void) {
         cmocka_unit_test(test_brief_cell_fault_does_not_latch),
         cmocka_unit_test(test_heartbeat_loss_drops_then_recovers),
         cmocka_unit_test(test_bms_restart_while_enabled_rechecks),
-        cmocka_unit_test(test_scans_stopping_latches),
+        cmocka_unit_test(test_scans_stopping_drops_until_fresh_scans),
+        cmocka_unit_test(test_slow_mode_does_not_extend_scan_timeout),
         cmocka_unit_test(test_delays_are_twice_the_bms),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

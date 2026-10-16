@@ -497,6 +497,13 @@ static bool should_stop(bms_model_t *model) {
 static bool should_use_slow_mode(bms_model_t *model) {
     // Determine whether we should enter slow mode to reduce battery self-discharge.
 
+    if(model->system_sm.state == SYSTEM_STATE_OPERATING ||
+       model->contactor_sm.state != CONTACTORS_STATE_OPEN) {
+        // Never while the contactors may close: the supervisor needs fresh
+        // scans to keep the contactor drivers enabled
+        return false;
+    }
+
     if(model->system_sm.state == SYSTEM_STATE_INACTIVE && 
        state_time(&model->system_sm) > 60000 && 
        (model->cell_voltages_millis > 0 && model->cell_voltage_min_mV < get_minimum_balancing_voltage_mV(model))) {

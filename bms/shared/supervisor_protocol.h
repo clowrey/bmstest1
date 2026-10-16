@@ -55,7 +55,6 @@ typedef enum {
 #define SUP_REASON_BMS_DISAGREE  0x0080 // BMS min/max missing or don't match ours
 #define SUP_REASON_SETTLING      0x0100 // not enough consecutive good scans yet
 #define SUP_REASON_ABSENT_READS  0x0200 // an unpopulated channel reads like a cell
-#define SUP_REASON_SCAN_STALE    0x0400 // scans stopped while enabled
 
 typedef struct {
     uint8_t version;

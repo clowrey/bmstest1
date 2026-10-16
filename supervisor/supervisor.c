@@ -177,7 +177,6 @@ static void print_reasons(uint16_t reasons) {
         { SUP_REASON_BMS_DISAGREE, "bms-disagree" },
         { SUP_REASON_SETTLING, "settling" },
         { SUP_REASON_ABSENT_READS, "absent-channel-reads" },
-        { SUP_REASON_SCAN_STALE, "scan-stale" },
     };
     if(reasons == 0) {
         printf(" none");

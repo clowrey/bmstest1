@@ -10,11 +10,11 @@
 //  - the BMS's own cell min/max agreeing with the snooped ones.
 //
 // Once enabled, the drivers are cut:
-//  - when the BMS stops sending status (hung, flashing, powered off), or
-//    restarts, and re-enabled once the checks pass again;
-//  - when a present cell stays out of range or unread, or scans stop, for
-//    twice as long as the BMS takes to open the contactors itself. This
-//    latches until the BMS restarts.
+//  - when the BMS stops sending status (hung, flashing, powered off) or
+//    restarts, or the scans stop, and re-enabled once the checks pass again;
+//  - when a present cell stays out of range or unread for twice as long as
+//    the BMS takes to open the contactors itself. This latches until the BMS
+//    restarts.
 
 #include "shared/cell_map.h"
 #include "shared/supervisor_protocol.h"

@@ -118,11 +118,15 @@ BMS's cell min/max agree with the snooped ones. The BMS holds off closing the
 contactors until the supervisor reports that it is enabled.
 
 Once enabled, the supervisor cuts the drivers if:
-- the BMS stops sending status for twice its watchdog timeout (it re-enables
-  once the BMS is back and the checks pass again);
-- a populated cell stays out of range or unread, or the scans stop, for twice
-  as long as the BMS takes to open the contactors itself. This latches until the
-  BMS restarts, so the BMS always gets to open the contactors first.
+- the BMS stops sending status for twice its watchdog timeout, or the scans
+  stop for twice as long as the BMS tolerates stale cell data (e.g. the BMB
+  chain unplugged). It re-enables once fresh scans check out again. The BMS's
+  slow mode doesn't extend this, so the BMS only uses slow mode while idle with
+  the contactors open;
+- a populated cell stays out of range or unread for twice as long as the BMS
+  takes to open the contactors itself. This latches until the BMS restarts.
+
+The doubled delays mean the BMS always gets to open the contactors first.
 
 Build the supervisor with the same `BMS_PROFILE` and `BMS_BOARD` as the BMS:
 

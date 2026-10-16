@@ -106,7 +106,7 @@ static int abs_int(int v) {
     return v < 0 ? -v : v;
 }
 
-static uint16_t blocking_reasons(const sup_logic_t *logic, uint32_t now, bool slow_mode) {
+static uint16_t blocking_reasons(const sup_logic_t *logic, uint32_t now) {
     uint16_t reasons = 0;
 
     if(!logic->have_status || (now - logic->status_millis) > SUPERVISOR_HEARTBEAT_ENABLE_MS) {
@@ -120,8 +120,7 @@ static uint16_t blocking_reasons(const sup_logic_t *logic, uint32_t now, bool sl
         }
     }
 
-    uint32_t fresh_ms = slow_mode ? CELL_VOLTAGE_STALE_THRESHOLD_SLOW_MS : CELL_VOLTAGE_STALE_THRESHOLD_MS;
-    if(!logic->have_scan || (now - logic->scan_millis) > fresh_ms) {
+    if(!logic->have_scan || (now - logic->scan_millis) > CELL_VOLTAGE_STALE_THRESHOLD_MS) {
         reasons |= SUP_REASON_NO_SCAN;
     }
     reasons |= logic->scan_reasons & SCAN_FAULT_REASONS;
@@ -144,8 +143,6 @@ static uint16_t blocking_reasons(const sup_logic_t *logic, uint32_t now, bool sl
 }
 
 bool sup_logic_tick(sup_logic_t *logic, uint32_t now) {
-    bool slow_mode = logic->have_status && (logic->status.flags & SUP_BMS_FLAG_SLOW_MODE);
-
     if(logic->bms_restarted) {
         // A restarted BMS starts with its contactors open; check everything
         // again from fresh scans, and give it a clean slate if we had latched
@@ -155,7 +152,7 @@ bool sup_logic_tick(sup_logic_t *logic, uint32_t now) {
         logic->latch_reasons = 0;
     }
 
-    uint16_t blocking = blocking_reasons(logic, now, slow_mode);
+    uint16_t blocking = blocking_reasons(logic, now);
 
     switch(logic->state) {
         case SUP_STATE_OFF:
@@ -163,21 +160,23 @@ bool sup_logic_tick(sup_logic_t *logic, uint32_t now) {
                 logic->state = SUP_STATE_ON;
             }
             break;
-        case SUP_STATE_ON: {
-            uint32_t stale_drop_ms = slow_mode ? SUPERVISOR_SCAN_STALE_DROP_SLOW_MS : SUPERVISOR_SCAN_STALE_DROP_MS;
+        case SUP_STATE_ON:
             if(logic->violating && (now - logic->violation_since) >= SUPERVISOR_CELL_FAULT_DROP_MS) {
                 // The BMS should long since have opened the contactors
                 logic->state = SUP_STATE_LATCHED;
                 logic->latch_reasons = logic->scan_reasons & SCAN_FAULT_REASONS;
-            } else if((now - logic->scan_millis) > stale_drop_ms) {
-                logic->state = SUP_STATE_LATCHED;
-                logic->latch_reasons = SUP_REASON_SCAN_STALE;
+            } else if((now - logic->scan_millis) > SUPERVISOR_SCAN_STALE_DROP_MS) {
+                // Scans stopped. The BMS's slow mode isn't trusted to excuse
+                // this (it only makes us more lenient), so the BMS doesn't use
+                // it while the contactors may close. Enable again once fresh
+                // scans check out.
+                logic->state = SUP_STATE_OFF;
+                logic->good_scans = 0;
             } else if(!logic->have_status || (now - logic->status_millis) > SUPERVISOR_HEARTBEAT_DROP_MS) {
                 // BMS hung or gone. When it comes back it has restarted.
                 logic->state = SUP_STATE_OFF;
             }
             break;
-        }
         case SUP_STATE_LATCHED:
             // Until the BMS restarts
             break;

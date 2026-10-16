@@ -407,10 +407,11 @@
 // to fall), so the BMS always gets to open them first.
 #define SUPERVISOR_CELL_FAULT_DROP_MS \
     (2 * (CELL_VOLTAGE_FAULT_ESCALATION_MS + CONTACTORS_FORCE_OPEN_TIMEOUT_MS))
+// Scans stopping cuts the drivers after the same doubled delay, without the
+// longer slow-mode allowance: the BMS only uses slow mode with the contactors
+// open, and the supervisor enables again once fresh scans arrive.
 #define SUPERVISOR_SCAN_STALE_DROP_MS \
     (2 * (CELL_VOLTAGE_STALE_THRESHOLD_MS + CELL_VOLTAGES_STALE_ESCALATION_MS + CONTACTORS_FORCE_OPEN_TIMEOUT_MS))
-#define SUPERVISOR_SCAN_STALE_DROP_SLOW_MS \
-    (2 * (CELL_VOLTAGE_STALE_THRESHOLD_SLOW_MS + CELL_VOLTAGES_STALE_ESCALATION_MS + CONTACTORS_FORCE_OPEN_TIMEOUT_MS))
 // Without a BMS status for this long, the BMS is taken to be hung or gone
 #define SUPERVISOR_HEARTBEAT_DROP_MS (2 * BMS_WATCHDOG_TIMEOUT_MS)
 
