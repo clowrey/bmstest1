@@ -7,7 +7,9 @@
 #include <stdio.h>
 
 #include "app/battery/pack_types.h"
+#include "app/model.h"
 #include "config/limits.h"
+#include "sys/events/events.h"
 #include "drivers/bmb3y/bmb3y.h"
 #include "drivers/bmb3y/crc.h"
 #include "sys/logging/logging.h"
@@ -191,18 +193,86 @@ static void test_cross_checks(void **state) {
 
 static void test_table_rules(void **state) {
     (void)state;
-    int rows = 0;
+    int rows = 0, custom_rows = 0;
     for(const pack_type_t *t; (t = pack_type_at(rows)) != NULL; rows++) {
-        // Chemistry is inferred from the parallel count
-        assert_int_equal(t->chemistry == LFP, t->parallel == 1);
         assert_int_equal(pack_type_index(t), rows);
+        if(t->custom) {
+            // From the profile: last, and only when it lists its IDs
+            custom_rows++;
+            assert_int_equal(t->series, NUM_CELLS);
+            assert_int_equal(t->chemistry, CHEMISTRY);
+            assert_int_equal(t->devices, NUM_MODULE_VOLTAGES);
+        } else {
+            // Chemistry is inferred from the parallel count
+            assert_int_equal(custom_rows, 0);
+            assert_int_equal(t->chemistry == LFP, t->parallel == 1);
+        }
         assert_int_equal(t->module_id_count == 0, t->module_ids == NULL);
         for(int i=0; i<t->module_id_count; i++) {
             assert_true(t->module_ids[i] < 0x800);
             assert_true(pack_types_id_known(t->module_ids[i]));
         }
     }
-    assert_int_equal(rows, 34);
+#ifdef CUSTOM_PACK_MODULE_IDS
+    assert_int_equal(custom_rows, 1);
+#else
+    assert_int_equal(custom_rows, 0);
+#endif
+    assert_int_equal(rows, 34 + custom_rows);
+}
+
+// A model whose first 'bmbs' BMBs all reported the same valid raw ID word
+static void model_with_ids(bms_model_t *m, int bmbs, uint16_t raw) {
+    extern bms_event_slot_t bms_event_slots[ERR_HIGHEST];
+    for(int i=0; i<ERR_HIGHEST; i++) {
+        bms_event_slots[i] = (bms_event_slot_t){0};
+    }
+    *m = (bms_model_t){ .pack_type_index = -1, .module_ids_millis = 1 };
+    m->module_ids_present_mask = (uint8_t)((1 << bmbs) - 1);
+    m->module_ids_valid_mask = m->module_ids_present_mask;
+    for(int i=0; i<bmbs; i++) {
+        m->module_ids_raw[i] = raw;
+    }
+}
+
+static void test_conflict_is_fatal(void **state) {
+    (void)state;
+    static bms_model_t m;
+    // 0x023 is a 108s1p LFP ID. On the default 96s NMC profile that's a
+    // conflict; on the Desk profile (its custom pack lists 0x023, with 1 BMB)
+    // eight BMBs are.
+    model_with_ids(&m, 8, 0x8023);
+    pack_types_classify(&m);
+    assert_int_equal(get_event_level(ERR_BMB_MODULE_ID_CONFLICT), LEVEL_FATAL);
+    assert_int_equal(get_event_level(ERR_BMB_MODULE_ID_CHECK_FAILED), LEVEL_NONE);
+    assert_int_equal(m.pack_type_index, -1);
+}
+
+static void test_classified_index(void **state) {
+    (void)state;
+    static bms_model_t m;
+#if BMS_PROFILE == BMS_DESK
+    // The desk's one BMB, from a 108s1p LFP pack, measuring its 15 cells
+    model_with_ids(&m, 1, 0x8023);
+#else
+    model_with_ids(&m, 8, 0xF804);
+#endif
+    pack_types_classify(&m);
+    assert_int_equal(get_event_level(ERR_BMB_MODULE_ID_CONFLICT), LEVEL_NONE);
+    assert_int_equal(get_event_level(ERR_BMB_MODULE_ID_UNKNOWN), LEVEL_NONE);
+    const pack_type_t *t = pack_type_at(m.pack_type_index);
+    assert_non_null(t);
+#if BMS_PROFILE == BMS_DESK
+    assert_true(t->custom);
+    assert_int_equal(t->series, 15);
+    assert_int_equal(t->chemistry, NMC);
+    assert_int_equal(t->devices, 1);
+#else
+    assert_false(t->custom);
+    assert_int_equal(t->series, 96);
+    assert_int_equal(t->parallel, 46);
+    assert_int_equal(t->temp_sensors, 16);
+#endif
 }
 
 int main(void) {
@@ -218,6 +288,8 @@ int main(void) {
         cmocka_unit_test(test_no_ids),
         cmocka_unit_test(test_cross_checks),
         cmocka_unit_test(test_table_rules),
+        cmocka_unit_test(test_conflict_is_fatal),
+        cmocka_unit_test(test_classified_index),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

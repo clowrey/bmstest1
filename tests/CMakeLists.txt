@@ -282,16 +282,22 @@ foreach(board_suffix IN ITEMS "" "_rev1")
     add_test(NAME test_board_id${board_suffix} COMMAND ${MEMORY_CHECK} test_board_id${board_suffix})
 endforeach()
 
-add_executable(test_pack_types
-    test_pack_types.c
-    ../bms/app/battery/pack_types.c
-    ../bms/drivers/bmb3y/crc.c
-    ../bms/sys/events/events.c
-)
-target_link_libraries(test_pack_types PRIVATE cmocka m)
-target_include_directories(test_pack_types PRIVATE
-    ${cmocka_SOURCE_DIR}/include
-    include
-    ../bms
-)
-add_test(NAME test_pack_types COMMAND ${MEMORY_CHECK} test_pack_types)
+# Also built for the Desk profile, a custom pack with its own module IDs
+foreach(pack_suffix "" "_desk")
+    add_executable(test_pack_types${pack_suffix}
+        test_pack_types.c
+        ../bms/app/battery/pack_types.c
+        ../bms/drivers/bmb3y/crc.c
+        ../bms/sys/events/events.c
+    )
+    if(pack_suffix STREQUAL "_desk")
+        target_compile_definitions(test_pack_types${pack_suffix} PRIVATE BMS_PROFILE=1)
+    endif()
+    target_link_libraries(test_pack_types${pack_suffix} PRIVATE cmocka m)
+    target_include_directories(test_pack_types${pack_suffix} PRIVATE
+        ${cmocka_SOURCE_DIR}/include
+        include
+        ../bms
+    )
+    add_test(NAME test_pack_types${pack_suffix} COMMAND ${MEMORY_CHECK} test_pack_types${pack_suffix})
+endforeach()

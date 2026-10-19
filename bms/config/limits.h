@@ -21,7 +21,9 @@
 #define NUM_MODULE_TEMPS 1
 #define NAMEPLATE_CAPACITY_AH 1
 #define INA228_SHUNT_CAL 3088
-    
+// Custom pack: its BMB comes from a 108s1p LFP pack but measures these 15 cells
+#define CUSTOM_PACK_MODULE_IDS { 0x023 }
+
 #elif BMS_PROFILE == BMS_BLUETESLA
     // for the 96-cell NMC pack:
 #define CHEMISTRY NMC
@@ -48,6 +50,13 @@
 #else
     #error "Unsupported BMS_PROFILE"
 #endif
+
+// A custom pack is built from stock BMBs whose module IDs describe the pack
+// they came from, so no stock pack type fits it and its BMS would raise a
+// fatal BMB_MODULE_ID_CONFLICT. Its profile lists the IDs its BMBs report as
+// CUSTOM_PACK_MODULE_IDS (e.g. { 0x023 }), which adds a pack type for it to the
+// table: NUM_CELLS series, CHEMISTRY, NUM_MODULE_VOLTAGES BMBs. The module
+// ID, cell count and BMB count checks then apply to it like any other pack.
 
 
 // PCB revision selection (orthogonal to the pack profile above)

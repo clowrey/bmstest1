@@ -26,6 +26,7 @@ typedef struct {
     uint8_t temp_sensors;
     const uint16_t *module_ids; // 11-bit IDs
     uint8_t module_id_count;    // 0 = "Disabled" (no IDs to match)
+    bool custom;                // built from the profile's CUSTOM_PACK_MODULE_IDS
 } pack_type_t;
 
 #define PACK_TYPE_MAX_CANDIDATES 4

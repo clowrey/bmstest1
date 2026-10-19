@@ -23,8 +23,9 @@
 #define R_SR PACK_RANGE_SR, false
 #define R_MR PACK_RANGE_MR, false
 #define R_LR PACK_RANGE_LR, false
-#define IDS(name) name, (uint8_t)(sizeof(name) / sizeof(name[0]))
-#define DISABLED NULL, 0
+#define ID_COUNT(name) (uint8_t)(sizeof(name) / sizeof(name[0]))
+#define IDS(name) name, ID_COUNT(name), false
+#define DISABLED NULL, 0, false
 
 static const uint16_t IDS_104S6P[] = { 0x020 };
 static const uint16_t IDS_96S10P[] = { 0x025 };
@@ -57,6 +58,9 @@ static const uint16_t IDS_108S1P_SR_B[] = { 0x03D };
 static const uint16_t IDS_108S1P_SR_C[] = { 0x048 };
 static const uint16_t IDS_108S1P_SR_D[] = { 0x048, 0x060 };
 static const uint16_t IDS_108S1P_SR_E[] = { 0x060 };
+#ifdef CUSTOM_PACK_MODULE_IDS
+static const uint16_t IDS_CUSTOM_PACK[] = CUSTOM_PACK_MODULE_IDS;
+#endif
 
 static const pack_type_t PACK_TYPES[] = {
     // series, parallel, chemistry, range, modules, devices, temps, IDs
@@ -94,6 +98,11 @@ static const pack_type_t PACK_TYPES[] = {
     { 108,  1, LFP, R_SR,  4, 8, 12, IDS(IDS_108S1P_SR_C) },
     { 108,  1, LFP, R_SR,  4, 8, 12, IDS(IDS_108S1P_SR_D) },
     { 108,  1, LFP, R_SR,  4, 8, 12, IDS(IDS_108S1P_SR_E) },
+#ifdef CUSTOM_PACK_MODULE_IDS
+    // This profile's own pack (config/limits.h)
+    { NUM_CELLS, 0, CHEMISTRY, PACK_RANGE_UNKNOWN, false, 0, NUM_MODULE_VOLTAGES, 0,
+      IDS_CUSTOM_PACK, ID_COUNT(IDS_CUSTOM_PACK), true },
+#endif
 };
 
 #define PACK_TYPE_COUNT ((int)(sizeof(PACK_TYPES) / sizeof(PACK_TYPES[0])))
@@ -287,18 +296,31 @@ bool pack_types_evaluate(const bms_model_t *model, pack_classification_t *result
     return true;
 }
 
+// e.g. "96s46p LR NMC, 16 temp sensors" or "15s custom NMC, 1 devices"
+static void format_topology(const pack_type_t *type, char *buf, size_t size) {
+    int n;
+    if(type->custom) {
+        n = snprintf(buf, size, "%us custom %s", type->series, pack_chemistry_name(type->chemistry));
+    } else {
+        n = snprintf(buf, size, "%us%up %s %s", type->series, type->parallel,
+            type->range_unconfirmed ? "range?" : pack_range_name(type->range),
+            pack_chemistry_name(type->chemistry));
+    }
+    if(type->modules && n >= 0 && (size_t)n < size) {
+        n += snprintf(buf + n, size - n, ", %u modules", type->modules);
+    }
+    if(type->devices && n >= 0 && (size_t)n < size) {
+        n += snprintf(buf + n, size - n, ", %u devices", type->devices);
+    }
+    if(type->temp_sensors && n >= 0 && (size_t)n < size) {
+        snprintf(buf + n, size - n, ", %u temp sensors", type->temp_sensors);
+    }
+}
+
 static void print_topology(const pack_type_t *type) {
-    printf("%us%up %s%s %s", type->series, type->parallel,
-        type->range_unconfirmed ? "" : pack_range_name(type->range),
-        type->range_unconfirmed ? "range?" : "",
-        pack_chemistry_name(type->chemistry));
-    if(type->modules) {
-        printf(", %u modules", type->modules);
-    }
-    if(type->devices) {
-        printf(", %u devices", type->devices);
-    }
-    printf(", %u temp sensors", type->temp_sensors);
+    char buf[64];
+    format_topology(type, buf, sizeof(buf));
+    printf("%s", buf);
 }
 
 static void print_ids(const uint16_t *ids, int count) {
@@ -345,10 +367,9 @@ void pack_types_classify(bms_model_t *model) {
             warning_printf("Module IDs: no valid ID (%d BMBs answered)\n", __builtin_popcount(model->module_ids_present_mask));
             break;
         case PACK_RESULT_CLASSIFIED: {
-            const pack_type_t *t = c.candidates[0];
-            info_printf("Pack type %d: %us%up %s %s, %u temp sensors (id 0x%03X)\n", pack_type_index(t),
-                t->series, t->parallel, t->range_unconfirmed ? "range?" : pack_range_name(t->range),
-                pack_chemistry_name(t->chemistry), t->temp_sensors, c.ids[0]);
+            char topology[64];
+            format_topology(c.candidates[0], topology, sizeof(topology));
+            info_printf("Pack type %d: %s (id 0x%03X)\n", pack_type_index(c.candidates[0]), topology, c.ids[0]);
             break;
         }
         case PACK_RESULT_AMBIGUOUS:

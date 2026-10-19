@@ -152,8 +152,9 @@ typedef enum {
     /* A module ID isn't in the pack type table (data: ID)   */ \
     X(BMB_MODULE_ID_UNKNOWN, LEVEL_INFO, 0)                     \
     /* Known module IDs, but no pack type has them all and   */ \
-    /* fits the profile (data: up to four IDs)               */ \
-    X(BMB_MODULE_ID_CONFLICT, LEVEL_WARNING, 0)
+    /* fits the profile: the BMS is built for another pack.  */ \
+    /* (data: up to four IDs). See CUSTOM_PACK_MODULE_IDS.   */ \
+    X(BMB_MODULE_ID_CONFLICT, LEVEL_FATAL, 0)
 
 typedef enum {
 #define X(name, _1, _2) ERR_##name,
