@@ -145,7 +145,15 @@ typedef enum {
     X(SUPERVISOR_NOT_ENABLED, LEVEL_WARNING, 0)                 \
     /* The supervisor cut the contactor drivers while the    */ \
     /* contactors were being driven                          */ \
-    X(SUPERVISOR_DISABLED_CONTACTORS, LEVEL_CRITICAL, 0)
+    X(SUPERVISOR_DISABLED_CONTACTORS, LEVEL_CRITICAL, 0)        \
+    /* BMB module ID failed its CRC or check bits            */ \
+    /* (data: failed slot mask, first bad raw word)          */ \
+    X(BMB_MODULE_ID_CHECK_FAILED, LEVEL_WARNING, 0)             \
+    /* A module ID isn't in the pack type table (data: ID)   */ \
+    X(BMB_MODULE_ID_UNKNOWN, LEVEL_INFO, 0)                     \
+    /* Known module IDs, but no pack type has them all and   */ \
+    /* fits the profile (data: up to four IDs)               */ \
+    X(BMB_MODULE_ID_CONFLICT, LEVEL_WARNING, 0)
 
 typedef enum {
 #define X(name, _1, _2) ERR_##name,

@@ -10,7 +10,7 @@
 #include "sys/logging/logging.h"
 #include "sys/events/events.h"
 
-bms_model_t model = {0};
+bms_model_t model = { .pack_type_index = -1 };
 
 static void model_process_temperatures(bms_model_t *model) {
     model->temperature_min = model->module_temperatures[0];

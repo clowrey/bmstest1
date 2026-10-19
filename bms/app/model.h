@@ -260,6 +260,14 @@ typedef struct bms_model {
 
     bool cell_voltage_slow_mode; // only request BMB data infrequently
 
+    // BMB module IDs (register 0x33), slot n = BMB n on the chain
+    uint16_t module_ids_raw[8]; // ID + check bits, as received
+    uint8_t module_ids_present_mask; // slots that answered
+    uint8_t module_ids_valid_mask; // slots that passed the CRC and check bits
+    millis_t module_ids_millis; // when they were last read (0 = never)
+    bool module_ids_read_requested; // read them again on the next idle BMB tick
+    int8_t pack_type_index; // classified pack type (app/battery/pack_types.h), -1 if none
+
     // Current limits (the lower of these limits will be used)
     uint16_t temp_charge_current_limit_dA; // in 0.1A units
     uint16_t temp_discharge_current_limit_dA; // in 0.1A units

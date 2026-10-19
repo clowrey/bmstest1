@@ -7,6 +7,7 @@
 #include "sys/logging/logging.h"
 #include "drivers/isospi/isospi_master.h"
 #include "shared/cell_map.h"
+#include "app/battery/pack_types.h"
 
 #include "pico/stdlib.h"
 
@@ -193,6 +194,10 @@ static const uint16_t SHORT_READ_COMMANDS[] = {
 
 // Every channel's last reading, populated or not (for checking the cell map)
 static int16_t physical_cell_voltages_mV[CELL_MAP_CHANNELS];
+static bool physical_cells_cleared = false;
+// BMBs that passed the CRC on every bank so far this read, and on the last full read
+static uint8_t cell_modules_ok_mask = 0;
+static int cell_modules_ok_count = -1;
 
 void bmb3y_print_physical_cells(void) {
     // Present channels are marked with *, and NOT_READ means no valid reading
@@ -213,7 +218,6 @@ void bmb3y_print_physical_cells(void) {
 }
 
 bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
-    static bool physical_cells_cleared = false;
     if(!physical_cells_cleared) {
         for(int i=0; i<CELL_MAP_CHANNELS; i++) {
             physical_cell_voltages_mV[i] = CELL_MV_NOT_READ;
@@ -240,6 +244,9 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
     // }
 
     bool crc_ok = true;
+    if(bank_index == 0) {
+        cell_modules_ok_mask = 0xFF;
+    }
 
     for(int module=0; module<NUM_MODULE_VOLTAGES; module++) {
         uint16_t module_crc = (uint16_t)(rx_buf[module * 9 + 6] << 8) | (uint16_t)(rx_buf[module * 9 + 7]);
@@ -266,6 +273,7 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
 #endif
             count_bms_event(ERR_BMB_CRC_MISMATCH, 0x0100000000000000 | ((uint64_t)bank_index << 48) | ((uint64_t)module << 40) | ((uint32_t)module_crc << 16) | calc_crc);
             crc_ok = false;
+            cell_modules_ok_mask &= (uint8_t)~(1 << module);
             continue;
         }
 
@@ -296,6 +304,14 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
                 store_cell_voltage(logical_index, converted);
             }
         }
+    }
+
+    if(bank_index == CELL_MAP_BANKS - 1) {
+        int count = 0;
+        for(int module=0; module<NUM_MODULE_VOLTAGES; module++) {
+            count += (cell_modules_ok_mask >> module) & 1;
+        }
+        cell_modules_ok_count = count;
     }
     return crc_ok;
 }
@@ -468,6 +484,191 @@ bool bmb3y_read_temperatures_blocking(bms_model_t *model) {
     return crc_ok;
 }
 
+// Lowest reading counted as a connected cell (an unpopulated channel reads ~0)
+#define LIVE_CHANNEL_MIN_mV 1000
+#define LIVE_CHANNEL_MAX_mV 5000
+
+int bmb3y_count_cell_modules(void) {
+    return cell_modules_ok_count;
+}
+
+int bmb3y_count_live_channels(void) {
+    if(!physical_cells_cleared) {
+        // No cell reading yet
+        return -1;
+    }
+    int count = 0;
+    for(int i=0; i<CELL_MAP_CHANNELS; i++) {
+        int16_t mV = physical_cell_voltages_mV[i];
+        if(mV != CELL_MV_NOT_READ && mV >= LIVE_CHANNEL_MIN_mV && mV <= LIVE_CHANNEL_MAX_mV) {
+            count++;
+        }
+    }
+    return count;
+}
+
+// Module IDs
+
+// Dump every module ID reply and both byte orders, until the bench check
+// (byte order, empty-slot value, which form answers) is settled
+#ifndef BMB3Y_MODULE_ID_DEBUG
+#define BMB3Y_MODULE_ID_DEBUG 1
+#endif
+
+// Send the 0x5555 test pattern before reading, in case register 0x33 only
+// answers after it (unconfirmed)
+#ifndef BMB3Y_MODULE_ID_SEND_PATTERN
+#define BMB3Y_MODULE_ID_SEND_PATTERN 0
+#endif
+
+static bool module_id_word_valid(uint16_t raw) {
+    return (raw >> BMB3Y_MODULE_ID_CHECK_SHIFT) == module_id_check_bits(raw & BMB3Y_MODULE_ID_MASK);
+}
+
+// An absent BMB is assumed to answer all 0xFF (or all 0x00); still to be
+// confirmed on a chain with fewer than 8 BMBs
+static bool module_id_slot_empty(const uint8_t *slot) {
+    bool all_ff = true, all_00 = true;
+    for(int i=0; i<4; i++) {
+        all_ff = all_ff && slot[i] == 0xFF;
+        all_00 = all_00 && slot[i] == 0x00;
+    }
+    return all_ff || all_00;
+}
+
+// Decode a module ID reply. The short form has 4 bytes per BMB (2 data, 2 CRC).
+// The long form has 5: the same plus the tag byte that starts the next slot,
+// which must echo the tag sent (0x00) and is covered by the CRC (hence the
+// 0x1000 initial value). Slot 0's tag is the last command byte, not received.
+// Returns true if any slot was valid.
+static bool bmb3y_decode_module_ids(bms_model_t *model, uint8_t *rx_buf, bool long_form) {
+    const int stride = long_form ? 5 : 4;
+    const uint16_t crc_init = long_form ? 0x1000 : 0x0010;
+
+    model->module_ids_present_mask = 0;
+    model->module_ids_valid_mask = 0;
+
+    for(int module=0; module<CELL_MAP_MODULES; module++) {
+        uint8_t *slot = &rx_buf[module * stride];
+        model->module_ids_raw[module] = 0;
+
+        if(module_id_slot_empty(slot)) {
+            continue;
+        }
+        model->module_ids_present_mask |= (uint8_t)(1 << module);
+
+        uint16_t raw = (uint16_t)slot[0] | (uint16_t)(slot[1] << 8);
+        model->module_ids_raw[module] = raw;
+
+#if BMB3Y_MODULE_ID_DEBUG
+        uint16_t swapped = (uint16_t)(raw << 8) | (uint16_t)(raw >> 8);
+        debug_printf("Module ID %s slot %d: %02X %02X %02X %02X LE 0x%04X chk %s, BE 0x%04X chk %s\n",
+            long_form ? "long" : "short", module, slot[0], slot[1], slot[2], slot[3],
+            raw, module_id_word_valid(raw) ? "OK" : "FAIL",
+            swapped, module_id_word_valid(swapped) ? "OK" : "FAIL");
+#endif
+
+        uint16_t module_crc = (uint16_t)(slot[2] << 8) | (uint16_t)(slot[3]);
+        uint16_t calc_crc = crc14(slot, 2, crc_init, module_crc);
+        if((module_crc & 0x3fff) != calc_crc) {
+            error_printf("Module ID CRC fail slot %d (%s): msg 0x%04X calc 0x%04X\n",
+                module, long_form ? "long" : "short", module_crc, calc_crc);
+            count_bms_event(ERR_BMB_CRC_MISMATCH, 0x0300000000000000 | ((uint64_t)long_form << 48) | ((uint64_t)module << 40) | ((uint32_t)module_crc << 16) | calc_crc);
+            continue;
+        }
+
+        if(long_form && module > 0 && rx_buf[module * stride - 1] != 0x00) {
+            error_printf("Module ID tag 0x%02X on slot %d\n", rx_buf[module * stride - 1], module);
+            continue;
+        }
+
+        if(module_id_word_valid(raw)) {
+            model->module_ids_valid_mask |= (uint8_t)(1 << module);
+        }
+    }
+
+    return model->module_ids_valid_mask != 0;
+}
+
+#if BMB3Y_MODULE_ID_DEBUG
+static void bmb3y_dump_reply(const char *name, const uint8_t *rx_buf, int len) {
+    debug_printf("Module ID %s reply:", name);
+    for(int i=0; i<len; i++) {
+        debug_printf(" %02X", rx_buf[i]);
+    }
+    debug_printf("\n");
+}
+#endif
+
+bool bmb3y_read_module_ids_blocking(bms_model_t *model) {
+    uint8_t rx_buf[40];
+
+    // The BMBs go idle ~5ms after a wakeup, so read straight away
+    bmb3y_send_super_wakeup();
+#if BMB3Y_MODULE_ID_SEND_PATTERN
+    bmb3y_send_command_blocking(BMB3Y_CMD_PATTERN_5555);
+#endif
+
+    bool ok = false;
+    if(bmb3y_short_command_get_data_blocking(BMB3Y_CMD_READ_MODULE_ID_SHORT, rx_buf, 32)) {
+#if BMB3Y_MODULE_ID_DEBUG
+        bmb3y_dump_reply("short", rx_buf, 32);
+#endif
+        ok = bmb3y_decode_module_ids(model, rx_buf, false);
+    } else {
+        error_printf("BMB3Y module ID read failed (short)\n");
+        count_bms_event(ERR_BMB_READ_ERROR, 0x0300000000000000);
+    }
+
+    if(!ok) {
+        // Fall back to the long form
+        bmb3y_send_super_wakeup();
+        if(bmb3y_long_command_get_data_blocking(BMB3Y_CMD_READ_MODULE_ID, rx_buf, 40)) {
+#if BMB3Y_MODULE_ID_DEBUG
+            bmb3y_dump_reply("long", rx_buf, 40);
+#endif
+            ok = bmb3y_decode_module_ids(model, rx_buf, true);
+        } else {
+            error_printf("BMB3Y module ID read failed (long)\n");
+            count_bms_event(ERR_BMB_READ_ERROR, 0x0301000000000000);
+        }
+    }
+
+    model->module_ids_millis = millis();
+    return ok;
+}
+
+void bmb3y_print_module_ids(const bms_model_t *model) {
+    if(model->module_ids_millis == 0) {
+        printf("Module IDs: not read yet\n");
+        return;
+    }
+
+    for(int module=0; module<CELL_MAP_MODULES; module++) {
+        uint8_t bit = (uint8_t)(1 << module);
+        if(!(model->module_ids_present_mask & bit)) {
+            printf("BMB %d: ABSENT\n", module);
+            continue;
+        }
+
+        uint16_t raw = model->module_ids_raw[module];
+        uint16_t id = raw & BMB3Y_MODULE_ID_MASK;
+        bool valid = model->module_ids_valid_mask & bit;
+        printf("BMB %d: raw=0x%04X id=0x%03X chk=%s\n", module, raw, id, valid ? "OK" : "FAIL");
+    }
+
+    pack_types_print_verdict(model);
+}
+
+static void bmb3y_update_module_ids(bms_model_t *model, bool print) {
+    model->module_ids_read_requested = false;
+    bmb3y_read_module_ids_blocking(model);
+    pack_types_classify(model);
+    if(print) {
+        bmb3y_print_module_ids(model);
+    }
+}
+
 static void bmb3y_read_cell_voltages_blocking(bms_model_t *model) {
     // Read all cell voltage banks in one go
 
@@ -526,6 +727,8 @@ int bmb3y_timestep_offset = 0;
 const int PAUSE_CYCLE_LENGTH = 10; // (min 10)
 bool crc_failed = false;
 bool started = false;
+// Whether the module IDs have been checked against a full cell reading
+static bool module_ids_cells_checked = false;
 
 void bmb3y_tick(bms_model_t *model) {
     int period_mask = 0x3f;
@@ -542,6 +745,13 @@ void bmb3y_tick(bms_model_t *model) {
             model->cell_voltage_slow_mode = true;
         }
         period_mask = slow_mode_period_mask;
+    }
+
+    if(!started) {
+        // Read the module IDs once, before the first cycle
+        started = true;
+        bmb3y_update_module_ids(model, false);
+        return;
     }
 
     // Derive a step number which loops every 'period' timesteps
@@ -584,6 +794,13 @@ void bmb3y_tick(bms_model_t *model) {
             // All banks read successfully
             model->cell_voltages_millis = millis();
         }
+
+        if(step == 7 && !module_ids_cells_checked) {
+            // The boot read came before any cells: check the pack type against
+            // the measured cells and the BMBs that answered them now
+            module_ids_cells_checked = true;
+            pack_types_classify(model);
+        }
     } else if(step == 8) {
         // Wake up, read temperatures
 
@@ -600,11 +817,20 @@ void bmb3y_tick(bms_model_t *model) {
             model->cell_voltage_slow_mode = false;
             info_printf("BMB3Y exiting slow mode\n");
         }
-    } else if(step == PAUSE_CYCLE_LENGTH && model->balancing_sm.is_pause_cycle) {
-        // Cut the cycle short if we're in a pause cycle by adjusting the
-        // offset. This allows us to get back to balancing sooner, we just need
-        // to have left enough time for voltages to settle.
-        bmb3y_timestep_offset = (bmb3y_timestep_offset + (period_mask + 1) - PAUSE_CYCLE_LENGTH - 1) & period_mask;
+    } else if(step >= PAUSE_CYCLE_LENGTH) {
+        // The cycle is done and the bus is free until the next step 0
+
+        if(model->module_ids_read_requested) {
+            // Requested from the CLI, which wants the result printed
+            bmb3y_update_module_ids(model, true);
+        }
+
+        if(step == PAUSE_CYCLE_LENGTH && model->balancing_sm.is_pause_cycle) {
+            // Cut the cycle short if we're in a pause cycle by adjusting the
+            // offset. This allows us to get back to balancing sooner, we just need
+            // to have left enough time for voltages to settle.
+            bmb3y_timestep_offset = (bmb3y_timestep_offset + (period_mask + 1) - PAUSE_CYCLE_LENGTH - 1) & period_mask;
+        }
     }
 }
 

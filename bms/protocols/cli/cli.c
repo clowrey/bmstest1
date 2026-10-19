@@ -109,6 +109,11 @@ static void cli_handle_command(const char *cmd) {
            model.ekf.x[0], model.ekf.x[1], model.ekf.x[2]);
     } else if(strcmp(cmd, "cells_raw") == 0) {
         bmb3y_print_physical_cells();
+    } else if(strcmp(cmd, "module_ids") == 0) {
+        // Only bmb3y_tick may use the isoSPI bus, so it does the read on its
+        // next idle tick and prints the result with bmb3y_print_module_ids()
+        printf("Module IDs: reading\n");
+        model.module_ids_read_requested = true;
     } else if(strcmp(cmd, "supervisor") == 0) {
         millis_t now = millis();
         printf("Supervisor: %s, state %u reasons 0x%04x latch 0x%04x, v%u, map %08lx (ours %08lx)\n",

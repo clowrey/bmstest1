@@ -45,6 +45,7 @@ add_executable(bms
     bms/drivers/bmb3y/bmb3y.c
     bms/drivers/bmb3y/crc.c
     bms/app/battery/balancing.c
+    bms/app/battery/pack_types.c
     bms/app/battery/current_limits.c
     bms/app/battery/safety_checks.c
     bms/app/calibration/common.c
