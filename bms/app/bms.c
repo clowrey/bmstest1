@@ -455,8 +455,16 @@ void synchronize_time() {
     update_millis();
 
     int32_t delta = millis() - prev;
+
+    // Flush the log while waiting for the next tick (at least once, even if
+    // the loop overran)
+    absolute_time_t next_tick = make_timeout_time_ms(delta <= 20 ? 20 - delta : 0);
+    do {
+        logging_flush_to_stdout();
+    } while(!time_reached(next_tick));
+
     if(delta <= 20) {
-        sleep_ms(20 - delta);
+        // On time (and the wait above is done)
     } else if(model.ignore_missed_deadline) {
         debug_printf("Notice: loop overran but ignored (%ld ms)\n", delta);
     } else {

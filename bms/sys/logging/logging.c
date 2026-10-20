@@ -2,6 +2,8 @@
 
 #include "tusb.h"
 #include "hardware/sync.h"
+#include "pico/stdio.h"
+#include "pico/stdio_usb.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -199,28 +201,19 @@ void logging_flush_to_stdout() {
         return;
     }
 
-    // Process any pending USB events (non-blocking)
-    tud_task_ext(0, true);
-
-    // See whether there's any room in the output buffer
-    uint32_t available_bytes = tud_cdc_write_available();
-    bool wrote = false;
-
-    // Read from ring buffer and write to USB CDC
-    uint8_t temp_buffer[1024];
-    while (available_bytes > 0) {
+    // Write through stdio, which holds its USB mutex around every tinyusb
+    // call. tinyusb isn't reentrant: driving it directly here (from a timer
+    // IRQ) raced the printf()s and stdio's own background task for the CDC
+    // endpoint, and the RP2040 USB driver panicked, tripping the watchdog.
+    // Only write what fits in the TX FIFO, so stdio never waits for the host.
+    uint8_t temp_buffer[256];
+    uint32_t available_bytes;
+    while ((available_bytes = tud_cdc_write_available()) > 0) {
         size_t to_read = (available_bytes > sizeof(temp_buffer)) ? sizeof(temp_buffer) : available_bytes;
         size_t read = rb_read(&log_ringbuffer, RB_STDOUT_READER, temp_buffer, to_read);
-        if (read > 0) {
-            tud_cdc_write(temp_buffer, read);
-            wrote = true;
-            available_bytes -= read;
-        } else {
+        if (read == 0) {
             break; // No more data to read
         }
-    }
-
-    if(wrote) {
-        tud_cdc_write_flush();
+        stdio_put_string((const char *)temp_buffer, (int)read, false, false);
     }
 }
