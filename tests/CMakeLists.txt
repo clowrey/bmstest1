@@ -223,6 +223,19 @@ target_include_directories(test_events_detailed PRIVATE
 
 add_test(NAME test_events_detailed COMMAND ${MEMORY_CHECK} test_events_detailed)
 
+add_executable(test_logging
+    test_logging.c
+    ../bms/sys/logging/logging.c
+)
+target_link_libraries(test_logging PRIVATE cmocka)
+target_include_directories(test_logging PRIVATE 
+    ${cmocka_SOURCE_DIR}/include
+    include
+    ../bms
+)
+
+add_test(NAME test_logging COMMAND ${MEMORY_CHECK} test_logging)
+
 add_custom_target(coverage
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/coverage_report.sh ${CMAKE_CURRENT_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
