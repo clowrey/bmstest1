@@ -120,6 +120,14 @@ if(BMS_ISOSNOOP)
     add_compile_definitions(BMS_ISOSNOOP=1)
 endif()
 
+# Rollback switch: read the cell voltage banks with the long (4-byte) commands
+# instead of the short ones the real BMS uses. Drop once the short form has run
+# cleanly for a while.
+option(BMB3Y_LONG_CELL_READS "Read the cell voltages with the long BMB commands" OFF)
+if(BMB3Y_LONG_CELL_READS)
+    add_compile_definitions(BMB3Y_LONG_CELL_READS=1)
+endif()
+
 target_compile_options(bms PUBLIC
     -Wall
     -Wextra

@@ -8,11 +8,16 @@
 // 1001 = data 1, 0000 = idle. Data bits alternate between the request (from
 // the BMS) and the reply (from the BMBs).
 //
-// A cell voltage read is a request whose first byte is 0x47-0x4B (banks A-E,
-// three cells each). The reply is one padding byte and then nine bytes per
-// module: three little-endian cell readings, a CRC14 and a spare byte. The BMS
-// reads the five banks back to back once per BMB cycle; a scan is complete when
-// all five arrive in order with good CRCs for every module in the pack.
+// A cell voltage read (banks A-E, three cells each) comes in two forms:
+//  - long: a 4-byte request whose first byte is 0x47-0x4B. The reply is nine
+//    bytes per module: a tag byte, three little-endian cell readings and a
+//    CRC14 (initial value 0x1000, which covers the zero tag byte).
+//  - short: a 2-byte request whose first byte is 0x07-0x0B. The reply is eight
+//    bytes per module: three little-endian cell readings and a CRC14 (initial
+//    value 0x0010), the same as the temperature reads.
+// The BMS reads the five banks back to back once per BMB cycle; a scan is
+// complete when all five arrive in order, in the same form, with good CRCs for
+// every module in the pack.
 
 #include "shared/cell_map.h"
 
@@ -33,6 +38,7 @@ typedef struct {
 
     // Scan being assembled
     int8_t next_bank; // bank expected next, or -1 to wait for bank A
+    bool pending_is_long; // form of the reads in this scan
     uint8_t pending_module_ok; // modules with good CRCs on every bank so far
     int16_t pending_mV[CELL_MAP_CHANNELS];
 
