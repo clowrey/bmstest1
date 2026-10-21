@@ -238,10 +238,15 @@ static void model_with_ids(bms_model_t *m, int bmbs, uint16_t raw) {
 static void test_conflict_is_fatal(void **state) {
     (void)state;
     static bms_model_t m;
+#if BMS_PROFILE == BMS_LFP1
+    // 0x004 is a 96s46p NMC ID: the wrong pack for a 108s LFP profile
+    model_with_ids(&m, 8, 0xF804);
+#else
     // 0x023 is a 108s1p LFP ID. On the default 96s NMC profile that's a
     // conflict; on the Desk profile (its custom pack lists 0x023, with 1 BMB)
     // eight BMBs are.
     model_with_ids(&m, 8, 0x8023);
+#endif
     pack_types_classify(&m);
     assert_int_equal(get_event_level(ERR_BMB_MODULE_ID_CONFLICT), LEVEL_FATAL);
     assert_int_equal(get_event_level(ERR_BMB_MODULE_ID_CHECK_FAILED), LEVEL_NONE);
@@ -254,6 +259,9 @@ static void test_classified_index(void **state) {
 #if BMS_PROFILE == BMS_DESK
     // The desk's one BMB, from a 108s1p LFP pack, measuring its 15 cells
     model_with_ids(&m, 1, 0x8023);
+#elif BMS_PROFILE == BMS_LFP1
+    // ck1: eight BMBs reporting 0x023
+    model_with_ids(&m, 8, 0x8023);
 #else
     model_with_ids(&m, 8, 0xF804);
 #endif
@@ -267,12 +275,44 @@ static void test_classified_index(void **state) {
     assert_int_equal(t->series, 15);
     assert_int_equal(t->chemistry, NMC);
     assert_int_equal(t->devices, 1);
+#elif BMS_PROFILE == BMS_LFP1
+    assert_false(t->custom);
+    assert_int_equal(t->series, 108);
+    assert_int_equal(t->parallel, 1);
+    assert_int_equal(t->chemistry, LFP);
+    assert_int_equal(t->devices, 8);
 #else
     assert_false(t->custom);
     assert_int_equal(t->series, 96);
     assert_int_equal(t->parallel, 46);
     assert_int_equal(t->temp_sensors, 16);
 #endif
+}
+
+static void test_partial_read_would_conflict(void **state) {
+    (void)state;
+    // Why the IDs are only read after a full cell read: a chain still waking
+    // up answers with fewer BMBs, and where the pack type gives a BMB count
+    // (ck1's 108s1p LFP: 8) the good IDs then fit no row
+    pack_classification_t c;
+    const uint16_t ids[] = { 0x023, 0x023, 0x023, 0x023, 0x023 };
+    classify(ids, 5, context(108, LFP, 5), &c);
+    assert_int_equal(c.result, PACK_RESULT_CONFLICT);
+    classify(ids, 5, context(108, LFP, 8), &c);
+    assert_int_equal(c.result, PACK_RESULT_CLASSIFIED);
+}
+
+static void test_read_waits_for_full_cell_read(void **state) {
+    (void)state;
+    // No full cell read yet: not even a CLI request reads
+    assert_false(pack_types_module_id_read_due(false, false, -1));
+    assert_false(pack_types_module_id_read_due(false, true, -1));
+    // After one: read once, then only on request
+    assert_true(pack_types_module_id_read_due(false, false, 8));
+    assert_false(pack_types_module_id_read_due(true, false, 8));
+    assert_true(pack_types_module_id_read_due(true, true, 8));
+    // A full read is full even if BMBs failed their CRCs on it
+    assert_true(pack_types_module_id_read_due(false, false, 0));
 }
 
 int main(void) {
@@ -290,6 +330,8 @@ int main(void) {
         cmocka_unit_test(test_table_rules),
         cmocka_unit_test(test_conflict_is_fatal),
         cmocka_unit_test(test_classified_index),
+        cmocka_unit_test(test_partial_read_would_conflict),
+        cmocka_unit_test(test_read_waits_for_full_cell_read),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
