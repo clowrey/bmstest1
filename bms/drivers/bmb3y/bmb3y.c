@@ -211,8 +211,10 @@ static const uint16_t SHORT_READ_COMMANDS[] = {
 // Every channel's last reading, populated or not (for checking the cell map)
 static int16_t physical_cell_voltages_mV[CELL_MAP_CHANNELS];
 static bool physical_cells_cleared = false;
-// BMBs that passed the CRC on every bank so far this read, and on the last full read
+// BMBs that passed the CRC on every bank so far this read, and on the last full
+// read (bank A to E; -1 until one has completed)
 static uint8_t cell_modules_ok_mask = 0;
+static bool cell_read_from_bank_a = false;
 static int cell_modules_ok_count = -1;
 
 void bmb3y_print_physical_cells(void) {
@@ -264,6 +266,7 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
     bool crc_ok = true;
     if(bank_index == 0) {
         cell_modules_ok_mask = 0xFF;
+        cell_read_from_bank_a = true;
     }
 
     for(int module=0; module<NUM_MODULE_VOLTAGES; module++) {
@@ -323,7 +326,8 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
         }
     }
 
-    if(bank_index == CELL_MAP_BANKS - 1) {
+    if(bank_index == CELL_MAP_BANKS - 1 && cell_read_from_bank_a) {
+        // A read that started mid-cycle (at boot) doesn't count as full
         int count = 0;
         for(int module=0; module<NUM_MODULE_VOLTAGES; module++) {
             count += (cell_modules_ok_mask >> module) & 1;
@@ -743,9 +747,6 @@ int bmb3y_timestep_offset = 0;
 // Use a shorter period when we're in a balancing pause cycle, to get back to balancing sooner.
 const int PAUSE_CYCLE_LENGTH = 10; // (min 10)
 bool crc_failed = false;
-bool started = false;
-// Whether the module IDs have been checked against a full cell reading
-static bool module_ids_cells_checked = false;
 
 void bmb3y_tick(bms_model_t *model) {
     int period_mask = 0x3f;
@@ -762,13 +763,6 @@ void bmb3y_tick(bms_model_t *model) {
             model->cell_voltage_slow_mode = true;
         }
         period_mask = slow_mode_period_mask;
-    }
-
-    if(!started) {
-        // Read the module IDs once, before the first cycle
-        started = true;
-        bmb3y_update_module_ids(model, false);
-        return;
     }
 
     // Derive a step number which loops every 'period' timesteps
@@ -811,13 +805,6 @@ void bmb3y_tick(bms_model_t *model) {
             // All banks read successfully
             model->cell_voltages_millis = millis();
         }
-
-        if(step == 7 && !module_ids_cells_checked) {
-            // The boot read came before any cells: check the pack type against
-            // the measured cells and the BMBs that answered them now
-            module_ids_cells_checked = true;
-            pack_types_classify(model);
-        }
     } else if(step == 8) {
         // Wake up, read temperatures
 
@@ -837,9 +824,12 @@ void bmb3y_tick(bms_model_t *model) {
     } else if(step >= PAUSE_CYCLE_LENGTH) {
         // The cycle is done and the bus is free until the next step 0
 
-        if(model->module_ids_read_requested) {
-            // Requested from the CLI, which wants the result printed
-            bmb3y_update_module_ids(model, true);
+        if(pack_types_module_id_read_due(model->module_ids_millis != 0, model->module_ids_read_requested,
+                bmb3y_count_cell_modules())) {
+            // Once every BMB has had a full cell read to wake up and answer, so
+            // the pack type is checked against the whole chain and its cells.
+            // A CLI request (which wants the result printed) waits for that too.
+            bmb3y_update_module_ids(model, model->module_ids_read_requested);
         }
 
         if(step == PAUSE_CYCLE_LENGTH && model->balancing_sm.is_pause_cycle) {

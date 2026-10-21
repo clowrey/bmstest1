@@ -295,8 +295,9 @@ foreach(board_suffix IN ITEMS "" "_rev1")
     add_test(NAME test_board_id${board_suffix} COMMAND ${MEMORY_CHECK} test_board_id${board_suffix})
 endforeach()
 
-# Also built for the Desk profile, a custom pack with its own module IDs
-foreach(pack_suffix "" "_desk")
+# Also built for the Desk profile, a custom pack with its own module IDs, and
+# the LFP1 profile, whose pack type gives a BMB count
+foreach(pack_suffix "" "_desk" "_lfp1")
     add_executable(test_pack_types${pack_suffix}
         test_pack_types.c
         ../bms/app/battery/pack_types.c
@@ -305,6 +306,8 @@ foreach(pack_suffix "" "_desk")
     )
     if(pack_suffix STREQUAL "_desk")
         target_compile_definitions(test_pack_types${pack_suffix} PRIVATE BMS_PROFILE=1)
+    elseif(pack_suffix STREQUAL "_lfp1")
+        target_compile_definitions(test_pack_types${pack_suffix} PRIVATE BMS_PROFILE=3)
     endif()
     target_link_libraries(test_pack_types${pack_suffix} PRIVATE cmocka m)
     target_include_directories(test_pack_types${pack_suffix} PRIVATE

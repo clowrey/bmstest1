@@ -270,6 +270,10 @@ void pack_types_classify_ids(const uint16_t *ids, int count, const pack_context_
     result->voltage_suggests_nmc = chemistry == LFP && context->mean_cell_mV > NMC_HINT_MEAN_CELL_mV;
 }
 
+bool pack_types_module_id_read_due(bool ids_read, bool requested, int cell_modules) {
+    return cell_modules >= 0 && (!ids_read || requested);
+}
+
 bool pack_types_evaluate(const bms_model_t *model, pack_classification_t *result) {
     if(model->module_ids_millis == 0) {
         *result = (pack_classification_t){ .result = PACK_RESULT_NOT_READ, .cells_ok = true, .devices_ok = true };

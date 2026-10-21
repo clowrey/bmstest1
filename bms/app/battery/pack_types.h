@@ -81,6 +81,11 @@ typedef struct {
 void pack_types_classify_ids(const uint16_t *ids, int count, const pack_context_t *context,
                              pack_classification_t *result);
 
+// Whether to read the module IDs on this idle BMB tick. Only after a full cell
+// read (cell_modules >= 0): a chain still waking up may answer with fewer BMBs,
+// which would look like the wrong pack. Then once, and again on each request.
+bool pack_types_module_id_read_due(bool ids_read, bool requested, int cell_modules);
+
 // Classify the IDs last read into the model. Returns false if none were read yet.
 bool pack_types_evaluate(const bms_model_t *model, pack_classification_t *result);
 // As above, then raise/clear the module ID events, set pack_type_index and log it
