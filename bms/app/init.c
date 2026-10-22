@@ -14,6 +14,7 @@
 #include "../drivers/isospi/isosnoop.h"
 #include "../drivers/isospi/isospi_master.h"
 #include "board_id.h"
+#include "firmware_id.h"
 #include "sys/events/events.h"
 #include "state_machines/contactors.h"
 #include "model.h"
@@ -162,6 +163,8 @@ void bms_init() {
 
     // This will advance the time to a non-zero value
     update_millis();
+
+    info_printf("Firmware %s, built %s\n", bms_build_describe, bms_build_time_text);
 
     int boot_count = update_boot_count();
     // NVM operations can be slow, so allow a missed deadline

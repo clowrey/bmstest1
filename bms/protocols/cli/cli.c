@@ -1,5 +1,6 @@
 #include "cli.h"
 #include "app/estimators/ekf.h"
+#include "app/firmware_id.h"
 #include "app/model.h"
 #include "app/state_machines/system.h"
 #include "drivers/bmb3y/bmb3y.h"
@@ -101,6 +102,8 @@ static void cli_handle_command(const char *cmd) {
             debug_printf("Requesting inactive mode\n");
             model.system_req = SYSTEM_REQUEST_STOP;
         }
+    } else if(strcmp(cmd, "version") == 0) {
+        debug_printf("Firmware %s, built %s\n", bms_build_describe, bms_build_time_text);
     } else if(strcmp(cmd, "print_ekf_state") == 0) {
         debug_printf("EKF Constants: Q=[%e, %e, %e], R=%f, R0=%f, R1=%f, C1=%f\n",
                      model.ekf.Q[0], model.ekf.Q[1], model.ekf.Q[2],

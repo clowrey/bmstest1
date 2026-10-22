@@ -6,6 +6,7 @@
 #include "drivers/sensors/ina228.h"
 #include "app/estimators/ekf.h"
 #include "app/model.h"
+#include "app/firmware_id.h"
 #include "drivers/chip/nvm.h"
 #include "sys/events/events.h"
 #include "sys/logging/logging.h"
@@ -244,6 +245,14 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
         case HMI_REG_BOARD_STRAP_COUNTS:
             buf[idx++] = HMI_TYPE_FLOAT;
             idx += hmi_buf_append_float(&buf[idx], model->board_id_counts);
+            break;
+        case HMI_REG_BUILD_HASH:
+            buf[idx++] = HMI_TYPE_UINT32;
+            idx += hmi_buf_append_uint32(&buf[idx], bms_build_hash);
+            break;
+        case HMI_REG_BUILD_TIME:
+            buf[idx++] = HMI_TYPE_UINT32;
+            idx += hmi_buf_append_uint32(&buf[idx], bms_build_time);
             break;
         case HMI_REG_TEMPERATURE_MIN:
             buf[idx++] = HMI_TYPE_FLOAT;
