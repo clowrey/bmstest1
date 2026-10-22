@@ -4,6 +4,7 @@
 #include "config/pins.h"
 #include "sys/time/time.h"
 #include "drivers/sensors/ina228.h"
+#include "drivers/sensors/internal_adc.h"
 #include "app/estimators/ekf.h"
 #include "app/model.h"
 #include "app/firmware_id.h"
@@ -253,6 +254,10 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
         case HMI_REG_BUILD_TIME:
             buf[idx++] = HMI_TYPE_UINT32;
             idx += hmi_buf_append_uint32(&buf[idx], bms_build_time);
+            break;
+        case HMI_REG_MCU_TEMPERATURE:
+            buf[idx++] = HMI_TYPE_FLOAT;
+            idx += hmi_buf_append_float(&buf[idx], get_temperature_c_times10() / 10.0f);
             break;
         case HMI_REG_TEMPERATURE_MIN:
             buf[idx++] = HMI_TYPE_FLOAT;

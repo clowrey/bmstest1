@@ -105,6 +105,7 @@
 #define HMI_REG_BOARD_STRAP_COUNTS     67 // float (12-bit ADC counts), revision strap reading with no pulls
 #define HMI_REG_BUILD_HASH             68 // uint32, firmware commit's first 7 hex digits; bit 31 = built with uncommitted changes; 0 = unknown
 #define HMI_REG_BUILD_TIME             69 // uint32, firmware build time (Unix seconds, UTC); 0 = unknown
+#define HMI_REG_MCU_TEMPERATURE        70 // float (C), the controller chip's own temperature sensor (a few C accurate)
 
 
 #define HMI_REG_CELL_VOLTAGES_START 0x100
