@@ -18,6 +18,20 @@ const uint8_t CELLS_PER_MODULE = 15;
 const uint8_t CELLS_PER_BANK = 3;
 const uint8_t MODULE_COUNT = 8;
 
+// CRC14 initial value for short-form replies
+#define BMB3Y_RX_CRC_INIT 0x0010
+
+// Cell voltage bank reads: per BMB three cells and a CRC14
+#ifdef BMB3Y_LONG_CELL_READS
+// Plus the next BMB's tag byte, which the CRC covers
+#define BANK_READ_SLOT_BYTES 9
+#define BANK_READ_CRC_INIT 0x1000
+#else
+#define BANK_READ_SLOT_BYTES 8
+#define BANK_READ_CRC_INIT BMB3Y_RX_CRC_INIT
+#endif
+#define BANK_READ_REPLY_BYTES (CELL_MAP_MODULES * BANK_READ_SLOT_BYTES)
+
 // Low level functions
 
 void bmb3y_send_command_blocking(uint16_t cmd_word) {
@@ -176,6 +190,7 @@ static void bmb3y_update_balancing_active(bms_model_t *model) {
                   balancing_sm->balance_request_mask[3] != 0;
 }
 
+#ifdef BMB3Y_LONG_CELL_READS
 static const uint32_t READ_COMMANDS[] = {
     BMB3Y_CMD_READ_A,
     BMB3Y_CMD_READ_B,
@@ -183,7 +198,7 @@ static const uint32_t READ_COMMANDS[] = {
     BMB3Y_CMD_READ_D,
     BMB3Y_CMD_READ_E
 };
-
+#else
 static const uint16_t SHORT_READ_COMMANDS[] = {
     BMB3Y_CMD_READ_A_SHORT,
     BMB3Y_CMD_READ_B_SHORT,
@@ -191,6 +206,7 @@ static const uint16_t SHORT_READ_COMMANDS[] = {
     BMB3Y_CMD_READ_D_SHORT,
     BMB3Y_CMD_READ_E_SHORT
 };
+#endif
 
 // Every channel's last reading, populated or not (for checking the cell map)
 static int16_t physical_cell_voltages_mV[CELL_MAP_CHANNELS];
@@ -227,23 +243,25 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
         physical_cells_cleared = true;
     }
 
-    uint8_t rx_buf[72];
-    uint32_t cmd = READ_COMMANDS[bank_index];
+    uint8_t rx_buf[BANK_READ_REPLY_BYTES];
 #ifdef BMS_ISOSNOOP
     isosnoop_flush();
 #endif
-    if (!bmb3y_long_command_get_data_blocking(cmd, rx_buf, 72)) {
-        error_printf("BMB3Y read failed for cmd 0x%02lX\n", cmd);
+#ifdef BMB3Y_LONG_CELL_READS
+    uint32_t cmd = READ_COMMANDS[bank_index];
+    if (!bmb3y_long_command_get_data_blocking(cmd, rx_buf, BANK_READ_REPLY_BYTES)) {
+        error_printf("BMB3Y read failed for cmd 0x%08lX\n", cmd);
         count_bms_event(ERR_BMB_READ_ERROR, 0x0100000000000000 | bank_index);
         return false;
     }
-    // Short commands need different CRC handling
-    // uint16_t cmd = SHORT_READ_COMMANDS[bank_index];
-    // if (!bmb3y_short_command_get_data_blocking(cmd, rx_buf, 72)) {
-    //     error_printf("BMB3Y read failed for cmd 0x%02X\n", cmd);
-    //     count_bms_event(ERR_BMB_READ_ERROR, 0x0100000000000000 | bank_index);
-    //     return false;
-    // }
+#else
+    uint16_t cmd = SHORT_READ_COMMANDS[bank_index];
+    if (!bmb3y_short_command_get_data_blocking(cmd, rx_buf, BANK_READ_REPLY_BYTES)) {
+        error_printf("BMB3Y read failed for cmd 0x%04X\n", cmd);
+        count_bms_event(ERR_BMB_READ_ERROR, 0x0100000000000000 | bank_index);
+        return false;
+    }
+#endif
 
     bool crc_ok = true;
     if(bank_index == 0) {
@@ -252,23 +270,22 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
     }
 
     for(int module=0; module<NUM_MODULE_VOLTAGES; module++) {
-        uint16_t module_crc = (uint16_t)(rx_buf[module * 9 + 6] << 8) | (uint16_t)(rx_buf[module * 9 + 7]);
-        //uint16_t calc_crc = crc14(&rx_buf[module * 9], 6, 0x1000);
-        uint16_t calc_crc = crc14(&rx_buf[module * 9], 6, 0x1000, module_crc);
+        uint8_t *slot = &rx_buf[module * BANK_READ_SLOT_BYTES];
+        uint16_t module_crc = (uint16_t)(slot[6] << 8) | (uint16_t)(slot[7]);
+        uint16_t calc_crc = crc14(slot, 6, BANK_READ_CRC_INIT, module_crc);
 
         if((module_crc & 0x3fff) != calc_crc) {
-            error_printf("CRC: %s %d %02X %02X %02X %02X %02X %02X %02X %02X %02X calc %04X\n",
+            error_printf("CRC: %s %d %02X %02X %02X %02X %02X %02X %02X %02X calc %04X\n",
                 module_crc == calc_crc ? "OK" : "FAIL",
                 bank_index,
-                rx_buf[module * 9 + 0],
-                rx_buf[module * 9 + 1],
-                rx_buf[module * 9 + 2],
-                rx_buf[module * 9 + 3],
-                rx_buf[module * 9 + 4],
-                rx_buf[module * 9 + 5],
-                rx_buf[module * 9 + 6],
-                rx_buf[module * 9 + 7],
-                rx_buf[module * 9 + 8],
+                slot[0],
+                slot[1],
+                slot[2],
+                slot[3],
+                slot[4],
+                slot[5],
+                slot[6],
+                slot[7],
                 calc_crc
             );
 #ifdef BMS_ISOSNOOP
@@ -287,8 +304,8 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
             int physical_index = cell_map_physical_index(module, bank_index, cell);
 
             uint16_t voltage =
-                (uint16_t)(rx_buf[module * 9 + cell * 2]) |
-                (uint16_t)(rx_buf[module * 9 + cell * 2 + 1] << 8);
+                (uint16_t)(slot[cell * 2]) |
+                (uint16_t)(slot[cell * 2 + 1] << 8);
 
             int16_t converted = cell_raw_to_mV(voltage);
             physical_cell_voltages_mV[physical_index] = converted;

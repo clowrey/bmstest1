@@ -288,16 +288,24 @@ static void put_transfer(nibble_writer_t *w, uint32_t command, const uint8_t *re
 }
 
 static const uint32_t BANK_COMMANDS[] = { 0x47007000, 0x48003400, 0x4900DD00, 0x4A00C900, 0x4B002000 };
+static const uint32_t SHORT_BANK_COMMANDS[] = { 0x07630000, 0x08F90000, 0x09D60000, 0x0AA70000, 0x0B880000 };
+
+// Prestates for the snooper tests that run in both read forms
+static bool LONG_FORM = true;
+static bool SHORT_FORM = false;
 
 static int16_t test_cell_mV(int physical_index) {
     return (int16_t)(3000 + physical_index * 4);
 }
 
-// Reply to a bank read: padding byte, then per module three cells + CRC14 + spare
-static int make_bank_reply(uint8_t *reply, int bank, int corrupt_module) {
+// Reply to a bank read. Long form: per module a tag byte, three cells and a
+// CRC14 over both. Short form: per module three cells and a CRC14.
+static int make_bank_reply(uint8_t *reply, int bank, int corrupt_module, bool is_long) {
     int len = 0;
-    reply[len++] = 0x00;
     for(int module=0; module<CELL_MAP_MODULES; module++) {
+        if(is_long) {
+            reply[len++] = 0x00;
+        }
         uint8_t *data = &reply[len];
         for(int cell=0; cell<3; cell++) {
             int physical_index = cell_map_physical_index(module, bank, cell);
@@ -307,41 +315,45 @@ static int make_bank_reply(uint8_t *reply, int bank, int corrupt_module) {
             data[cell * 2] = raw & 0xFF;
             data[cell * 2 + 1] = raw >> 8;
         }
-        uint16_t crc = crc14(data, 6, 0x1000, 0);
+        uint16_t crc = crc14(data, 6, is_long ? 0x1000 : 0x0010, 0);
         data[6] = crc >> 8;
         data[7] = crc & 0xFF;
-        data[8] = 0;
         if(module == corrupt_module) {
             data[0] ^= 0x04;
         }
-        len += 9;
+        len += 8;
     }
     return len;
 }
 
-static void put_scan(nibble_writer_t *w, int corrupt_bank, int corrupt_module, int skip_bank) {
+static void put_bank(nibble_writer_t *w, int bank, bool is_long, int corrupt_module) {
     uint8_t reply[CELL_SNOOP_MAX_REPLY];
+    int len = make_bank_reply(reply, bank, corrupt_module, is_long);
+    put_transfer(w, is_long ? BANK_COMMANDS[bank] : SHORT_BANK_COMMANDS[bank], reply, len);
+}
+
+static const uint8_t OTHER_REPLY[4] = { 0 };
+
+static void put_scan(nibble_writer_t *w, bool is_long, int corrupt_bank, int corrupt_module, int skip_bank) {
     // Other BMB traffic before the reads
-    const uint8_t hello_reply[4] = { 0 };
-    put_transfer(w, 0x27100000, hello_reply, sizeof(hello_reply));
+    put_transfer(w, 0x27100000, OTHER_REPLY, sizeof(OTHER_REPLY));
     for(int bank=0; bank<CELL_MAP_BANKS; bank++) {
         if(bank == skip_bank) {
             continue;
         }
-        int len = make_bank_reply(reply, bank, bank == corrupt_bank ? corrupt_module : -1);
-        put_transfer(w, BANK_COMMANDS[bank], reply, len);
+        put_bank(w, bank, is_long, bank == corrupt_bank ? corrupt_module : -1);
     }
     // Temperature read after the banks
-    put_transfer(w, 0x0E1B0000, hello_reply, sizeof(hello_reply));
+    put_transfer(w, 0x0E1B0000, OTHER_REPLY, sizeof(OTHER_REPLY));
 }
 
 static void test_snoop_decodes_scan(void **state) {
-    (void) state;
+    bool is_long = *(bool *)*state;
     cell_snoop_t snoop;
     cell_snoop_init(&snoop);
     nibble_writer_t w = { .snoop = &snoop };
 
-    put_scan(&w, -1, -1, -1);
+    put_scan(&w, is_long, -1, -1, -1);
     assert_true(cell_snoop_take_scan(&snoop));
     assert_false(cell_snoop_take_scan(&snoop));
     assert_int_equal(snoop.crc_errors, 0);
@@ -360,30 +372,84 @@ static void test_snoop_decodes_scan(void **state) {
 }
 
 static void test_snoop_crc_error_drops_scan(void **state) {
-    (void) state;
+    bool is_long = *(bool *)*state;
     cell_snoop_t snoop;
     cell_snoop_init(&snoop);
     nibble_writer_t w = { .snoop = &snoop };
 
     // A pack module with a bad CRC on bank C
-    put_scan(&w, 2, 0, -1);
+    put_scan(&w, is_long, 2, 0, -1);
     assert_false(cell_snoop_take_scan(&snoop));
     assert_int_equal(snoop.crc_errors, 1);
 
     // The next clean scan is used
-    put_scan(&w, -1, -1, -1);
+    put_scan(&w, is_long, -1, -1, -1);
     assert_true(cell_snoop_take_scan(&snoop));
 }
 
 static void test_snoop_missing_bank_drops_scan(void **state) {
+    bool is_long = *(bool *)*state;
+    cell_snoop_t snoop;
+    cell_snoop_init(&snoop);
+    nibble_writer_t w = { .snoop = &snoop };
+
+    put_scan(&w, is_long, -1, -1, 3);
+    assert_false(cell_snoop_take_scan(&snoop));
+    assert_int_equal(snoop.scans, 0);
+}
+
+static void test_snoop_form_change_mid_scan_drops_scan(void **state) {
     (void) state;
     cell_snoop_t snoop;
     cell_snoop_init(&snoop);
     nibble_writer_t w = { .snoop = &snoop };
 
-    put_scan(&w, -1, -1, 3);
+    // Banks A-B long, C-E short
+    put_transfer(&w, 0x27100000, OTHER_REPLY, sizeof(OTHER_REPLY));
+    for(int bank=0; bank<CELL_MAP_BANKS; bank++) {
+        put_bank(&w, bank, bank < 2, -1);
+    }
     assert_false(cell_snoop_take_scan(&snoop));
     assert_int_equal(snoop.scans, 0);
+    assert_int_equal(snoop.incomplete_scans, 1);
+
+    // Then a whole scan in the new form is used
+    put_scan(&w, false, -1, -1, -1);
+    assert_true(cell_snoop_take_scan(&snoop));
+}
+
+// Bank A short-form reply from a real pack (the 0x0763 capture in bmb3y.h, as
+// received by the BMS after the command bytes)
+static const uint8_t CAPTURED_BANK_A_SHORT[64] = {
+    0xba, 0xc7, 0xbf, 0xc7, 0xb8, 0xc7, 0x62, 0x39,
+    0xc1, 0xc7, 0xc0, 0xc7, 0xbb, 0xc7, 0x11, 0xa6,
+    0xca, 0xc7, 0xc4, 0xc7, 0xbd, 0xc7, 0x8e, 0xf2,
+    0xe4, 0xc7, 0xe7, 0xc7, 0xe8, 0xc7, 0xbe, 0x09,
+    0xb9, 0xc7, 0xb6, 0xc7, 0xbd, 0xc7, 0x27, 0x37,
+    0xb4, 0xc7, 0xb1, 0xc7, 0xbb, 0xc7, 0xa8, 0x74,
+    0xc6, 0xc7, 0xc1, 0xc7, 0xc6, 0xc7, 0x08, 0xf7,
+    0xb6, 0xc7, 0xb5, 0xc7, 0xa6, 0xc7, 0x64, 0x26,
+};
+
+static void test_snoop_decodes_captured_short_bank(void **state) {
+    (void) state;
+    cell_snoop_t snoop;
+    cell_snoop_init(&snoop);
+    nibble_writer_t w = { .snoop = &snoop };
+
+    put_transfer(&w, SHORT_BANK_COMMANDS[0], CAPTURED_BANK_A_SHORT, sizeof(CAPTURED_BANK_A_SHORT));
+    assert_int_equal(snoop.bank_reads, 1);
+    assert_int_equal(snoop.crc_errors, 0);
+    assert_int_equal(snoop.pending_module_ok, 0xFF);
+    assert_int_equal(snoop.next_bank, 1);
+
+    for(int module=0; module<CELL_MAP_MODULES; module++) {
+        for(int cell=0; cell<CELL_MAP_CELLS_PER_BANK; cell++) {
+            const uint8_t *data = &CAPTURED_BANK_A_SHORT[module * 8 + cell * 2];
+            uint16_t raw = (uint16_t)(data[0] | (data[1] << 8));
+            assert_int_equal(snoop.pending_mV[cell_map_physical_index(module, 0, cell)], cell_raw_to_mV(raw));
+        }
+    }
 }
 
 /* Enable logic */
@@ -660,9 +726,14 @@ int main(void) {
         cmocka_unit_test(test_parser_resyncs),
         cmocka_unit_test(test_cell_map_matches_cell_count),
         cmocka_unit_test(test_cell_raw_conversion),
-        cmocka_unit_test(test_snoop_decodes_scan),
-        cmocka_unit_test(test_snoop_crc_error_drops_scan),
-        cmocka_unit_test(test_snoop_missing_bank_drops_scan),
+        cmocka_unit_test_prestate(test_snoop_decodes_scan, &LONG_FORM),
+        cmocka_unit_test_prestate(test_snoop_decodes_scan, &SHORT_FORM),
+        cmocka_unit_test_prestate(test_snoop_crc_error_drops_scan, &LONG_FORM),
+        cmocka_unit_test_prestate(test_snoop_crc_error_drops_scan, &SHORT_FORM),
+        cmocka_unit_test_prestate(test_snoop_missing_bank_drops_scan, &LONG_FORM),
+        cmocka_unit_test_prestate(test_snoop_missing_bank_drops_scan, &SHORT_FORM),
+        cmocka_unit_test(test_snoop_form_change_mid_scan_drops_scan),
+        cmocka_unit_test(test_snoop_decodes_captured_short_bank),
         cmocka_unit_test(test_enables_after_good_scans),
         cmocka_unit_test(test_no_heartbeat_blocks),
         cmocka_unit_test(test_map_mismatch_blocks),

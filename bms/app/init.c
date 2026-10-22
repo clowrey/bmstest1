@@ -24,14 +24,6 @@
 
 ina228_t ina228_dev = {0};
 
-static struct repeating_timer logging_timer;
-
-bool logging_timer_callback(struct repeating_timer *t) {
-    (void)t;
-    logging_flush_to_stdout();
-    return true;
-}
-
 static void init_hw() {
     init_watchdog();
 
@@ -174,6 +166,4 @@ void bms_init() {
     } else {
         error_printf("Failed to update boot count in LittleFS\n");
     }
-
-    add_repeating_timer_ms(10, logging_timer_callback, NULL, &logging_timer);
 }

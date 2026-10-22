@@ -10,8 +10,10 @@
 #define SYMBOL_DATA1 0x9
 #define SYMBOL_CS 0xA
 
-// First request byte of the bank A voltage read (BMB3Y_CMD_READ_A)
-#define READ_BANK_A_COMMAND 0x47
+// First request byte of the bank A voltage read, long (BMB3Y_CMD_READ_A) and
+// short (BMB3Y_CMD_READ_A_SHORT) forms
+#define READ_BANK_A_COMMAND_LONG 0x47
+#define READ_BANK_A_COMMAND_SHORT 0x07
 
 // Modules the pack actually has, which must all read cleanly for a scan
 #define PACK_MODULES_MASK ((uint8_t)((1U << NUM_MODULE_VOLTAGES) - 1))
@@ -29,7 +31,7 @@ void cell_snoop_init(cell_snoop_t *snoop) {
     clear_cells(snoop->scan_mV);
 }
 
-static void process_bank(cell_snoop_t *snoop, int bank) {
+static void process_bank(cell_snoop_t *snoop, int bank, bool is_long) {
     snoop->bank_reads++;
 
     if(bank == 0) {
@@ -38,11 +40,13 @@ static void process_bank(cell_snoop_t *snoop, int bank) {
             snoop->incomplete_scans++;
         }
         snoop->next_bank = 0;
+        snoop->pending_is_long = is_long;
         snoop->pending_module_ok = 0xFF;
         clear_cells(snoop->pending_mV);
     }
-    if(bank != snoop->next_bank) {
-        // Out of sequence (or missed bank A), wait for the next scan
+    if(bank != snoop->next_bank || is_long != snoop->pending_is_long) {
+        // Out of sequence (or missed bank A, or the read form changed), wait
+        // for the next scan
         if(snoop->next_bank > 0) {
             snoop->incomplete_scans++;
         }
@@ -50,9 +54,14 @@ static void process_bank(cell_snoop_t *snoop, int bank) {
         return;
     }
 
+    // The long form has a tag byte before each module's data, which is part of
+    // the CRC; the short form has none
+    int first_slot = is_long ? 1 : 0;
+    int slot_bytes = is_long ? 9 : 8;
+    uint16_t crc_init = is_long ? 0x1000 : 0x0010;
+
     for(int module=0; module<CELL_MAP_MODULES; module++) {
-        // Skip the padding byte; each module has 9 bytes of which we need 8
-        int base = 1 + module * 9;
+        int base = first_slot + module * slot_bytes;
         if(base + 8 > snoop->reply_len) {
             snoop->pending_module_ok &= ~(1U << module);
             continue;
@@ -60,7 +69,7 @@ static void process_bank(cell_snoop_t *snoop, int bank) {
 
         uint8_t *data = &snoop->reply[base];
         uint16_t module_crc = (uint16_t)((data[6] << 8) | data[7]);
-        uint16_t calc_crc = crc14(data, 6, 0x1000, module_crc);
+        uint16_t calc_crc = crc14(data, 6, crc_init, module_crc);
         if((module_crc & 0x3fff) != calc_crc) {
             if(snoop->pending_module_ok & (1U << module) && (PACK_MODULES_MASK & (1U << module))) {
                 snoop->crc_errors++;
@@ -108,9 +117,13 @@ static void end_transfer(cell_snoop_t *snoop) {
         uint32_t request = snoop->request_bits < 32
             ? (snoop->request_word << (32 - snoop->request_bits))
             : snoop->request_word;
-        int bank = (int)((request >> 24) & 0xFF) - READ_BANK_A_COMMAND;
-        if(bank >= 0 && bank < CELL_MAP_BANKS) {
-            process_bank(snoop, bank);
+        int command = (int)((request >> 24) & 0xFF);
+        int long_bank = command - READ_BANK_A_COMMAND_LONG;
+        int short_bank = command - READ_BANK_A_COMMAND_SHORT;
+        if(long_bank >= 0 && long_bank < CELL_MAP_BANKS) {
+            process_bank(snoop, long_bank, true);
+        } else if(short_bank >= 0 && short_bank < CELL_MAP_BANKS) {
+            process_bank(snoop, short_bank, false);
         }
     }
 
