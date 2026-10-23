@@ -487,9 +487,16 @@ void contactor_sm_tick(bms_model_t *model) {
         case CONTACTORS_STATE_AWAITING_OPEN:
             contactors_set_pos_pre_neg(true, false, true);
 
+            // A requested open gives the inverter time to see the zero limits
+            // first, however small the current; a forced open doesn't wait.
+            bool holding_for_inverter = (
+                model->contactor_req == CONTACTORS_REQUEST_OPEN
+                && !state_timeout((sm_t*)contactor_sm, CONTACTORS_REQUESTED_OPEN_HOLD_MS)
+            );
+
             // Wait for current to fall before actually opening contactors.
             if((
-                    check_current_is_below(model, CONTACTORS_INSTANT_OPEN_MA)
+                    (check_current_is_below(model, CONTACTORS_INSTANT_OPEN_MA) && !holding_for_inverter)
                     || (check_current_is_below(model, CONTACTORS_DELAYED_OPEN_MA) && state_timeout((sm_t*)contactor_sm, CONTACTORS_OPEN_TIMEOUT_MS))
             ) || (
                 model->contactor_req == CONTACTORS_REQUEST_FORCE_OPEN && (

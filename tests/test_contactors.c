@@ -460,10 +460,20 @@ static void test_open_request_from_closed(void **state) {
 
     assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_AWAITING_OPEN);
 
+    // The current is already low, but a requested open holds the zero limits
+    // long enough for the inverter to see them
     expect_value(contactors_set_pos_pre_neg, pos, true);
     expect_value(contactors_set_pos_pre_neg, pre, false);
     expect_value(contactors_set_pos_pre_neg, neg, true);
-    tick_sm(&model, 10);
+    tick_sm(&model, CONTACTORS_REQUESTED_OPEN_HOLD_MS - 100);
+
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_AWAITING_OPEN);
+    assert_false(model.contactor_sm.enable_current);
+
+    expect_value(contactors_set_pos_pre_neg, pos, true);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, true);
+    tick_sm(&model, 100);
 
     assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_OPEN);
 }
@@ -485,14 +495,75 @@ static void test_delayed_open_request_from_closed(void **state) {
     tick_sm(&model, 500);
     assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_AWAITING_OPEN);
 
-    // Drop current to allow opening
+    // Drop current to allow opening once the hold for the inverter is over
     model.current_mA = 0;
 
     expect_value(contactors_set_pos_pre_neg, pos, true);
     expect_value(contactors_set_pos_pre_neg, pre, false);
     expect_value(contactors_set_pos_pre_neg, neg, true);
     tick_sm(&model, 2000);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_AWAITING_OPEN);
+
+    expect_value(contactors_set_pos_pre_neg, pos, true);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, true);
+    tick_sm(&model, CONTACTORS_REQUESTED_OPEN_HOLD_MS - 2000);
     assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_OPEN);
+}
+
+static void test_force_open_low_current_is_immediate(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    model.contactor_sm.state = CONTACTORS_STATE_CLOSED;
+    model.contactor_req = CONTACTORS_REQUEST_FORCE_OPEN;
+
+    model.current_mA = 500;
+
+    expect_value(contactors_set_pos_pre_neg, pos, true);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, true);
+    tick_sm(&model, 10);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_AWAITING_OPEN);
+
+    // No hold for the inverter when forced
+    expect_value(contactors_set_pos_pre_neg, pos, true);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, true);
+    tick_sm(&model, 10);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_OPEN);
+}
+
+static void test_force_open_ends_requested_open_hold(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    model.contactor_sm.state = CONTACTORS_STATE_CLOSED;
+    model.contactor_req = CONTACTORS_REQUEST_OPEN;
+
+    model.current_mA = 500;
+
+    expect_value(contactors_set_pos_pre_neg, pos, true);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, true);
+    tick_sm(&model, 10);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_AWAITING_OPEN);
+
+    expect_value(contactors_set_pos_pre_neg, pos, true);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, true);
+    tick_sm(&model, 1000);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_AWAITING_OPEN);
+
+    // A fault during the hold opens at once
+    model.contactor_req = CONTACTORS_REQUEST_FORCE_OPEN;
+
+    expect_value(contactors_set_pos_pre_neg, pos, true);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, true);
+    tick_sm(&model, 10);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_OPEN);
+    assert_int_equal(model.contactor_req, CONTACTORS_REQUEST_NULL);
 }
 
 static void test_force_open_request(void **state) {
@@ -635,6 +706,8 @@ int main(void) {
         cmocka_unit_test(test_open_request_from_closed),
         cmocka_unit_test(test_delayed_open_request_from_closed),
         cmocka_unit_test(test_force_open_request),
+        cmocka_unit_test(test_force_open_low_current_is_immediate),
+        cmocka_unit_test(test_force_open_ends_requested_open_hold),
         cmocka_unit_test(test_calibrate_request),
         cmocka_unit_test(test_precharging_aborts_immediately_on_open_request),
         cmocka_unit_test(test_precharge_failed_recovers_to_open_after_cooldown),

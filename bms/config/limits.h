@@ -397,6 +397,13 @@
 #define CONTACTORS_OPEN_TIMEOUT_MS 30000
 // How long we wait when force-opening contactors
 #define CONTACTORS_FORCE_OPEN_TIMEOUT_MS 2000
+// How long a requested (not forced) open holds the zero current limits before
+// opening, even when the current is already below CONTACTORS_INSTANT_OPEN_MA.
+// The Deye 50K passes the BMS limits to its DSP only every 6.14 s. Opening at
+// 0.9 A one second after sending zero limits left the DSP still drawing from
+// the port: the port collapsed below the BMS voltage it last had, which
+// latched F57 and cut the inverter output for 30 s (2026-10-22).
+#define CONTACTORS_REQUESTED_OPEN_HOLD_MS 8000
 
 
 // SUPERVISOR
