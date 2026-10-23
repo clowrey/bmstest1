@@ -12,6 +12,18 @@
       }
     },
     {
+      "name": "windows",
+      "hidden": true,
+      "description": "Native Windows build with the Pico VS Code extension's tools in %USERPROFILE%/.pico-sdk (for Pico SDK 2.2.0)",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_MAKE_PROGRAM": "$env{USERPROFILE}/.pico-sdk/ninja/v1.12.1/ninja.exe",
+        "PICO_TOOLCHAIN_PATH": "$env{USERPROFILE}/.pico-sdk/toolchain/14_2_Rel1",
+        "picotool_DIR": "$env{USERPROFILE}/.pico-sdk/picotool/2.2.0-a4/picotool",
+        "pioasm_DIR": "$env{USERPROFILE}/.pico-sdk/tools/2.2.0/pioasm"
+      }
+    },
+    {
       "name": "desk",
       "inherits": "base",
       "displayName": "Desk bench (Rev1, VBUS sense)",
@@ -38,12 +50,28 @@
       "displayName": "Rev1 NMC (jpwhit)",
       "description": "BlueTesla 96s NMC pack on a stock Rev1 PCB: no external USB pull-up, no VBUS sense",
       "cacheVariables": { "BMS_PROFILE": "2", "BMS_BOARD": "2" }
-    }
+    },
+    { "name": "desk-win", "inherits": ["windows", "desk"], "displayName": "Desk bench (Rev1, VBUS sense) - Windows",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" } },
+    { "name": "ck0-bluetesla-win", "inherits": ["windows", "ck0-bluetesla"], "displayName": "ck0 BlueTesla NMC (Rev1, external pull-up) - Windows",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" } },
+    { "name": "ck1-lfp-rev0-win", "inherits": ["windows", "ck1-lfp-rev0"], "displayName": "ck1 LFP shed (Rev0) - Windows",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" } },
+    { "name": "rev1-nmc-jpwhit-win", "inherits": ["windows", "rev1-nmc-jpwhit"], "displayName": "Rev1 NMC (jpwhit) - Windows",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" } }
   ],
   "buildPresets": [
     { "name": "desk", "configurePreset": "desk", "targets": ["bms"] },
     { "name": "ck0-bluetesla", "configurePreset": "ck0-bluetesla", "targets": ["bms"] },
     { "name": "ck1-lfp-rev0", "configurePreset": "ck1-lfp-rev0", "targets": ["bms"] },
-    { "name": "rev1-nmc-jpwhit", "configurePreset": "rev1-nmc-jpwhit", "targets": ["bms"] }
+    { "name": "rev1-nmc-jpwhit", "configurePreset": "rev1-nmc-jpwhit", "targets": ["bms"] },
+    { "name": "desk-win", "configurePreset": "desk-win", "targets": ["bms"],
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" } },
+    { "name": "ck0-bluetesla-win", "configurePreset": "ck0-bluetesla-win", "targets": ["bms"],
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" } },
+    { "name": "ck1-lfp-rev0-win", "configurePreset": "ck1-lfp-rev0-win", "targets": ["bms"],
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" } },
+    { "name": "rev1-nmc-jpwhit-win", "configurePreset": "rev1-nmc-jpwhit-win", "targets": ["bms"],
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" } }
   ]
 }

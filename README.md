@@ -168,6 +168,24 @@ Use `BMS_USB_EXTERNAL_PULLUP` or `BMS_USB_VBUS_SENSE` only on boards with that
 modification: an unmodified board built with either one never connects over USB.
 A new board gets a new preset rather than a hand-typed `cmake` line.
 
+### Building on Windows
+
+Each preset has a `-win` twin (e.g. `desk-win`), listed only on Windows. It
+builds natively with the tools the Raspberry Pi Pico VS Code extension installs
+in `%USERPROFILE%\.pico-sdk`, so nothing needs to be on `PATH`. The `windows`
+preset in the preset files sets them: Ninja 1.12.1, Arm GCC 14.2
+(`toolchain/14_2_Rel1`), and the prebuilt picotool 2.2.0-a4 and pioasm 2.2.0
+that match Pico SDK 2.2.0. Install them from the extension, or change those
+paths after an SDK update.
+
+```powershell
+cmake --preset desk-win; cmake --build --preset desk-win
+```
+
+A clean build of both chips takes seconds this way. A WSL build of a checkout on
+the Windows drive (`/mnt/c`) takes minutes, mostly in file access and in
+compiling picotool from source for every new build folder.
+
 Run `version` on the BMS console to check what a board is running. Built
 images can be kept in `firmware/`, which git ignores.
 
