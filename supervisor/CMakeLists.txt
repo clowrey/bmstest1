@@ -5,6 +5,10 @@ if(NOT DEFINED PICO_PLATFORM)
     set(PICO_PLATFORM rp2350)
 endif()
 
+# Tools from the Pico VS Code extension, when a windows preset asks for them
+set(PICO_SDK_DIR ${CMAKE_CURRENT_LIST_DIR}/../../pico-sdk)
+include(${CMAKE_CURRENT_LIST_DIR}/../cmake/pico_extension_tools.cmake)
+
 # include the SDK
 include(${CMAKE_CURRENT_LIST_DIR}/../../pico-sdk/pico_sdk_init.cmake)
 

@@ -14,14 +14,9 @@
     {
       "name": "windows",
       "hidden": true,
-      "description": "Native Windows build with the Pico VS Code extension's tools in %USERPROFILE%/.pico-sdk (for Pico SDK 2.2.0)",
+      "description": "Native Windows build with the tools the Pico VS Code extension installs; cmake/pico_extension_tools.cmake picks the versions",
       "generator": "Ninja",
-      "cacheVariables": {
-        "CMAKE_MAKE_PROGRAM": "$env{USERPROFILE}/.pico-sdk/ninja/v1.12.1/ninja.exe",
-        "PICO_TOOLCHAIN_PATH": "$env{USERPROFILE}/.pico-sdk/toolchain/14_2_Rel1",
-        "picotool_DIR": "$env{USERPROFILE}/.pico-sdk/picotool/2.2.0-a4/picotool",
-        "pioasm_DIR": "$env{USERPROFILE}/.pico-sdk/tools/2.2.0/pioasm"
-      }
+      "cacheVariables": { "PICO_EXTENSION_DIR": "$env{USERPROFILE}/.pico-sdk" }
     },
     {
       "name": "desk",
