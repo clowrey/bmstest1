@@ -3,6 +3,8 @@
 #include "pico/stdlib.h"
 #include "tusb.h"
 
+#include "app/bms.h"
+
 #ifdef BMS_USB_EXTERNAL_PULLUP
 #include "hardware/structs/usb.h"
 
