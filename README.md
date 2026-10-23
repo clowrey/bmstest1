@@ -172,11 +172,18 @@ A new board gets a new preset rather than a hand-typed `cmake` line.
 
 Each preset has a `-win` twin (e.g. `desk-win`), listed only on Windows. It
 builds natively with the tools the Raspberry Pi Pico VS Code extension installs
-in `%USERPROFILE%\.pico-sdk`, so nothing needs to be on `PATH`. The `windows`
-preset in the preset files sets them: Ninja 1.12.1, Arm GCC 14.2
-(`toolchain/14_2_Rel1`), and the prebuilt picotool 2.2.0-a4 and pioasm 2.2.0
-that match Pico SDK 2.2.0. Install them from the extension, or change those
-paths after an SDK update.
+in `%USERPROFILE%\.pico-sdk`, so nothing needs to be on `PATH`.
+`cmake/pico_extension_tools.cmake` picks the versions at configure time:
+
+- **pioasm and picotool:** the versions matching the Pico SDK in `../pico-sdk`
+  (SDK 2.2.0 uses `tools/2.2.0` and `picotool/2.2.0-*`)
+- **Arm GCC and Ninja:** the newest installed
+
+Nothing needs editing after an SDK or extension update. If the extension hasn't
+installed the tools for your SDK version yet, the configure step says which one
+is missing: open the project in VS Code and let the extension install them, or
+set that variable yourself. A tool set on the command line wins, e.g.
+`-DPICO_TOOLCHAIN_PATH=...` for a different Arm GCC.
 
 ```powershell
 cmake --preset desk-win; cmake --build --preset desk-win

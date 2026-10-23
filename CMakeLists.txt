@@ -10,6 +10,10 @@ set(PICO_STDIO_USB 1)
 # Support for anonymous structs
 add_definitions("-fms-extensions")
 
+# Tools from the Pico VS Code extension, when a windows preset asks for them
+set(PICO_SDK_DIR ${CMAKE_CURRENT_LIST_DIR}/../pico-sdk)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/pico_extension_tools.cmake)
+
 # include the SDK
 include(../pico-sdk/pico_sdk_init.cmake)
 
