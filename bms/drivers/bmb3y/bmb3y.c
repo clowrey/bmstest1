@@ -710,7 +710,7 @@ static bool should_use_slow_mode(bms_model_t *model) {
     }
 
     if(model->system_sm.state == SYSTEM_STATE_INACTIVE && 
-       state_time(&model->system_sm) > 60000 && 
+       state_time((sm_t*)&model->system_sm) > 60000 && 
        (model->cell_voltages_millis > 0 && model->cell_voltage_min_mV < get_minimum_balancing_voltage_mV(model))) {
         // Inactive (contactors open) for a minute, and too low to balance, enter slow mode
         return true;

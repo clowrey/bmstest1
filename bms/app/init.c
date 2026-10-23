@@ -13,6 +13,7 @@
 #include "../protocols/inverter/inverter.h"
 #include "../drivers/isospi/isosnoop.h"
 #include "../drivers/isospi/isospi_master.h"
+#include "bms.h"
 #include "board_id.h"
 #include "firmware_id.h"
 #include "sys/events/events.h"
