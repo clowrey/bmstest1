@@ -1,0 +1,21 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "rev1-nmc-jpwhit",
+      "displayName": "Rev1 NMC (jpwhit)",
+      "description": "Supervisor for the BlueTesla 96s NMC pack on a stock Rev1 PCB: no external USB pull-up, no VBUS sense",
+      "binaryDir": "${sourceDir}/build-rev1-nmc-jpwhit",
+      "cacheVariables": {
+        "BMS_PROFILE": "2",
+        "BMS_BOARD": "2",
+        "BMS_USB_EXTERNAL_PULLUP": "OFF",
+        "BMS_USB_VBUS_SENSE": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "rev1-nmc-jpwhit", "configurePreset": "rev1-nmc-jpwhit", "targets": ["supervisor"] }
+  ]
+}

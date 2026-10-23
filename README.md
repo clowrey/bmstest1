@@ -141,6 +141,28 @@ Over its USB serial, `s` prints the status and `r` the last snooped scan (with
 `*` on the populated channels). The BMS CLI has `supervisor` and `cells_raw`.
 
 
+## Build configurations
+
+`BMS_PROFILE` picks the pack and `BMS_BOARD` the PCB. Both default to the old
+setup (BlueTesla, Rev0), so a plain `cmake ..` is wrong for a Rev1 board: it
+scales the pack voltage for Rev0's dividers and raises `VOLTAGE_MISMATCH`.
+
+Named configurations are CMake presets, in `CMakePresets.json` for the BMS and
+`supervisor/CMakePresets.json` for the supervisor:
+
+| Preset | Pack | PCB | USB |
+|---|---|---|---|
+| `rev1-nmc-jpwhit` | BlueTesla 96s NMC (`BMS_PROFILE=2`) | Rev1 (`BMS_BOARD=2`) | stock: no external pull-up, no VBUS sense |
+
+```bash
+cmake --preset rev1-nmc-jpwhit && cmake --build --preset rev1-nmc-jpwhit
+cd supervisor && cmake --preset rev1-nmc-jpwhit && cmake --build --preset rev1-nmc-jpwhit
+```
+
+Prebuilt images are in `images/<preset>/`, named with the commit they were
+built from. Run `version` on the BMS console to check what a board is running.
+
+
 ## Balancing
 
 There are five settings that control balancing:
