@@ -159,8 +159,8 @@ cmake --preset rev1-nmc-jpwhit && cmake --build --preset rev1-nmc-jpwhit
 cd supervisor && cmake --preset rev1-nmc-jpwhit && cmake --build --preset rev1-nmc-jpwhit
 ```
 
-Prebuilt images are in `images/<preset>/`, named with the commit they were
-built from. Run `version` on the BMS console to check what a board is running.
+Run `version` on the BMS console to check what a board is running. Built
+images can be kept in `firmware/`, which git ignores.
 
 
 ## Balancing
