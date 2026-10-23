@@ -129,12 +129,11 @@ Once enabled, the supervisor cuts the drivers if:
 The doubled delays mean the BMS always gets to open the contactors first.
 
 Build the supervisor with the same `BMS_PROFILE` and `BMS_BOARD` as the BMS:
+use the same preset (see [Build configurations](#build-configurations)), e.g.
 
 ```bash
 cd supervisor
-mkdir build-desk-rev1-vbus && cd build-desk-rev1-vbus
-cmake .. -DBMS_PROFILE=1 -DBMS_BOARD=2 -DBMS_USB_VBUS_SENSE=ON
-make -j4
+cmake --preset desk && cmake --build --preset desk
 ```
 
 Over its USB serial, `s` prints the status and `r` the last snooped scan (with
@@ -147,17 +146,27 @@ Over its USB serial, `s` prints the status and `r` the last snooped scan (with
 setup (BlueTesla, Rev0), so a plain `cmake ..` is wrong for a Rev1 board: it
 scales the pack voltage for Rev0's dividers and raises `VOLTAGE_MISMATCH`.
 
-Named configurations are CMake presets, in `CMakePresets.json` for the BMS and
-`supervisor/CMakePresets.json` for the supervisor:
+Each board's configuration is a CMake preset, with the same name in
+`CMakePresets.json` (BMS) and `supervisor/CMakePresets.json` (supervisor). The
+pack itself is a `BMS_PROFILE` in `bms/config/limits.h`; a preset only picks
+the profile and adds the board and USB options. A preset builds into
+`build-<preset>/`.
 
-| Preset | Pack | PCB | USB |
+| Preset | Pack (`BMS_PROFILE`) | PCB (`BMS_BOARD`) | USB |
 |---|---|---|---|
-| `rev1-nmc-jpwhit` | BlueTesla 96s NMC (`BMS_PROFILE=2`) | Rev1 (`BMS_BOARD=2`) | stock: no external pull-up, no VBUS sense |
+| `desk` | Desk bench, 15 cells (1) | Rev1 (2) | VBUS sense on GPIO3 |
+| `ck0-bluetesla` | BlueTesla 96s NMC (2) | Rev1 (2) | external VBUS-powered D+ pull-up |
+| `ck1-lfp-rev0` | LFP1 108s (3) | Rev0 (1) | stock |
+| `rev1-nmc-jpwhit` | BlueTesla 96s NMC (2) | Rev1 (2) | stock: no pull-up mod, no VBUS sense |
 
 ```bash
 cmake --preset rev1-nmc-jpwhit && cmake --build --preset rev1-nmc-jpwhit
 cd supervisor && cmake --preset rev1-nmc-jpwhit && cmake --build --preset rev1-nmc-jpwhit
 ```
+
+Use `BMS_USB_EXTERNAL_PULLUP` or `BMS_USB_VBUS_SENSE` only on boards with that
+modification: an unmodified board built with either one never connects over USB.
+A new board gets a new preset rather than a hand-typed `cmake` line.
 
 Run `version` on the BMS console to check what a board is running. Built
 images can be kept in `firmware/`, which git ignores.
