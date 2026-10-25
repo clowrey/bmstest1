@@ -43,8 +43,8 @@
       "name": "rev1-nmc-jpwhit",
       "inherits": "base",
       "displayName": "Rev1 NMC (jpwhit)",
-      "description": "BlueTesla 96s NMC pack on a stock Rev1 PCB: no external USB pull-up, no VBUS sense",
-      "cacheVariables": { "BMS_PROFILE": "2", "BMS_BOARD": "2" }
+      "description": "BlueTesla 96s NMC pack on a stock Rev1 PCB: no external USB pull-up, no VBUS sense; output on the FC port through the FC+ contactor (no F4 jumper)",
+      "cacheVariables": { "BMS_PROFILE": "2", "BMS_BOARD": "2", "BMS_FC_POS_CONTACTOR": "ON" }
     },
     { "name": "desk-win", "inherits": ["windows", "desk"], "displayName": "Desk bench (Rev1, VBUS sense) - Windows",
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" } },

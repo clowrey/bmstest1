@@ -168,6 +168,13 @@ Use `BMS_USB_EXTERNAL_PULLUP` or `BMS_USB_VBUS_SENSE` only on boards with that
 modification: an unmodified board built with either one never connects over USB.
 A new board gets a new preset rather than a hand-typed `cmake` line.
 
+**Output contactors.** By default the inverter is on the FC port, which gets its positive
+from Link+ through a jumper on the pack's 63 A PCS / heat-pump fuse (F4); the FC+ contactor
+is not used. `rev1-nmc-jpwhit` also sets `BMS_FC_POS_CONTACTOR`, for a pack without that
+jumper: the FC+ contactor (K4) then connects the FC port and follows Link+ (closed for the
+precharge and while running). Its coil must be wired to the board's FC+ channel. The F4
+voltage-drop warning is off in that build.
+
 ### Building on Windows
 
 Each preset has a `-win` twin (e.g. `desk-win`), listed only on Windows. It
