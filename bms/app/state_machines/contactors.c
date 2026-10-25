@@ -460,10 +460,11 @@ void contactor_sm_tick(bms_model_t *model) {
                 contactor_sm->enable_current = true;
             }
 
-#if BMS_BOARD == BMS_BOARD_REV1
+#if BMS_BOARD == BMS_BOARD_REV1 && !defined(BMS_FC_POS_CONTACTOR)
             // Diagnostic only: with contactors closed and current flowing, a
             // sustained voltage drop across the F4 fuse/jumper suggests it has
-            // blown or the drive-unit connection is open.
+            // blown or the drive-unit connection is open. (Skipped when the FC+
+            // contactor replaces F4: the reading then means nothing.)
             if(state_timeout((sm_t*)contactor_sm, 2000)
                 && millis_recent_enough(model->high_voltages.fuse_drop_millis, CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS)
                 && millis_recent_enough(model->current_millis, CURRENT_STALE_THRESHOLD_MS)

@@ -137,6 +137,16 @@ if(BMS_ISOSNOOP)
     add_compile_definitions(BMS_ISOSNOOP=1)
 endif()
 
+# Output on the FC port without the F4 jumper. Normally a jumper from the pack's 63 A PCS /
+# heat-pump fuse (F4) feeds the FC port's positive from Link+, and the FC+ contactor is unused.
+# Without it, the FC+ contactor (K4, GPIO16) must connect the FC port instead: this drives it
+# together with Link+. Its coil must be wired to the board's FC+ channel. Needs the precharge
+# on the negative side (Rev1), where GPIO16 is otherwise free.
+option(BMS_FC_POS_CONTACTOR "Drive the FC+ contactor with Link+ (FC-port output without F4)" OFF)
+if(BMS_FC_POS_CONTACTOR)
+    add_compile_definitions(BMS_FC_POS_CONTACTOR=1)
+endif()
+
 # Rollback switch: read the cell voltage banks with the long (4-byte) commands
 # instead of the short ones the real BMS uses. Drop once the short form has run
 # cleanly for a while.
