@@ -408,19 +408,6 @@ bool bmb3y_read_more_temps_blocking(bms_model_t *model) {
             }
             continue;
         }
-
-        model->raw_temperatures[16+module] = (
-            (int16_t)(rx_buf[module * 8 + 0]) |
-            (int16_t)(rx_buf[module * 8 + 1] << 8)
-        );
-        model->raw_temperatures[24+module] = (
-            (int16_t)(rx_buf[module * 8 + 2]) |
-            (int16_t)(rx_buf[module * 8 + 3] << 8)
-        );
-        model->raw_temperatures[32+module] = (
-            (int16_t)(rx_buf[module * 8 + 4]) |
-            (int16_t)(rx_buf[module * 8 + 5] << 8)
-        );
     }
 
     return crc_ok;
@@ -487,15 +474,6 @@ bool bmb3y_read_temperatures_blocking(bms_model_t *model) {
 
             store_module_temperature(module, temp_dC);
         }
-
-        model->raw_temperatures[module] = (
-            (int16_t)(rx_buf[module * 8 + 0]) |
-            (int16_t)(rx_buf[module * 8 + 1] << 8)
-        );
-        model->raw_temperatures[8+module] = (
-            (int16_t)(rx_buf[module * 8 + 4]) |
-            (int16_t)(rx_buf[module * 8 + 5] << 8)
-        );
     }
 
     if(crc_ok) {

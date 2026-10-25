@@ -256,8 +256,6 @@ typedef struct bms_model {
     int16_t raw_cell_voltages_mV[120]; // are unstable during balancing
     millis_t raw_cell_voltages_millis;
 
-    uint16_t raw_temperatures[16+24+8];
-
     bool cell_voltage_slow_mode; // only request BMB data infrequently
 
     // BMB module IDs (register 0x33), slot n = BMB n on the chain
