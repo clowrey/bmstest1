@@ -113,8 +113,6 @@
 
 #define HMI_REG_MODULE_TEMPS_START    0x200
 #define HMI_REG_MODULE_TEMPS_END      0x207
-#define HMI_REG_RAW_TEMPS_START       0x208
-#define HMI_REG_RAW_TEMPS_END         0x238
 
 /* 
 
