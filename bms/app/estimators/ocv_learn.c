@@ -111,6 +111,17 @@ static void learn_from_readings(ocv_learn_t *l) {
     info_printf("OCV learn: %d readings over %.1f days\n", used, span_s / 86400.0);
 }
 
+bool ocv_learn_set_s_full(ocv_learn_t *l, float s_full) {
+    if (!(s_full > 0.0f && s_full <= 1.0f)) return false;
+    if (!l->persistent.valid) {
+        init_prior(&l->persistent, s_full);
+    } else {
+        l->persistent.s_full = s_full;
+    }
+    ocv_learn_mark_edited(l);
+    return true;
+}
+
 bool ocv_learn_tick(ocv_learn_t *l, const float factory[101], double capacity_Ah, float charge_V,
                     double charge_Ah, float current_A, float voltage_V) {
     ocv_learn_persistent_t *p = &l->persistent;
@@ -119,6 +130,13 @@ bool ocv_learn_tick(ocv_learn_t *l, const float factory[101], double capacity_Ah
     if (!l->factory) {
         l->factory = factory;
         l->capacity_ref_Ah = NAN;
+        if (p->valid) {
+            rebuild(l);
+            changed = true;
+        }
+    }
+    if (l->edited) {
+        l->edited = false;
         if (p->valid) {
             rebuild(l);
             changed = true;

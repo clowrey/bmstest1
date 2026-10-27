@@ -77,6 +77,15 @@ static inline uint32_t hmi_buf_get_uint32(const uint8_t *buf) {
     return (uint32_t)buf[0] | ((uint32_t)buf[1] << 8) | ((uint32_t)buf[2] << 16) | ((uint32_t)buf[3] << 24);
 }
 
+static inline float hmi_buf_get_float(const uint8_t *buf) {
+    union {
+        float f;
+        uint32_t u;
+    } u;
+    u.u = hmi_buf_get_uint32(buf);
+    return u.f;
+}
+
 static inline uint64_t hmi_buf_get_uint64(const uint8_t *buf) {
     return (uint64_t)buf[0] | ((uint64_t)buf[1] << 8) | ((uint64_t)buf[2] << 16) | ((uint64_t)buf[3] << 24) |
            ((uint64_t)buf[4] << 32) | ((uint64_t)buf[5] << 40) | ((uint64_t)buf[6] << 48) | ((uint64_t)buf[7] << 56);
@@ -364,6 +373,21 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
             buf[idx++] = HMI_TYPE_UINT16;
             idx += hmi_buf_append_uint16(&buf[idx], HMI_PROTOCOL_VERSION);
             break;
+#ifdef OCV_LEARN
+        case HMI_REG_OCV_LEARN_S_FULL:
+            if (!model->ocv_learn.persistent.valid) {
+                // Not learning yet
+                idx -= 2; // rollback reg_id
+                break;
+            }
+            buf[idx++] = HMI_TYPE_FLOAT;
+            idx += hmi_buf_append_float(&buf[idx], model->ocv_learn.persistent.s_full);
+            break;
+        case HMI_REG_OCV_LEARN_CAPACITY_REF:
+            buf[idx++] = HMI_TYPE_FLOAT;
+            idx += hmi_buf_append_float(&buf[idx], model->ocv_learn.capacity_ref_Ah);
+            break;
+#endif
 
         default:
             if (reg_id >= HMI_REG_CELL_VOLTAGES_START && reg_id <= HMI_REG_CELL_VOLTAGES_END) {
@@ -606,6 +630,18 @@ static void hmi_handle_write_registers(const uint8_t *rx_buf, size_t len, bms_mo
                     }
                     break;
             }
+        } else if(type == HMI_TYPE_FLOAT) {
+            float v = hmi_buf_get_float(&rx_buf[rx_idx]);
+            switch(reg_id) {
+#ifdef OCV_LEARN
+                case HMI_REG_OCV_LEARN_S_FULL:
+                    // Saved to NVM by the learner
+                    if(!model->ocv_learn.persistent.valid || model->ocv_learn.persistent.s_full != v) {
+                        ocv_learn_set_s_full(&model->ocv_learn, v);
+                    }
+                    break;
+#endif
+            }
         }
 
         rx_idx += size;
@@ -670,6 +706,24 @@ static void hmi_handle_read_array(const uint8_t *rx_buf, size_t len, bms_model_t
     uint8_t array_id = rx_buf[2];
     uint16_t start_index = hmi_buf_get_uint16(&rx_buf[3]);
 
+    uint8_t tx_buf[256];
+    size_t tx_len = hmi_build_read_array_response(tx_buf, sizeof(tx_buf), device_address, model, array_id, start_index);
+
+    duart_send_packet(&HMI_SERIAL_DUART, tx_buf, tx_len);
+}
+
+static void hmi_handle_write_array(const uint8_t *rx_buf, size_t len, bms_model_t *model) {
+    if (len < HMI_ARRAY_WRITE_HEADER_LEN) return;
+    uint8_t addr = rx_buf[1];
+    if (addr != device_address) return;
+
+    uint8_t array_id = rx_buf[2];
+    uint16_t start_index = hmi_buf_get_uint16(&rx_buf[4]);
+    if (!hmi_apply_write_array(model, rx_buf, len)) {
+        info_printf("HMI: refused write to array %u from %u\n", array_id, start_index);
+    }
+
+    // Reply with the values now in place, whether or not the write was applied
     uint8_t tx_buf[256];
     size_t tx_len = hmi_build_read_array_response(tx_buf, sizeof(tx_buf), device_address, model, array_id, start_index);
 
@@ -802,6 +856,9 @@ void hmi_serial_tick(bms_model_t *model) {
                 break;
             case HMI_MSG_READ_ARRAY:
                 hmi_handle_read_array(rx_buf, len, model);
+                break;
+            case HMI_MSG_WRITE_ARRAY:
+                hmi_handle_write_array(rx_buf, len, model);
                 break;
             default:
                 // Ignore other messages (responses or unknown)

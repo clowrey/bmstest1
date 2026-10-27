@@ -46,6 +46,9 @@ typedef struct {
     bool initialized;
 } ekf_t;
 
+// The HMI reads x and P as HMI_ARRAY_EKF_STATE and HMI_ARRAY_EKF_COV
+_Static_assert(sizeof(((ekf_t *)0)->x) == 3 * sizeof(double), "update HMI_EKF_STATE_* to match");
+
 // Initialize the filter
 void ekf_init(ekf_t *ekf, double initial_soc, double initial_capacity, double initial_bias_A);
 
@@ -62,6 +65,9 @@ void ekf_set_soc(bms_model_t *model, uint16_t soc);
 void ekf_reset_bias(bms_model_t *model);
 
 uint32_t ekf_tick(bms_model_t *model, float charge_Ah, int32_t current_mA, int32_t voltage_mV);
+
+// The chemistry's factory OCV table (101 points, index = SOC in percent)
+const float *ekf_factory_ocv_table(void);
 
 // Lookups on a 101-point OCV table (index = SOC in percent)
 float table_soc(const float *table, float ocv);

@@ -196,6 +196,10 @@ float table_soc(const float *table, float ocv) {
     return 1.0f; // Should not reach here
 }
 
+const float *ekf_factory_ocv_table(void) {
+    return ocv_factory;
+}
+
 float ocv_to_soc(float ocv) {
     return table_soc(ocv_curve, ocv);
 }

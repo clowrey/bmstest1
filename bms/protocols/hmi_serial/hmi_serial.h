@@ -23,9 +23,12 @@
 #define HMI_MSG_READ_ARRAY           0x09
 #define HMI_MSG_READ_ARRAY_RESPONSE  0x89
 
+#define HMI_MSG_WRITE_ARRAY          0x0A
+
 // Version of this protocol, in HMI_REG_PROTOCOL_VERSION:
 //   1 = READ_ARRAY
-#define HMI_PROTOCOL_VERSION 1
+//   2 = WRITE_ARRAY, the EKF and OCV learner arrays, HMI_REG_OCV_LEARN_*
+#define HMI_PROTOCOL_VERSION 2
 
 #define HMI_ANNOUNCE_DEVICE_TYPE_BMS 0x01
 
@@ -101,6 +104,11 @@
 #define HMI_REG_LINK_VOLTAGE           56 // int32 (mV), rev1 boards only
 
 #define HMI_REG_PROTOCOL_VERSION       71 // uint16, HMI_PROTOCOL_VERSION; absent before READ_ARRAY
+
+// The OCV learner (bms/app/estimators/ocv_learn.h), when the profile has OCV_LEARN
+#define HMI_REG_OCV_LEARN_S_FULL       72 // float, factory-curve SOC (0-1] of full charge; absent until learning
+                                          // starts. Writing it starts learning (to restore a saved learner).
+#define HMI_REG_OCV_LEARN_CAPACITY_REF 73 // float (Ah), from full to OCV_LEARN_V_REF; NaN until trusted
 
 // Deprecated: these ranges and READ_CELL_VOLTAGES / READ_BALANCING_TIMES stay
 // for older HMIs, and are fixed at the first 120 cells and 8 modules. Use
@@ -272,6 +280,27 @@ delta coding: absolute values are two bytes, big-endian, with the MSB set
 (keeping only the low 15 bits of the value); deltas from the previous value in
 -64 to +63 are one byte with the MSB clear. Balancing times of 16384 or more
 don't survive it.
+
+2.10. Write array (from HMI to BMS)
+
+The write array message is used by the HMI to write part of one of the BMS's
+writable arrays (see hmi_arrays.h). The format is:
+
+<message type byte = HMI_MSG_WRITE_ARRAY (0x0A)>
+<device address (1 byte)>
+<array id (1 byte)>
+<encoding (1 byte)> (must be the array's, as given by READ_ARRAY_RESPONSE)
+<start index (2 bytes)>
+<element count (1 byte)>
+<elements> (as in READ_ARRAY_RESPONSE)
+
+The BMS responds with a READ_ARRAY_RESPONSE from the start index, holding the
+array's values after the write. A write is all or nothing: if it is refused
+(read-only or unknown array, no elements yet, wrong encoding, past the end of
+the array, or a value out of range, including any non-finite float), nothing
+changes, which the HMI sees as the response not matching what it wrote. A
+large array is written a page at a time, so between pages it holds a mix of
+old and new values.
 
 */
 

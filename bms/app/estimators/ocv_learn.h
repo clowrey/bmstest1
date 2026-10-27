@@ -36,6 +36,7 @@ typedef struct {
 
     float capacity_ref_Ah;  // Ah from full to OCV_LEARN_V_REF; NAN until the bins there are trusted
     bool dirty;             // persistent data changed and wants saving
+    bool edited;            // persistent data changed from outside (the HMI); rebuild on the next tick
 
     const float *factory;   // the factory OCV table, set on the first tick
     double cap;             // nameplate capacity (Ah), which maps Ah below full to SOC
@@ -55,6 +56,17 @@ typedef struct {
 // within 10mV of it is full.
 bool ocv_learn_tick(ocv_learn_t *l, const float factory[101], double capacity_Ah, float charge_V,
                     double charge_Ah, float current_A, float voltage_V);
+
+// Set where full sits on the factory curve (0 < s_full <= 1), e.g. restoring a
+// saved learner. Starts learning from the prior if it hadn't started. Returns
+// false, changing nothing, for an out of range value.
+bool ocv_learn_set_s_full(ocv_learn_t *l, float s_full);
+
+// After changing persistent data directly: rebuild the table and save it
+static inline void ocv_learn_mark_edited(ocv_learn_t *l) {
+    l->edited = true;
+    l->dirty = true;
+}
 
 // At a settled full charge, which sits at SOC persistent.s_full on the table
 static inline bool ocv_learn_at_full(const ocv_learn_t *l) {
