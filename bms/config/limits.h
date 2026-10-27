@@ -310,13 +310,18 @@
 #define CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV 2000
 // Min voltage across a contactor to consider it open
 #define CONTACTORS_OPEN_VOLTAGE_THRESHOLD_MV 3000 // was 5000
-// Pos contactor has wider tolerances due to the way it is measured
-#define CONTACTORS_POS_CLOSED_VOLTAGE_THRESHOLD_MV 5000
-#define CONTACTORS_POS_OPEN_VOLTAGE_THRESHOLD_MV 10000
 #if IS_BMS_BOARD(REV1)
+// Rev1 measures directly across the pos (Link Positive) contactor, so the
+// tight generic thresholds apply
+#define CONTACTORS_POS_CLOSED_VOLTAGE_THRESHOLD_MV 2000
+#define CONTACTORS_POS_OPEN_VOLTAGE_THRESHOLD_MV 3000
 // Max discrepancy between battery and link voltage while closed (measured by
 // two different ADCs which may be independently [un]calibrated)
 #define CONTACTORS_LINK_MISMATCH_THRESHOLD_MV 16000
+#else
+// Pos contactor has wider tolerances due to the way it is measured
+#define CONTACTORS_POS_CLOSED_VOLTAGE_THRESHOLD_MV 5000
+#define CONTACTORS_POS_OPEN_VOLTAGE_THRESHOLD_MV 10000
 #endif
 
 

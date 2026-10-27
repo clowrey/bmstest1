@@ -68,25 +68,31 @@ void read_inputs(bms_model_t *model) {
     model->high_voltages.neg_contactor = ads1115_float_sample(2, neg_contactor_mul) + (0.001f * model->neg_contactor_offset_mV);
     model->high_voltages.neg_contactor_deviation = ads1115_float_deviation(2, neg_contactor_mul);
 
+    float pos_contactor_mul = effective_voltage_mul(model->pos_contactor_mul);
+
 #if IS_BMS_BOARD(REV1)
-    // Link rail voltage (channel 7 measures LinkNeg - LinkPos, so negate). Not
-    // calibrated, so this uses the default multiplier.
-    float link_voltage_mul = ADS1115_DEFAULT_MUL;
+    // Rev1 measures directly across the pos (Link Positive) contactor via
+    // ADC B channel 6 (BatPos - LinkPos)
+    model->high_voltages.pos_contactor_millis = ads1115_get_sample_millis(6);
+    model->high_voltages.pos_contactor = ads1115_float_sample(6, pos_contactor_mul) + (0.001f * model->pos_contactor_offset_mV);
+    model->high_voltages.pos_contactor_deviation = ads1115_float_deviation(6, pos_contactor_mul);
+
+    // Link rail voltage (channel 7 measures LinkNeg - LinkPos, so negate)
+    float link_voltage_mul = effective_voltage_mul(model->link_voltage_mul);
     model->high_voltages.link_millis = ads1115_get_sample_millis(7);
     model->high_voltages.link = -ads1115_float_sample(7, link_voltage_mul);
     model->high_voltages.link_deviation = ads1115_float_deviation(7, link_voltage_mul);
-#endif
-
+#else
     // Positive contactor voltage has to be derived from the difference between (battery+
     // to output-) and (output+ to output-), since we can't sample relative to battery+.
 
-    float pos_contactor_mul = effective_voltage_mul(model->pos_contactor_mul);
     millis_t raw_bat_pos_to_out_neg_millis = ads1115_get_sample_millis(3);
     float raw_bat_plus_to_out_neg = ads1115_float_sample(3, pos_contactor_mul);
     
     model->high_voltages.pos_contactor_millis = raw_bat_pos_to_out_neg_millis < model->high_voltages.output_millis ? raw_bat_pos_to_out_neg_millis : model->high_voltages.output_millis;
     model->high_voltages.pos_contactor = raw_bat_plus_to_out_neg - model->high_voltages.output;
     model->high_voltages.pos_contactor_deviation = ads1115_float_deviation(3, pos_contactor_mul) + model->high_voltages.output_deviation;
+#endif
     
     // INA228 current and charge readings
     

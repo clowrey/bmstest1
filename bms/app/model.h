@@ -69,6 +69,11 @@ typedef struct {
     uint16_t minimum_balancing_voltage_mV; // Minimum cell voltage to allow balancing
     uint16_t balancing_start_voltage_mV;   // Start balancing when highest cell reaches this voltage
 
+    // Rev1 board calibration (appended at the end to preserve the NVM layout;
+    // these default to zero on older saves and rev0 boards)
+    float pos_contactor_offset_mV; // offset for the direct pos contactor channel
+    float link_voltage_mul;
+
 } bms_model_persistent_slow_t;
 
 static const uint32_t BMS_MODEL_PERSISTENT_SLOW_VERSION = 2;

@@ -77,6 +77,37 @@ bool calibrate_neg_contactor(bms_model_t *model, int32_t raw_val, float sample_c
     );
 }
 
+#if IS_BMS_BOARD(REV1)
+
+bool calibrate_link_voltage(bms_model_t *model, int32_t raw_val, float sample_count) {
+    // Channel 7 measures LinkNeg - LinkPos, so negate to get the link voltage.
+    // With the contactors closed the link rail sits at the battery voltage.
+    float mul = (float)model->cell_voltage_total_mV * 0.001f * sample_count / (float)(-raw_val);
+
+    if(mul > MIN_CALIBRATION_MUL && mul < MAX_CALIBRATION_MUL) {
+        info_printf("Link voltage calibration complete: raw=%" PRId32 " mul=%f\n", raw_val, mul);
+        model->link_voltage_mul = mul;
+        return true;
+    } else {
+        error_printf("Link voltage calibration out of range: %f\n", mul);
+        return false;
+    }
+}
+
+bool calibrate_pos_contactor(bms_model_t *model, int32_t raw_val, float sample_count) {
+    // Rev1 measures directly across the pos contactor, which reads ~0V while
+    // the contactors are closed, so calibrate the offset (like the neg
+    // contactor). Should run after battery and link voltage calibration.
+    return calibrate_contactor_offset(
+        "Pos", raw_val, sample_count,
+        model->battery_voltage_mul, model->link_voltage_mul,
+        MIN_POS_CONTACTOR_OFFSET_MV, MAX_POS_CONTACTOR_OFFSET_MV,
+        &model->pos_contactor_mul, &model->pos_contactor_offset_mV
+    );
+}
+
+#else
+
 bool calibrate_pos_contactor(bms_model_t *model, int32_t raw_val, float sample_count) {
     float mul = (float)model->cell_voltage_total_mV * 0.001f * sample_count / (float)raw_val;
 
@@ -89,6 +120,8 @@ bool calibrate_pos_contactor(bms_model_t *model, int32_t raw_val, float sample_c
         return false;
     }
 }
+
+#endif
 
 bool calibrate_current_offset(bms_model_t *model, int32_t raw_offset) {
     if(raw_offset > MIN_CURRENT_OFFSET && raw_offset < MAX_CURRENT_OFFSET) {

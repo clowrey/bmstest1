@@ -70,6 +70,8 @@ bool nvm_save_persistent_slow(bms_model_t *model) {
 #define PRIOR_NEG_OFFSET_MV 42.0f
 #define PRIOR_POS_MUL 0.0124f
 #define PRIOR_CURRENT_OFFSET 7
+#define PRIOR_POS_OFFSET_MV 43.0f
+#define PRIOR_LINK_MUL 0.0125f
 
 static bms_model_t m;
 
@@ -83,6 +85,8 @@ static int setup(void **state) {
     m.neg_contactor_offset_mV = PRIOR_NEG_OFFSET_MV;
     m.pos_contactor_mul = PRIOR_POS_MUL;
     m.current_offset = PRIOR_CURRENT_OFFSET;
+    m.pos_contactor_offset_mV = PRIOR_POS_OFFSET_MV;
+    m.link_voltage_mul = PRIOR_LINK_MUL;
     m.calibration_sm.name = "calibration";
     nvm_saves = 0;
     adc_finished = false;
@@ -108,6 +112,11 @@ static void finish_adc(float n) {
     adc_calibration[1] = rail_raw(n);
     adc_calibration[2] = closed_contactor_raw(n);
     adc_calibration[3] = rail_raw(n);
+#if IS_BMS_BOARD(REV1)
+    // Direct pos contactor (closed), and the negated link voltage
+    adc_calibration[6] = closed_contactor_raw(n);
+    adc_calibration[7] = -rail_raw(n);
+#endif
     ina228_dev.null_accumulator = 30;
     ina228_dev.null_counter = 10;
     adc_finished = true;
@@ -124,6 +133,8 @@ static void assert_calibration_unchanged(void) {
     assert_float_near(m.neg_contactor_offset_mV, PRIOR_NEG_OFFSET_MV);
     assert_float_near(m.pos_contactor_mul, PRIOR_POS_MUL);
     assert_int_equal(m.current_offset, PRIOR_CURRENT_OFFSET);
+    assert_float_near(m.pos_contactor_offset_mV, PRIOR_POS_OFFSET_MV);
+    assert_float_near(m.link_voltage_mul, PRIOR_LINK_MUL);
     assert_int_equal(nvm_saves, 0);
 }
 
@@ -177,6 +188,10 @@ static void test_long_success_saves_all(void **state) {
     assert_float_near(m.neg_contactor_mul, NEW_MUL);
     assert_float_near(m.pos_contactor_mul, NEW_MUL);
     assert_int_equal(m.current_offset, 3);
+#if IS_BMS_BOARD(REV1)
+    assert_float_near(m.link_voltage_mul, NEW_MUL);
+    assert_true(fabsf(m.pos_contactor_offset_mV - -(5 * NEW_MUL * 1000.0f)) < 1e-3f);
+#endif
     assert_int_equal(nvm_saves, 1);
 }
 
@@ -273,6 +288,20 @@ static void test_online_closed_failure_restores_all(void **state) {
     assert_calibration_unchanged();
 }
 
+#if IS_BMS_BOARD(REV1)
+static void test_long_pos_failure_restores_link(void **state) {
+    (void)state;
+    start_long();
+    // Link calibration succeeds, then the pos contactor that follows it fails
+    finish_adc(VOLTAGE_CALIBRATION_SAMPLES);
+    adc_calibration[6] = bad_contactor_raw(VOLTAGE_CALIBRATION_SAMPLES);
+    calibration_sm_tick(&m);
+
+    assert_int_equal(m.calibration_sm.state, CALIBRATION_STATE_IDLE);
+    assert_calibration_unchanged();
+}
+#endif
+
 static void test_other_settings_survive_failure(void **state) {
     (void)state;
     start_short();
@@ -296,6 +325,9 @@ int main(void) {
         cmocka_unit_test_setup(test_short_neg_failure_restores_first_stage, setup),
         cmocka_unit_test_setup(test_short_neg_timeout_restores_first_stage, setup),
         cmocka_unit_test_setup(test_online_closed_failure_restores_all, setup),
+#if IS_BMS_BOARD(REV1)
+        cmocka_unit_test_setup(test_long_pos_failure_restores_link, setup),
+#endif
         cmocka_unit_test_setup(test_other_settings_survive_failure, setup),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

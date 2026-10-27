@@ -16,7 +16,14 @@ extern ina228_t ina228_dev;
 // abandoned) the steps that did succeed are rolled back as well. Otherwise a
 // mix of old and new values would stay in use, and be saved by the next NVM
 // save.
-static calibration_data_t calibration_before;
+static struct {
+    calibration_data_t data;
+#if IS_BMS_BOARD(REV1)
+    // Stored after the other settings, to keep the NVM layout
+    float pos_contactor_offset_mV;
+    float link_voltage_mul;
+#endif
+} calibration_before;
 
 // The calibration values are embedded (anonymously) at the start of the
 // persistent settings
@@ -28,7 +35,11 @@ static calibration_data_t *calibration_data(bms_model_t *model) {
 }
 
 static void start_sequence(bms_model_t *model, calibration_state_t first_state) {
-    calibration_before = *calibration_data(model);
+    calibration_before.data = *calibration_data(model);
+#if IS_BMS_BOARD(REV1)
+    calibration_before.pos_contactor_offset_mV = model->pos_contactor_offset_mV;
+    calibration_before.link_voltage_mul = model->link_voltage_mul;
+#endif
     state_transition((sm_t*)&model->calibration_sm, first_state);
 }
 
@@ -38,7 +49,11 @@ static void finish_sequence(bms_model_t *model, bool ok) {
     if (ok) {
         nvm_save_persistent_slow(model);
     } else {
-        *calibration_data(model) = calibration_before;
+        *calibration_data(model) = calibration_before.data;
+#if IS_BMS_BOARD(REV1)
+        model->pos_contactor_offset_mV = calibration_before.pos_contactor_offset_mV;
+        model->link_voltage_mul = calibration_before.link_voltage_mul;
+#endif
     }
     state_transition((sm_t*)&model->calibration_sm, CALIBRATION_STATE_IDLE);
 }
@@ -95,7 +110,14 @@ void calibration_sm_tick(bms_model_t *model) {
                 if(!calibrate_battery_voltage(model, ads1115_get_calibration(0), n)) ok = false;
                 if(!calibrate_output_voltage(model, ads1115_get_calibration(1), n)) ok = false;
                 if(!calibrate_neg_contactor(model, ads1115_get_calibration(2), n)) ok = false;
+#if IS_BMS_BOARD(REV1)
+                // Link must be calibrated before the (direct) pos contactor,
+                // whose multiplier is derived from the battery and link muls
+                if(!calibrate_link_voltage(model, ads1115_get_calibration(7), n)) ok = false;
+                if(!calibrate_pos_contactor(model, ads1115_get_calibration(6), n)) ok = false;
+#else
                 if(!calibrate_pos_contactor(model, ads1115_get_calibration(3), n)) ok = false;
+#endif
                 
                 int32_t offset = (int32_t)div_round_closest(ina228_dev.null_accumulator, ina228_dev.null_counter);
                 if(!calibrate_current_offset(model, offset)) ok = false;
@@ -202,9 +224,18 @@ void calibration_sm_tick(bms_model_t *model) {
                 } else if (model->contactor_sm.state == CONTACTORS_STATE_CLOSED) {
                     if (calibrate_output_voltage(model, ads1115_get_calibration(1), n)) {
                         if (calibrate_neg_contactor(model, ads1115_get_calibration(2), n)) {
+#if IS_BMS_BOARD(REV1)
+                            // Link before pos (pos mul derives from battery/link muls)
+                            if (calibrate_link_voltage(model, ads1115_get_calibration(7), n)) {
+                                if (calibrate_pos_contactor(model, ads1115_get_calibration(6), n)) {
+                                    ok = true;
+                                }
+                            }
+#else
                             if (calibrate_pos_contactor(model, ads1115_get_calibration(3), n)) {
                                 ok = true;
                             }
+#endif
                         }
                     }
                 }

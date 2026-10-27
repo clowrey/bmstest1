@@ -168,32 +168,38 @@ target_include_directories(test_system_sm PRIVATE
 add_test(NAME test_system_sm COMMAND ${MEMORY_CHECK} test_system_sm)
 
 # Contactor offset calibration
-add_executable(test_calibration
-    test_calibration.c
-    ../bms/app/calibration/common.c
-)
-target_link_libraries(test_calibration PRIVATE cmocka m)
-target_include_directories(test_calibration PRIVATE
-    ${cmocka_SOURCE_DIR}/include
-    include
-    ../bms
-)
-add_test(NAME test_calibration COMMAND ${MEMORY_CHECK} test_calibration)
+foreach(variant IN ITEMS "" "_rev1")
+    add_executable(test_calibration${variant}
+        test_calibration.c
+        ../bms/app/calibration/common.c
+    )
+    target_link_libraries(test_calibration${variant} PRIVATE cmocka m)
+    target_include_directories(test_calibration${variant} PRIVATE
+        ${cmocka_SOURCE_DIR}/include
+        include
+        ../bms
+    )
+    add_test(NAME test_calibration${variant} COMMAND ${MEMORY_CHECK} test_calibration${variant})
+endforeach()
+target_compile_definitions(test_calibration_rev1 PRIVATE BMS_BOARD=2)
 
 # Calibration sequences, against fake ADC and current sensor drivers
-add_executable(test_calibration_sm
-    test_calibration_sm.c
-    ../bms/app/calibration/calibration.c
-    ../bms/app/calibration/common.c
-    ../bms/app/state_machines/base.c
-)
-target_link_libraries(test_calibration_sm PRIVATE cmocka m)
-target_include_directories(test_calibration_sm PRIVATE
-    ${cmocka_SOURCE_DIR}/include
-    include
-    ../bms
-)
-add_test(NAME test_calibration_sm COMMAND ${MEMORY_CHECK} test_calibration_sm)
+foreach(variant IN ITEMS "" "_rev1")
+    add_executable(test_calibration_sm${variant}
+        test_calibration_sm.c
+        ../bms/app/calibration/calibration.c
+        ../bms/app/calibration/common.c
+        ../bms/app/state_machines/base.c
+    )
+    target_link_libraries(test_calibration_sm${variant} PRIVATE cmocka m)
+    target_include_directories(test_calibration_sm${variant} PRIVATE
+        ${cmocka_SOURCE_DIR}/include
+        include
+        ../bms
+    )
+    add_test(NAME test_calibration_sm${variant} COMMAND ${MEMORY_CHECK} test_calibration_sm${variant})
+endforeach()
+target_compile_definitions(test_calibration_sm_rev1 PRIVATE BMS_BOARD=2)
 
 # ADS1115 scan driver, against fake I2C and timer drivers
 foreach(variant IN ITEMS "" "_rev1")
