@@ -391,6 +391,27 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
             buf[idx++] = HMI_TYPE_FLOAT;
             idx += hmi_buf_append_float(&buf[idx], model->ocv_learn.capacity_ref_Ah);
             break;
+        case HMI_REG_OCV_LEARN_CAPACITY_STATE:
+            buf[idx++] = HMI_TYPE_UINT8;
+            buf[idx++] = model->ocv_learn.capacity_state;
+            break;
+        case HMI_REG_OCV_LEARN_CAPACITY:
+        case HMI_REG_OCV_LEARN_CAPACITY_SD:
+        case HMI_REG_OCV_LEARN_CAPACITY_DEPTH:
+        case HMI_REG_OCV_LEARN_CAPACITY_DEPTH_V:
+        case HMI_REG_OCV_LEARN_CAPACITY_DEPTH_CYCLES: {
+            const ocv_learn_t *l = &model->ocv_learn;
+            float v = reg_id == HMI_REG_OCV_LEARN_CAPACITY       ? l->capacity_Ah
+                    : reg_id == HMI_REG_OCV_LEARN_CAPACITY_SD    ? l->capacity_sd_Ah
+                    : reg_id == HMI_REG_OCV_LEARN_CAPACITY_DEPTH ? l->capacity_depth
+                    : reg_id == HMI_REG_OCV_LEARN_CAPACITY_DEPTH_V ? l->capacity_depth_V
+                                                                   : l->capacity_depth_cycles;
+            // Zero before the learner's first tick, so go by the state
+            if (l->capacity_state < OCV_LEARN_CAPACITY_PRELIMINARY) v = NAN;
+            buf[idx++] = HMI_TYPE_FLOAT;
+            idx += hmi_buf_append_float(&buf[idx], v);
+            break;
+        }
 #endif
 
         default:

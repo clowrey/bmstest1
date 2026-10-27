@@ -13,6 +13,13 @@
 #define OCV_LEARN_MAX_READINGS 256 // one every 2 hours for 21 days
 #define OCV_LEARN_FULL_SETTLE_S 600 // near the charge voltage and quiet this long counts as full
 
+// ocv_learn_t.capacity_state
+#define OCV_LEARN_CAPACITY_NOT_LEARNING 0 // no settled full charge yet
+#define OCV_LEARN_CAPACITY_NO_DATA      1 // no bin below full trusted yet (or no longer), or too
+                                          // uncertain (over 25%) to give a figure
+#define OCV_LEARN_CAPACITY_PRELIMINARY  2 // trusted bins, but too shallow for a good figure
+#define OCV_LEARN_CAPACITY_GOOD         3 // uncertainty within 5% of the capacity
+
 typedef struct {
     uint32_t t_s;   // learner time of the reading
     float dq_Ah;    // charge counter relative to the full charge before it
@@ -35,6 +42,16 @@ typedef struct {
     ocv_learn_persistent_t persistent;
 
     float capacity_ref_Ah;  // Ah from full to OCV_LEARN_V_REF; NAN until the bins there are trusted
+
+    // Whole-pack capacity from every trusted bin: each bin's Ah below full was
+    // measured, its depth below full is read off the factory curve, so deeper
+    // bins lean on the curve less and count for more. NAN until a bin is trusted.
+    float capacity_Ah;
+    float capacity_sd_Ah;         // 1-sigma uncertainty, mostly from the factory curve
+    uint8_t capacity_state;       // OCV_LEARN_CAPACITY_*
+    float capacity_depth;         // factory-curve SOC below full of the deepest trusted bin
+    float capacity_depth_V;       // learned OCV there (V/cell)
+    float capacity_depth_cycles;  // that bin's decaying count of full charge cycles
     bool dirty;             // persistent data changed and wants saving
     bool edited;            // persistent data changed from outside (the HMI); rebuild on the next tick
 

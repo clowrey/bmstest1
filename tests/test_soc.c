@@ -330,11 +330,24 @@ static void test_ocv_learn_cycles(void **state) {
     assert_true(learn.persistent.corr[7] > 0.02 && learn.persistent.corr[7] < 0.04);
     assert_float_equal(learn.table[41], 3.0f + 1.2f * 0.41f + 0.03f, 0.01f);
     assert_true(isnan(learn.capacity_ref_Ah)); // one cycle isn't enough to trust
+    assert_int_equal(learn.capacity_state, OCV_LEARN_CAPACITY_NO_DATA);
+    assert_true(isnan(learn.capacity_Ah));
 
     learn_cycle();
     learn_run(1200, 0.0f, 4.08f);
     // Full (90%) down to the 3.50V reference: 3.0 + 1.2 * (0.9 - a / 100) + 0.03 = 3.5 at a = 50.8Ah
     assert_float_equal(learn.capacity_ref_Ah, 50.8f, 1.5f);
+
+    // Bins 6 and 7 (45 and 52.5Ah below full) read 30mV high, which the factory curve
+    // puts 2.5% shallower: 45 / 0.425 = 105.9Ah and 52.5 / 0.5 = 105.0Ah. Half way
+    // down, the curve's error alone is ~5% (20mV at the bin and at full, over 1.2V of
+    // curve, divided by the depth), so it's preliminary.
+    assert_int_equal(learn.capacity_state, OCV_LEARN_CAPACITY_PRELIMINARY);
+    assert_float_equal(learn.capacity_Ah, 105.4f, 1.5f);
+    assert_true(learn.capacity_sd_Ah > 0.04f * learn.capacity_Ah && learn.capacity_sd_Ah < 0.08f * learn.capacity_Ah);
+    assert_float_equal(learn.capacity_depth, 0.5f, 0.02f);                       // bin 7
+    assert_float_equal(learn.capacity_depth_V, 3.0f + 1.2f * 0.375f + 0.03f, 0.01f);
+    assert_true(learn.capacity_depth_cycles >= 1.5f);
 }
 
 int main(void) {

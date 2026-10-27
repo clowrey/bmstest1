@@ -18,6 +18,17 @@
 #define DAILY_DECAY 0.99446f      // exp(-1/180): counts fade with a 180 day time constant
 #define TRUST_CYCLES 1.5f
 
+// Learned capacity. How far the factory curve may be from the pack's at rest (V),
+// e.g. hysteresis and ageing; a profile can override it. At 10mV, 10 shallow days
+// of an aged 96S NMC pack (to 27% below full) gave 206 +- 13Ah against 177 +- 5Ah
+// from 40 deeper days (to 67%), so its error bars were too narrow.
+#ifndef OCV_LEARN_CURVE_SD_V
+#define OCV_LEARN_CURVE_SD_V 0.020
+#endif
+#define CAPACITY_MIN_DEPTH 0.05   // shallower bins say too little about capacity
+#define CAPACITY_GOOD_SD 0.05     // relative uncertainty for OCV_LEARN_CAPACITY_GOOD
+#define CAPACITY_MAX_SD 0.25      // beyond this it's no figure at all, e.g. only an LFP plateau
+
 // Bin index and weight of the upper bin for a given Ah below full. The bins run
 // from full down to the factory curve's 0%, so they scale with the pack.
 static int bin_of(const ocv_learn_t *l, double a, double *w) {
@@ -55,6 +66,72 @@ static void update(ocv_learn_t *l, double a, double v, double sv, double sa) {
 }
 
 
+// SOC uncertainty of a voltage looked up on the factory curve: half the SOC span of
+// v +- OCV_LEARN_CURVE_SD_V. Between LFP plateaus a local slope looks steep while a
+// few mV either way lands anywhere on a plateau, so it takes the span, not the slope.
+static double curve_sd_soc(const float *f, double v) {
+    return (table_soc(f, (float)(v + OCV_LEARN_CURVE_SD_V)) - table_soc(f, (float)(v - OCV_LEARN_CURVE_SD_V))) / 2.0;
+}
+
+static void clear_capacity(ocv_learn_t *l, uint8_t state) {
+    l->capacity_Ah = l->capacity_sd_Ah = NAN;
+    l->capacity_depth = l->capacity_depth_V = l->capacity_depth_cycles = NAN;
+    l->capacity_state = state;
+}
+
+// Capacity from each trusted bin, C = Ah below full / factory-curve SOC below full,
+// combined by inverse variance. A voltage error becomes an SOC error on the curve, at
+// the bin and at full, and is divided by the depth, so the deep bins dominate and the
+// flat parts of an LFP curve hardly count.
+static void estimate_capacity(ocv_learn_t *l) {
+    const ocv_learn_persistent_t *p = &l->persistent;
+    clear_capacity(l, OCV_LEARN_CAPACITY_NO_DATA);
+    double sd_full = curve_sd_soc(l->factory, table_ocv(l->factory, p->s_full));
+    // Per bin: capacity, its error from the curve, and dC/dV for the learned voltage
+    double w[OCV_LEARN_BINS] = {0}, c[OCV_LEARN_BINS], sd_curve[OCV_LEARN_BINS], g[OCV_LEARN_BINS];
+    bool used[OCV_LEARN_BINS] = {false};
+    double sw = 0.0;
+    for (int j = 1; j < OCV_LEARN_BINS; j++) {
+        if (p->cycles[j] < TRUST_CYCLES) continue;
+        double a = (double)j / (OCV_LEARN_BINS - 1) * p->s_full * l->cap;
+        double v = curve(l, a);
+        double s = table_soc(l->factory, (float)v);
+        double depth = p->s_full - s, sd_s = curve_sd_soc(l->factory, v);
+        if (depth < CAPACITY_MIN_DEPTH || sd_s <= 0.0) continue;
+        c[j] = a / depth;
+        sd_curve[j] = c[j] / depth * sqrt(sd_full * sd_full + sd_s * sd_s);
+        g[j] = c[j] / depth * sd_s / OCV_LEARN_CURVE_SD_V;   // dC/dV, over the same span
+        w[j] = 1.0 / (sd_curve[j] * sd_curve[j] + g[j] * g[j] * p->P[j][j]);
+        used[j] = true;
+        sw += w[j];
+        if (isnan(l->capacity_depth) || depth > l->capacity_depth) {
+            l->capacity_depth = (float)depth;
+            l->capacity_depth_V = (float)v;
+            l->capacity_depth_cycles = p->cycles[j];
+        }
+    }
+    if (sw <= 0.0) return;
+    double cap = 0.0, sd_c = 0.0, var_v = 0.0;
+    for (int j = 1; j < OCV_LEARN_BINS; j++) {
+        if (!used[j]) continue;
+        w[j] /= sw;
+        cap += w[j] * c[j];
+        sd_c += w[j] * sd_curve[j];   // shared by every bin, so it adds up rather than averaging out
+        for (int k = 1; k < OCV_LEARN_BINS; k++) {
+            // Through the learner's covariance, which is tight for the average of two bins a rest fell between
+            if (used[k]) var_v += w[j] * g[j] * w[k] * g[k] * p->P[j][k];
+        }
+    }
+    double sd = sqrt(sd_c * sd_c + (var_v > 0.0 ? var_v : 0.0));
+    if (sd > CAPACITY_MAX_SD * cap) {
+        clear_capacity(l, OCV_LEARN_CAPACITY_NO_DATA);
+        return;
+    }
+    l->capacity_Ah = (float)cap;
+    l->capacity_sd_Ah = (float)sd;
+    l->capacity_state = sd <= CAPACITY_GOOD_SD * cap ? OCV_LEARN_CAPACITY_GOOD : OCV_LEARN_CAPACITY_PRELIMINARY;
+}
+
 // Rebuild the OCV table from the factory one and the learned correction
 static void rebuild(ocv_learn_t *l) {
     const ocv_learn_persistent_t *p = &l->persistent;
@@ -71,6 +148,14 @@ static void rebuild(ocv_learn_t *l) {
     // Logged even untrusted, so a one-off calibration discharge shows its result
     info_printf("OCV learn: %.1fAh from full to %.2fV%s (%.1f and %.1f cycles)\n", a, OCV_LEARN_V_REF,
                 trusted ? "" : ", not yet trusted", p->cycles[j], p->cycles[j + 1]);
+
+    estimate_capacity(l);
+    if (l->capacity_state >= OCV_LEARN_CAPACITY_PRELIMINARY) {
+        info_printf("OCV learn: capacity %.1f +- %.1fAh%s, from bins down to %.2fV (%.0f%% below full)\n",
+                    l->capacity_Ah, l->capacity_sd_Ah,
+                    l->capacity_state == OCV_LEARN_CAPACITY_GOOD ? "" : " (preliminary)",
+                    l->capacity_depth_V, l->capacity_depth * 100.0f);
+    }
 }
 
 static void init_prior(ocv_learn_persistent_t *p, float s_full) {
@@ -130,6 +215,7 @@ bool ocv_learn_tick(ocv_learn_t *l, const float factory[101], double capacity_Ah
     if (!l->factory) {
         l->factory = factory;
         l->capacity_ref_Ah = NAN;
+        clear_capacity(l, OCV_LEARN_CAPACITY_NOT_LEARNING);
         if (p->valid) {
             rebuild(l);
             changed = true;

@@ -28,7 +28,8 @@
 // Version of this protocol, in HMI_REG_PROTOCOL_VERSION:
 //   1 = READ_ARRAY
 //   2 = WRITE_ARRAY, the EKF and OCV learner arrays, HMI_REG_OCV_LEARN_*
-//   3 = HMI_REG_NAMEPLATE_CAPACITY; HMI_REG_CAPACITY is the actual capacity, saved to NVM
+//   3 = HMI_REG_NAMEPLATE_CAPACITY; HMI_REG_CAPACITY is the actual capacity, saved to NVM;
+//       the learned capacity, HMI_REG_OCV_LEARN_CAPACITY*
 #define HMI_PROTOCOL_VERSION 3
 
 #define HMI_ANNOUNCE_DEVICE_TYPE_BMS 0x01
@@ -113,6 +114,16 @@
 #define HMI_REG_OCV_LEARN_CAPACITY_REF 73 // float (Ah), from full to OCV_LEARN_V_REF; NaN until trusted
 
 #define HMI_REG_NAMEPLATE_CAPACITY     74 // uint32 (mC), the profile's NAMEPLATE_CAPACITY_AH (the label's); read only
+
+// Whole-pack capacity learned from every trusted learner bin (see ocv_learn_t), when the
+// profile has OCV_LEARN. Read only. The floats are NaN while the state is below PRELIMINARY.
+#define HMI_REG_OCV_LEARN_CAPACITY        75 // float (Ah)
+#define HMI_REG_OCV_LEARN_CAPACITY_SD     76 // float (Ah), 1-sigma uncertainty
+#define HMI_REG_OCV_LEARN_CAPACITY_STATE  77 // uint8, OCV_LEARN_CAPACITY_* (not learning, no data,
+                                             // preliminary, good)
+#define HMI_REG_OCV_LEARN_CAPACITY_DEPTH  78 // float (0-1), SOC below full of the deepest trusted bin
+#define HMI_REG_OCV_LEARN_CAPACITY_DEPTH_V 79 // float (V/cell), learned OCV at that bin
+#define HMI_REG_OCV_LEARN_CAPACITY_DEPTH_CYCLES 80 // float, that bin's decaying count of full charge cycles
 
 // Deprecated: these ranges and READ_CELL_VOLTAGES / READ_BALANCING_TIMES stay
 // for older HMIs, and are fixed at the first 120 cells and 8 modules. Use
