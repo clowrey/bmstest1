@@ -256,12 +256,13 @@ static void test_precharge_failure_link_voltage(void **state) {
 #endif
 
 #if IS_BMS_BOARD(REV1)
-// Fuse drop checks. Each starts with the contactors closed and settled, with
-// healthy readings.
+// Checks made while closed. Each test starts with the contactors closed and
+// settled, with healthy readings.
 
-static void fuse_test_setup(bms_model_t *model) {
-    // Fatal events can't be cleared, so reset this one between tests
+static void closed_test_setup(bms_model_t *model) {
+    // Fatal events can't be cleared, so reset these between tests
     memset(&bms_event_slots[ERR_FUSE_VOLTAGE_DROP_HIGH], 0, sizeof(bms_event_slot_t));
+    memset(&bms_event_slots[ERR_LINK_VOLTAGE_MISMATCH], 0, sizeof(bms_event_slot_t));
 
     model->contactor_sm.state = CONTACTORS_STATE_CLOSED;
     model->contactor_sm.last_transition_time = stored_millis64;
@@ -288,10 +289,42 @@ static void tick_closed(bms_model_t *model, uint32_t ms) {
     }
 }
 
+static void test_link_mismatch_opens_contactors(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+    closed_test_setup(&model);
+    tick_closed(&model, 2500);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_CLOSED);
+
+    // The link rail drops away from the battery (a link contactor has opened)
+    model.high_voltages.link = 380.0f;
+    expect_value(contactors_set_pos_pre_neg, pos, true);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, true);
+    tick_sm(&model, 100);
+
+    assert_int_equal(get_event_level(ERR_LINK_VOLTAGE_MISMATCH), LEVEL_WARNING);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_AWAITING_OPEN);
+}
+
+static void test_link_within_tolerance_stays_closed(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+    closed_test_setup(&model);
+
+    // Battery and link are read by different ADCs, which may be calibrated
+    // differently, so a smaller discrepancy is tolerated
+    model.high_voltages.link = 390.0f;
+    tick_closed(&model, 5000);
+
+    assert_int_equal(get_event_level(ERR_LINK_VOLTAGE_MISMATCH), LEVEL_NONE);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_CLOSED);
+}
+
 static void test_fuse_drop_sustained_is_fatal(void **state) {
     (void) state;
     bms_model_t model = {0};
-    fuse_test_setup(&model);
+    closed_test_setup(&model);
     tick_closed(&model, 2500);
     assert_int_equal(get_event_level(ERR_FUSE_VOLTAGE_DROP_HIGH), LEVEL_NONE);
 
@@ -311,7 +344,7 @@ static void test_fuse_drop_sustained_is_fatal(void **state) {
 static void test_fuse_drop_spikes_are_not_fatal(void **state) {
     (void) state;
     bms_model_t model = {0};
-    fuse_test_setup(&model);
+    closed_test_setup(&model);
     tick_closed(&model, 2500);
 
     // Repeated brief spikes, with as long again between them
@@ -328,7 +361,7 @@ static void test_fuse_drop_spikes_are_not_fatal(void **state) {
 static void test_fuse_drop_without_current_is_fatal(void **state) {
     (void) state;
     bms_model_t model = {0};
-    fuse_test_setup(&model);
+    closed_test_setup(&model);
     tick_closed(&model, 2500);
 
     // A blown fuse can itself stop the current, so it must still be detected
@@ -341,7 +374,7 @@ static void test_fuse_drop_without_current_is_fatal(void **state) {
 static void test_fuse_drop_cleared_when_reading_stale(void **state) {
     (void) state;
     bms_model_t model = {0};
-    fuse_test_setup(&model);
+    closed_test_setup(&model);
     tick_closed(&model, 2500);
 
     model.high_voltages.fuse_drop = 50.0f;
@@ -374,7 +407,7 @@ static void test_fuse_drop_cleared_when_reading_stale(void **state) {
 static void test_fuse_drop_cleared_when_contactors_open(void **state) {
     (void) state;
     bms_model_t model = {0};
-    fuse_test_setup(&model);
+    closed_test_setup(&model);
     tick_closed(&model, 2500);
 
     model.high_voltages.fuse_drop = 50.0f;
@@ -595,6 +628,8 @@ int main(void) {
         cmocka_unit_test(test_precharge_failure_timeout),
 #if IS_BMS_BOARD(REV1)
         cmocka_unit_test(test_precharge_failure_link_voltage),
+        cmocka_unit_test(test_link_mismatch_opens_contactors),
+        cmocka_unit_test(test_link_within_tolerance_stays_closed),
         cmocka_unit_test(test_fuse_drop_sustained_is_fatal),
         cmocka_unit_test(test_fuse_drop_spikes_are_not_fatal),
         cmocka_unit_test(test_fuse_drop_without_current_is_fatal),

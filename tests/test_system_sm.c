@@ -50,6 +50,9 @@ static void setup_fresh_timestamps(bms_model_t *m) {
     m->high_voltages.output_millis = stored_millis;
     m->high_voltages.neg_contactor_millis = stored_millis;
     m->high_voltages.pos_contactor_millis = stored_millis;
+#if IS_BMS_BOARD(REV1)
+    m->high_voltages.link_millis = stored_millis;
+#endif
     m->current_millis = stored_millis;
     m->cell_voltage_millis = stored_millis;
     m->temperature_millis = stored_millis;
@@ -136,6 +139,31 @@ static void test_system_becomes_inactive_after_init(void **state) {
     
     assert_int_equal(m.system_sm.state, SYSTEM_STATE_INACTIVE);
 }
+
+#if IS_BMS_BOARD(REV1)
+static void test_rev1_init_needs_link_reading(void **state) {
+    (void) state;
+    bms_model_t m = {0};
+    reset_model_for_test(&m);
+    m.system_sm.state = SYSTEM_STATE_INITIALIZING;
+    m.system_sm.last_transition_time = stored_millis64;
+
+    // Every other reading is fresh, but there has never been a link reading
+    // (e.g. ADC B isn't responding)
+    advance_time(5000);
+    setup_fresh_timestamps(&m);
+    m.high_voltages.link_millis = 0;
+    system_sm_tick(&m);
+    assert_int_equal(m.system_sm.state, SYSTEM_STATE_INITIALIZING);
+
+    // Past the init timeout, it gives up rather than becoming inactive
+    advance_time(6000);
+    setup_fresh_timestamps(&m);
+    m.high_voltages.link_millis = 0;
+    system_sm_tick(&m);
+    assert_int_equal(m.system_sm.state, SYSTEM_STATE_FAULT);
+}
+#endif
 
 // ============================================================================
 // Request Handling Tests
@@ -320,6 +348,9 @@ int main(void) {
         // Initialization
         cmocka_unit_test_setup(test_system_stays_initializing_without_data, setup),
         cmocka_unit_test_setup(test_system_becomes_inactive_after_init, setup),
+#if IS_BMS_BOARD(REV1)
+        cmocka_unit_test_setup(test_rev1_init_needs_link_reading, setup),
+#endif
         
         // Request handling
         cmocka_unit_test_setup(test_run_request_from_inactive, setup),

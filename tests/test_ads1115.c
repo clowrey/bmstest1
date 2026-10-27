@@ -35,13 +35,23 @@ static struct {
     bool pending;
     i2c_async_callback_t callback;
     void *user_data;
+    uint8_t addr;
     uint8_t *read_buffer;
     size_t read_len;
     int refuse_countdown; // refuse the request when this reaches 0, -1 = never
     int overlaps;         // requests made while one was already in flight
 } fake_i2c = { .refuse_countdown = -1 };
 
-static bool fake_i2c_start(uint8_t *read_buffer, size_t read_len, i2c_async_callback_t callback, void *user_data) {
+// Last config written to each chip (0x48, 0x49)
+static uint16_t fake_config[2];
+
+// The conversion result the fake returns, distinct for each chip and input
+// mux, so tests can check each reading lands on the right logical channel
+static int16_t fake_conversion(uint8_t addr, uint16_t config) {
+    return (int16_t)(100 * (addr - 0x47) + ((config >> 12) & 0x7) + 1);
+}
+
+static bool fake_i2c_start(uint8_t addr, uint8_t *read_buffer, size_t read_len, i2c_async_callback_t callback, void *user_data) {
     if (fake_i2c.pending) {
         fake_i2c.overlaps++;
         return false;
@@ -51,6 +61,7 @@ static bool fake_i2c_start(uint8_t *read_buffer, size_t read_len, i2c_async_call
         return false;
     }
     fake_i2c.pending = true;
+    fake_i2c.addr = addr;
     fake_i2c.callback = callback;
     fake_i2c.user_data = user_data;
     fake_i2c.read_buffer = read_buffer;
@@ -61,9 +72,10 @@ static bool fake_i2c_start(uint8_t *read_buffer, size_t read_len, i2c_async_call
 static void fake_i2c_complete(bool success) {
     fake_i2c.pending = false;
     if (success && fake_i2c.read_buffer) {
-        for (size_t i = 0; i < fake_i2c.read_len; i++) {
-            fake_i2c.read_buffer[i] = 0x10;
-        }
+        assert_int_equal(fake_i2c.read_len, 2);
+        int16_t value = fake_conversion(fake_i2c.addr, fake_config[fake_i2c.addr - 0x48]);
+        fake_i2c.read_buffer[0] = (uint8_t)(value >> 8);
+        fake_i2c.read_buffer[1] = (uint8_t)value;
     }
     fake_i2c.callback(ADS1115_I2C, success, fake_i2c.user_data);
 }
@@ -79,13 +91,17 @@ bool i2c_blocking_read_reg(i2c_inst_t *i2c, uint8_t addr, uint8_t reg, uint8_t *
 }
 
 bool i2c_async_write_reg(i2c_inst_t *i2c, uint8_t addr, uint8_t reg, const uint8_t *data, size_t len, i2c_async_callback_t callback, void *user_data) {
-    (void)i2c; (void)addr; (void)reg; (void)data; (void)len;
-    return fake_i2c_start(NULL, 0, callback, user_data);
+    (void)i2c;
+    bool started = fake_i2c_start(addr, NULL, 0, callback, user_data);
+    if (started && reg == ADS1115_REG_CONFIG && len == 2) {
+        fake_config[addr - 0x48] = (uint16_t)((data[0] << 8) | data[1]);
+    }
+    return started;
 }
 
 bool i2c_async_read_reg(i2c_inst_t *i2c, uint8_t addr, uint8_t reg, uint8_t *buffer, size_t len, i2c_async_callback_t callback, void *user_data) {
-    (void)i2c; (void)addr; (void)reg;
-    return fake_i2c_start(buffer, len, callback, user_data);
+    (void)i2c; (void)reg;
+    return fake_i2c_start(addr, buffer, len, callback, user_data);
 }
 
 // ============================================================================
@@ -264,6 +280,67 @@ static void test_recovers_from_alarm_failure(void **state) {
     }
 }
 
+// The value each logical channel should read: its chip and input mux, as
+// documented in ads1115.h
+static int16_t expected_conversion(int channel) {
+    static const struct { uint8_t addr; uint16_t mux; } chans[] = {
+        { 0x48, ADS1115_CONFIG_MUX_DIFF_0_1 },
+        { 0x48, ADS1115_CONFIG_MUX_DIFF_2_3 },
+        { 0x48, ADS1115_CONFIG_MUX_DIFF_1_3 },
+        { 0x48, ADS1115_CONFIG_MUX_DIFF_0_3 },
+        { 0x48, ADS1115_CONFIG_MUX_SINGLE_0 },
+        { 0x48, ADS1115_CONFIG_MUX_SINGLE_1 },
+#if HAS_ADS1115_SECONDARY()
+        { 0x49, ADS1115_CONFIG_MUX_DIFF_2_3 },
+        { 0x49, ADS1115_CONFIG_MUX_DIFF_0_3 },
+        { 0x49, ADS1115_CONFIG_MUX_DIFF_1_3 },
+        { 0x49, ADS1115_CONFIG_MUX_SINGLE_1 },
+#endif
+    };
+    _Static_assert(sizeof(chans) / sizeof(chans[0]) == ADS1115_CHANNEL_COUNT, "one entry per channel");
+    return fake_conversion(chans[channel].addr, chans[channel].mux);
+}
+
+#define CAL_SAMPLES 8
+
+static void run_calibration(void) {
+    // Start part way through a cycle, as calibration can
+    run_events(7);
+    ads1115_start_calibration(CAL_SAMPLES);
+    assert_false(ads1115_calibration_finished());
+
+    for (int i = 0; i < 50 && !ads1115_calibration_finished(); i++) {
+        run_events(EVENTS_PER_FEW_CYCLES / 4);
+    }
+    assert_true(ads1115_calibration_finished());
+}
+
+static void test_calibration_sums_each_channel(void **state) {
+    (void)state;
+    run_calibration();
+
+    // Exactly CAL_SAMPLES readings, each from the right chip and input
+    for (int ch = 0; ch < ADS1115_CHANNEL_COUNT; ch++) {
+        assert_int_equal(ads1115_get_calibration(ch), CAL_SAMPLES * expected_conversion(ch));
+    }
+}
+
+#if HAS_ADS1115_SECONDARY()
+static void test_calibration_finishes_without_adc_b(void **state) {
+    (void)state;
+    // As if ADC B wasn't detected at startup
+    ads1115_dev_b.present = false;
+    run_calibration();
+    ads1115_dev_b.present = true;
+
+    for (int ch = 0; ch < ADS1115_CHANNEL_COUNT; ch++) {
+        // Channels 6 onwards are on ADC B
+        int32_t expected = ch >= 6 ? 0 : CAL_SAMPLES * expected_conversion(ch);
+        assert_int_equal(ads1115_get_calibration(ch), expected);
+    }
+}
+#endif
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_setup(test_scan_samples_all_channels, setup),
@@ -271,6 +348,10 @@ int main(void) {
         cmocka_unit_test_setup(test_recovers_from_i2c_error, setup),
         cmocka_unit_test_setup(test_recovers_from_refused_i2c_request, setup),
         cmocka_unit_test_setup(test_recovers_from_alarm_failure, setup),
+        cmocka_unit_test_setup(test_calibration_sums_each_channel, setup),
+#if HAS_ADS1115_SECONDARY()
+        cmocka_unit_test_setup(test_calibration_finishes_without_adc_b, setup),
+#endif
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

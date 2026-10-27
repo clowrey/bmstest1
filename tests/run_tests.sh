@@ -1,3 +1,3 @@
 cd $(dirname "$0")
-docker run -i --rm -v $PWD/..:/app -w /app $(docker build -q .) bash -c "cd tests/build; make || exit; ./dump_current_limits > current_limits; ./test_contactors; ./test_contactors_rev1; ./test_low_voltage; ./test_soc; ./test_events; ./test_balancing; ./test_current_limits; ./test_sampler; ./test_ads1115; ./test_ads1115_rev1; ./test_calibration; ./test_calibration_rev1; ./test_calibration_sm; ./test_calibration_sm_rev1; ./test_system_sm;"
+docker run -i --rm -v $PWD/..:/app -w /app $(docker build -q .) bash -c "cd tests/build; make || exit; ./dump_current_limits > current_limits; ./test_contactors; ./test_contactors_rev1; ./test_low_voltage; ./test_soc; ./test_events; ./test_balancing; ./test_current_limits; ./test_sampler; ./test_ads1115; ./test_ads1115_rev1; ./test_calibration; ./test_calibration_rev1; ./test_calibration_sm; ./test_calibration_sm_rev1; ./test_system_sm; ./test_system_sm_rev1;"
 

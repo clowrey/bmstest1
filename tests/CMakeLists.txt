@@ -149,23 +149,25 @@ target_include_directories(test_current_limits PRIVATE
 
 add_test(NAME test_current_limits COMMAND ${MEMORY_CHECK} test_current_limits)
 
-add_executable(test_system_sm
-    test_system_sm.c
-    ../bms/sys/events/events.c
-    ../bms/app/state_machines/system.c
-    ../bms/app/state_machines/base.c
-    ../bms/app/model.c
-    ../bms/app/battery/current_limits.c
-    physical_model.c
-)
-target_link_libraries(test_system_sm PRIVATE cmocka m)
-target_include_directories(test_system_sm PRIVATE 
-    ${cmocka_SOURCE_DIR}/include
-    include
-    ../bms
-)
-
-add_test(NAME test_system_sm COMMAND ${MEMORY_CHECK} test_system_sm)
+foreach(variant IN ITEMS "" "_rev1")
+    add_executable(test_system_sm${variant}
+        test_system_sm.c
+        ../bms/sys/events/events.c
+        ../bms/app/state_machines/system.c
+        ../bms/app/state_machines/base.c
+        ../bms/app/model.c
+        ../bms/app/battery/current_limits.c
+        physical_model.c
+    )
+    target_link_libraries(test_system_sm${variant} PRIVATE cmocka m)
+    target_include_directories(test_system_sm${variant} PRIVATE
+        ${cmocka_SOURCE_DIR}/include
+        include
+        ../bms
+    )
+    add_test(NAME test_system_sm${variant} COMMAND ${MEMORY_CHECK} test_system_sm${variant})
+endforeach()
+target_compile_definitions(test_system_sm_rev1 PRIVATE BMS_BOARD=2)
 
 # Contactor offset calibration
 foreach(variant IN ITEMS "" "_rev1")
