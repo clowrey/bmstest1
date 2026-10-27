@@ -157,6 +157,12 @@ size_t logging_read(uint8_t *dest, uint32_t len) {
     return rb_read(&log_ringbuffer, RB_HMI_READER, dest, len);
 }
 
+// Whether the next byte written starts a new line. Timestamps are only
+// prepended at line starts, so multi-call line builders (e.g. isosnoop dumps
+// which debug_printf one token at a time) get one timestamp per line instead
+// of one per call.
+static bool log_at_line_start = true;
+
 void logging_printf(log_level_t level, const char *format, ...) {
     if (level > LOG_LEVEL_ERROR) {
         return;
@@ -168,15 +174,18 @@ void logging_printf(log_level_t level, const char *format, ...) {
     }
 
     char buffer[256];
+    size_t prefix_len = 0;
 
-    // 'now' timestamp, same format as state_transition: "<millis>ms "
-    int prefix = snprintf(buffer, sizeof(buffer), "%llums ", (unsigned long long)millis64());
-    if(prefix < 0) {
-        return;
-    }
-    size_t prefix_len = (size_t)prefix;
-    if(prefix_len >= sizeof(buffer)) {
-        return;
+    if(log_at_line_start) {
+        // 'now' timestamp, same format as state_transition: "<millis>ms "
+        int prefix = snprintf(buffer, sizeof(buffer), "%llums ", (unsigned long long)millis64());
+        if(prefix < 0) {
+            return;
+        }
+        prefix_len = (size_t)prefix;
+        if(prefix_len >= sizeof(buffer)) {
+            return;
+        }
     }
 
     // Format and print the actual message after the timestamp
@@ -196,7 +205,14 @@ void logging_printf(log_level_t level, const char *format, ...) {
         msg_len = space - 1;
     }
 
-    rb_write(&log_ringbuffer, (const uint8_t *)buffer, prefix_len + msg_len);
+    size_t total_len = prefix_len + msg_len;
+    if(total_len > 0) {
+        // The next write starts a new line only if this one ended the line.
+        // Uses the bytes actually written, so truncation is handled.
+        log_at_line_start = (buffer[total_len - 1] == '\n');
+    }
+
+    rb_write(&log_ringbuffer, (const uint8_t *)buffer, total_len);
 }
 
 void logging_flush_to_stdout() {

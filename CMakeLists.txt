@@ -8,7 +8,8 @@ set(PICO_PLATFORM rp2350)
 
 # Limit the linker's flash region to 1.5MB to reserve space for NVM/LittleFS.
 # Must be set before pico_sdk_init(), which generates the linker script.
-set(PICO_FLASH_SIZE_BYTES 1572864)
+# disabled as it causes writes to panic!
+#set(PICO_FLASH_SIZE_BYTES 1572864)
 
 # Support for anonymous structs
 add_definitions("-fms-extensions")

@@ -135,6 +135,7 @@ static void init_model() {
 }
 
 void bms_init() {
+    printf("Initializing BMS...\n");
     init_hw();
     init_comms();
     init_model();
