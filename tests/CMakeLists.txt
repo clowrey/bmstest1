@@ -103,6 +103,22 @@ target_include_directories(test_soc PRIVATE
 
 add_test(NAME test_soc COMMAND ${MEMORY_CHECK} test_soc)
 
+add_executable(test_byd_can
+    test_byd_can.c
+    ../bms/protocols/inverter/can.c
+    ../bms/protocols/inverter/byd_can.c
+    ../bms/sys/events/events.c
+)
+target_link_libraries(test_byd_can PRIVATE cmocka)
+target_include_directories(test_byd_can PRIVATE
+    ${cmocka_SOURCE_DIR}/include
+    include
+    ../bms
+    ../vendor/can2040/src
+)
+
+add_test(NAME test_byd_can COMMAND ${MEMORY_CHECK} test_byd_can)
+
 add_executable(test_events 
     test_events.c 
     ../bms/sys/events/events.c
