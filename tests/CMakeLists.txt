@@ -150,6 +150,19 @@ target_include_directories(test_system_sm PRIVATE
 
 add_test(NAME test_system_sm COMMAND ${MEMORY_CHECK} test_system_sm)
 
+# Contactor offset calibration
+add_executable(test_calibration
+    test_calibration.c
+    ../bms/app/calibration/common.c
+)
+target_link_libraries(test_calibration PRIVATE cmocka m)
+target_include_directories(test_calibration PRIVATE
+    ${cmocka_SOURCE_DIR}/include
+    include
+    ../bms
+)
+add_test(NAME test_calibration COMMAND ${MEMORY_CHECK} test_calibration)
+
 add_executable(test_sampler
     test_sampler.c
     ../bms/lib/sampler.c
