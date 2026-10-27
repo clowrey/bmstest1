@@ -115,15 +115,33 @@ static const float nmc_ocv_curve[101] = {
     // 4.20008564
 };
 
-// The Jacobian uses the OCV slope averaged over a window of 2 * OCV_DIFF_HALF_WIDTH
-// percent around the current SoC, rather than the exact local slope. The LFP
-// curve is flat to within a few mV between ~65% and ~97%, so with the exact slope
-// the filter can sit in that region with a large residual (e.g. at float, 80mV
-// above the plateau) and still see no reason to move. The wider window lets it
-// see the knee coming. A half width of 1 gives the exact segment slope.
+// The filter tuning and cell model come from the pack profile (profiles/chemistry/*.h,
+// which a profile can override):
 //
-// Filter tuning per chemistry. P0_* is the initial covariance, Q_* the process
-// noise per 1s step, R_V the voltage measurement noise.
+// EKF_P0_* is the initial covariance, EKF_Q_* the process noise per 1s step,
+// EKF_R_V the voltage measurement noise. EKF_P0_AH_VOLTAGE replaces EKF_P0_AH
+// when the starting SOC comes from a voltage lookup rather than NVM.
+//
+// EKF_R_OHM: the cell's resistance. Voltages are the mean cell voltage and currents
+// the pack current, so this is per cell in series. Where the offset below is quick
+// enough to follow polarisation (LFP), the instant resistance does best; otherwise
+// it wants the resistance a sustained current sees.
+//
+// EKF_OFFSET_TAU_S: the voltage offset state x[1] takes up what the OCV curve and
+// resistance don't explain (hysteresis, curve mismatch, polarisation), so it
+// doesn't all land on the SOC. It decays back to zero with this
+// time constant, and moves by EKF_Q_OFFSET per step. It used to be the voltage
+// across an RC pair, but replaying 1s data showed the RC physics made no difference
+// to SOC accuracy; only the slack mattered, and its tuning shouldn't be tied to
+// the cells' polarisation.
+//
+// OCV_DIFF_HALF_WIDTH: the Jacobian uses the OCV slope averaged over a window of
+// 2 * OCV_DIFF_HALF_WIDTH percent around the current SoC, rather than the exact
+// local slope. The LFP curve is flat to within a few mV between ~65% and ~97%,
+// so with the exact slope the filter can sit in that region with a large
+// residual (e.g. at float, 80mV above the plateau) and still see no reason to
+// move. The wider window lets it see the knee coming. A half width of 1 gives
+// the exact segment slope.
 //
 // EKF_MIN_OCV_SLOPE: the voltage update only runs where the OCV curve is steep
 // enough for the voltage to say something about SOC. On the LFP plateaus a few
@@ -134,70 +152,30 @@ static const float nmc_ocv_curve[101] = {
 // EKF_KNEE_OCV_SLOPE: but if the estimate has drifted onto a plateau while the
 // battery is really at a knee, the slope at the estimate is small and the gate
 // above would keep the filter from ever seeing it. So the update also runs when
-// the measured voltage (corrected for the RC model) sits on a part of the curve
+// the measured voltage (corrected for the cell model) sits on a part of the curve
 // at least this steep. This uses the unsmoothed slope, because the LFP curve is
 // flat right up to the start of the top knee.
+//
+// OCV_LEARN learns a per-pack correction to the OCV table (ocv_learn.c), and
+// OCV_LEARN_TABLE has the filter use it, with the SOC pinned at full charge.
 #if CHEMISTRY == LFP
     #define ocv_factory lfp_ocv_curve
-    #define ocv_curve lfp_ocv_curve
-    // Learn the curve only to report capacity, e.g. after a deliberate deep discharge.
-    // The flat middle carries no SOC information and hysteresis would bias a learned table.
-    #define OCV_LEARN
-    #define OCV_DIFF_HALF_WIDTH 4
-
-    // From replaying ~10 days of logged pack data through this filter (scripts
-    // in rpipico/kalman, next to this repo).
-    #define EKF_P0_AH   100.0f  // (10Ah)^2 when starting from the SOC stored in NVM. Too
-                                // small and the first knee blames the starting error on the bias.
-    #define EKF_P0_AH_VOLTAGE 900.0f // (30Ah)^2 when starting from a voltage lookup instead
-                                // (e.g. a reboot with a stale stored SOC): on the plateau that
-                                // can be 15-20% out. Replaying the car's reboots, this let the
-                                // next knee correct the SOC rather than the bias.
-    #define EKF_P0_VC1  1e-4f
-    #define EKF_P0_CAP  0.0f    // Capacity isn't observable without reaching both ends; hold it
-    #define EKF_P0_BIAS 1e-2f   // (100mA)^2
-    #define EKF_Q_AH    1e-7f
-    #define EKF_Q_VC1   1e-4f
-    #define EKF_Q_CAP   0.0f
-    #define EKF_Q_BIAS  1e-10f  // bias can wander ~3mA/day (e.g. with temperature)
-    #define EKF_R_V     1e-2f
-    #define EKF_MIN_OCV_SLOPE  1.5f
-    #define EKF_KNEE_OCV_SLOPE 5.0f
 #elif CHEMISTRY == NMC
     #define ocv_factory nmc_ocv_curve
-    #define ocv_curve ocv_table
-    #define OCV_LEARN       // learn a per-pack correction to the table as we go (ocv_learn.c)...
-    #define OCV_LEARN_TABLE // ...and use it, with the SOC pinned at full charge
-    #define OCV_DIFF_HALF_WIDTH 1
-
-    // From replaying ~94 days of a 96S BLUETESLA pack, plus synthetic fresher
-    // packs driven the same way. NMC's sloped curve keeps the voltage
-    // informative everywhere, so no gate. Q_AH:Q_VC1 trades trusting the count
-    // (better when the curve is off) against trusting voltage (better when the
-    // capacity or shunt offset is off); this ratio was the best worst case.
-    // Q_VC1 used to be 1e-2, which let V_c1 soak up every voltage residual and
-    // left a 15% starting error two days to clear; now it's minutes.
-    #define EKF_P0_AH   100.0f  // (10Ah)^2
-    #define EKF_P0_AH_VOLTAGE EKF_P0_AH // a voltage start is good on a sloped curve
-    #define EKF_P0_VC1  1e-4f
-    #define EKF_P0_CAP  0.0f    // The capacity state soaks up OCV curve error rather
-                                // than measuring capacity; it has to come from outside
-    #define EKF_P0_BIAS 0.0f    // Off: with a mismatched curve it learns curve error too
-    #define EKF_Q_AH    5e-8f
-    #define EKF_Q_VC1   1e-6f
-    #define EKF_Q_CAP   0.0f
-    #define EKF_Q_BIAS  0.0f
-    #define EKF_R_V     1e-2f
-    #define EKF_MIN_OCV_SLOPE  0.0f
-    #define EKF_KNEE_OCV_SLOPE 0.0f
 #else
     #error "Unsupported chemistry"
+#endif
+
+#ifdef OCV_LEARN_TABLE
+    #define ocv_curve ocv_table
+#else
+    #define ocv_curve ocv_factory
 #endif
 
 // Largest current sensor bias the filter may learn
 #define EKF_BIAS_LIMIT_A 0.5f
 
-#define EKF_N 4
+#define EKF_N 3
 
 #ifdef OCV_LEARN_TABLE
 // The table in use: the factory one until the learner has built its own
@@ -271,24 +249,22 @@ static double ocv_segment_slope(double soc) {
 void ekf_init(ekf_t *ekf, double initial_soc, double initial_capacity, double initial_bias_A) {
     // Initial States
     ekf->x[0] = (1.0 - initial_soc) * initial_capacity; // Ah_used
-    ekf->x[1] = 0.0;               // V_c1 starts relaxed
-    ekf->x[2] = initial_capacity;   // Initial guess
-    ekf->x[3] = initial_bias_A;     // Current sensor bias, from NVM if we have it
+    ekf->x[1] = 0.0;               // No voltage offset
+    ekf->x[2] = initial_bias_A;     // Current sensor bias, from NVM if we have it
+    ekf->cap = initial_capacity;
 
     // Initial Covariance P
     for(int i=0; i<EKF_N; i++) {
         for(int j=0; j<EKF_N; j++) ekf->P[i][j] = 0.0;
     }
     ekf->P[0][0] = EKF_P0_AH;   // Uncertainty in Ah_used
-    ekf->P[1][1] = EKF_P0_VC1;  // Uncertainty in V_c1
-    ekf->P[2][2] = EKF_P0_CAP;  // Uncertainty in Capacity
-    ekf->P[3][3] = EKF_P0_BIAS; // Uncertainty in current bias
+    ekf->P[1][1] = EKF_P0_OFFSET; // Uncertainty in the voltage offset
+    ekf->P[2][2] = EKF_P0_BIAS; // Uncertainty in current bias
 
     // Process Noise Q (per 1s step)
     ekf->Q[0] = EKF_Q_AH;
-    ekf->Q[1] = EKF_Q_VC1;
-    ekf->Q[2] = EKF_Q_CAP;
-    ekf->Q[3] = EKF_Q_BIAS;
+    ekf->Q[1] = EKF_Q_OFFSET;
+    ekf->Q[2] = EKF_Q_BIAS;
 
     // Measurement Noise R. This is dominated by OCV model error (hysteresis,
     // and the curve not quite matching the cells), not by the ADC.
@@ -296,10 +272,9 @@ void ekf_init(ekf_t *ekf, double initial_soc, double initial_capacity, double in
     ekf->min_ocv_slope = EKF_MIN_OCV_SLOPE;
     ekf->knee_ocv_slope = EKF_KNEE_OCV_SLOPE;
 
-    // Fitted RC model parameters
-    ekf->R0 = 0.00076;
-    ekf->R1 = 0.00054;
-    ekf->C1 = 150000.0;
+    // Cell model
+    ekf->R_ohm = EKF_R_OHM;
+    ekf->offset_tau_s = EKF_OFFSET_TAU_S;
 
     // Reset scaling cache
     ekf->prev_min_mV = 0;
@@ -315,33 +290,29 @@ void ekf_step(ekf_t *ekf, double charge_Ah, double current_amps, double voltage_
     double dt = 1.0;
 
     // Positive current/charge = Charging. The measured values include the
-    // sensor bias x[3], so the true current is current_amps - bias.
-    double bias = ekf->x[3];
+    // sensor bias x[2], so the true current is current_amps - bias.
+    double bias = ekf->x[2];
     double current_true = current_amps - bias;
 
     // --- State Prediction ---
     // x[0] = Ah_used - true charge = Ah_used - charge_Ah + bias * dt / 3600
     ekf->x[0] = ekf->x[0] - charge_Ah + bias * dt / 3600.0;
 
-    // x[1] = V_c1 * exp - I * R1 * (1 - exp)
-    double exp_val = exp(-dt / (ekf->R1 * ekf->C1));
-    ekf->x[1] = ekf->x[1] * exp_val - current_true * ekf->R1 * (1.0 - exp_val);
-    //printf("Predicted V_c1: %2.3f V | exp: %2.8f | I*R1*(1-exp): %2.8f V\n",
-    //       ekf->x[1], exp_val, -current_true * ekf->R1 * (1.0 - exp_val));
+    // x[1] = V_off decays towards zero
+    double decay = exp(-dt / ekf->offset_tau_s);
+    ekf->x[1] *= decay;
 
-    // x[2] Capacity and x[3] bias stay constant in prediction
+    // x[2] bias stays constant in prediction
 
     // --- Covariance Prediction ---
     // F is the Jacobian of the process model:
-    // F = [1, 0,   0, dt/3600          ]
-    //     [0, exp, 0, R1 * (1 - exp)   ]
-    //     [0, 0,   1, 0                ]
-    //     [0, 0,   0, 1                ]
+    // F = [1, 0,     dt/3600]
+    //     [0, decay, 0      ]
+    //     [0, 0,     1      ]
     double F[EKF_N][EKF_N] = {
-        {1.0, 0.0,    0.0, dt / 3600.0},
-        {0.0, exp_val, 0.0, ekf->R1 * (1.0 - exp_val)},
-        {0.0, 0.0,    1.0, 0.0},
-        {0.0, 0.0,    0.0, 1.0},
+        {1.0, 0.0,   dt / 3600.0},
+        {0.0, decay, 0.0},
+        {0.0, 0.0,   1.0},
     };
 
     // P_pred = F * P * F^T + Q
@@ -366,36 +337,33 @@ void ekf_step(ekf_t *ekf, double charge_Ah, double current_amps, double voltage_
     // -----------------------------------------
 
     double ah_used = ekf->x[0];
-    double v_c1    = ekf->x[1];
-    double cap     = ekf->x[2];
+    double v_off   = ekf->x[1];
+    double cap     = ekf->cap;
 
     // Calculate dynamic SOC: 1 - (Ah_used / Capacity)
     double soc_est = 1.0 - (ah_used / cap);
 
     // Predict Voltage
     double ocv = soc_to_ocv(soc_est);
-    double v_pred = ocv - v_c1 + (current_true * ekf->R0);
-    //printf("v_pred: %2.3f V | OCV: %2.3f V | V_c1: %2.3f V | I*R0: %2.3f V | SOC_est: %2.2f %%\n",
-    //       v_pred, ocv, v_c1, current_true * ekf->R0, soc_est * 100.0);
+    double v_pred = ocv + current_true * ekf->R_ohm + v_off;
 
     // Calculate Residual (y)
     double y = voltage_measured - v_pred;
 
     // --- Calculate Jacobian H ---
-    // H = [dH/dAh, dH/dVc1, dH/dCap, dH/dBias]
+    // H = [dH/dAh, dH/dVoff, dH/dBias]
     double d_ocv = soc_to_ocv_derivative(soc_est);
 
     // On the plateaus, rely on (bias corrected) coulomb counting alone
     if (fabs(d_ocv) < ekf->min_ocv_slope) {
-        double ocv_measured = voltage_measured + v_c1 - current_true * ekf->R0;
+        double ocv_measured = voltage_measured - v_off - current_true * ekf->R_ohm;
         if (fabs(ocv_segment_slope(ocv_to_soc(ocv_measured))) < ekf->knee_ocv_slope) return;
     }
 
     double H[EKF_N] = {
         d_ocv * (-1.0 / cap),             // dV/dAh = dOCV/dSOC * dSOC/dAh
-        -1.0,                             // dV/dVc1
-        d_ocv * (ah_used / (cap * cap)),   // dV/dCap = dOCV/dSOC * dSOC/dCap
-        -ekf->R0,                          // dV/dBias, via the I*R0 term
+        1.0,                              // dV/dVoff
+        -ekf->R_ohm,                      // dV/dBias, via the I*R term
     };
 
     // --- Calculate Kalman Gain K ---
@@ -418,13 +386,11 @@ void ekf_step(ekf_t *ekf, double charge_Ah, double current_amps, double voltage_
     }
 
     // Constraints
-    // Capacity cannot be <= 0
-    if(ekf->x[2] < 0.1) ekf->x[2] = 0.1;
     // Ah_used cannot be negative (cannot be "more than full")
     if(ekf->x[0] < 0.0) ekf->x[0] = 0.0;
     // Keep the bias within a plausible range for the shunt
-    if(ekf->x[3] > EKF_BIAS_LIMIT_A) ekf->x[3] = EKF_BIAS_LIMIT_A;
-    if(ekf->x[3] < -EKF_BIAS_LIMIT_A) ekf->x[3] = -EKF_BIAS_LIMIT_A;
+    if(ekf->x[2] > EKF_BIAS_LIMIT_A) ekf->x[2] = EKF_BIAS_LIMIT_A;
+    if(ekf->x[2] < -EKF_BIAS_LIMIT_A) ekf->x[2] = -EKF_BIAS_LIMIT_A;
 
     // --- Update Covariance P ---
     // P = (I - K * H) * P = P - K * (H * P), and H * P = PH^T since P is symmetric
@@ -446,7 +412,7 @@ void ekf_step(ekf_t *ekf, double charge_Ah, double current_amps, double voltage_
 #ifdef OCV_LEARN_TABLE
 // Pin the SOC with the given uncertainty, forgetting its correlation with the other states
 static void ekf_pin_soc(ekf_t *ekf, double soc, double var_Ah) {
-    ekf->x[0] = (1.0 - soc) * ekf->x[2];
+    ekf->x[0] = (1.0 - soc) * ekf->cap;
     for (int i = 0; i < EKF_N; i++) {
         ekf->P[0][i] = 0.0;
         ekf->P[i][0] = 0.0;
@@ -457,7 +423,7 @@ static void ekf_pin_soc(ekf_t *ekf, double soc, double var_Ah) {
 
 double ekf_get_soc(ekf_t *ekf) {
     double ah = ekf->x[0];
-    double cap = ekf->x[2];
+    double cap = ekf->cap;
     if (cap < 0.0001) return 0.0; // Prevent div by zero
     return 1.0 - (ah / cap);
 }
@@ -573,7 +539,7 @@ uint32_t ekf_tick(bms_model_t *model, float charge_Ah, int32_t current_mA, int32
     if (soc > 1.0f) soc = 1.0f;
 
     model->charge_used_Ah = model->ekf.x[0];
-    model->current_bias_A = model->ekf.x[3];
+    model->current_bias_A = model->ekf.x[2];
 
     // Round rather than truncate, so a SoC a hair under 1.0 still reads 100.00%
     return (uint32_t)(soc * 10000.0f + 0.5f); // Return SOC in 0.01% units
@@ -592,7 +558,7 @@ void ekf_set_soc(bms_model_t *model, uint16_t soc) {
         float initial_capacity_ah = (float)model->nameplate_capacity_mC / 3600000.0f;
         ekf_init(&model->ekf, soc_abs, initial_capacity_ah, ekf_stored_bias(model));
     } else {
-        model->ekf.x[0] = (1.0f - soc_abs) * model->ekf.x[2];
+        model->ekf.x[0] = (1.0f - soc_abs) * model->ekf.cap;
     }
     
     model->charge_used_Ah = model->ekf.x[0];
@@ -605,16 +571,16 @@ void ekf_reset_bias(bms_model_t *model) {
     model->current_bias_A = 0.0f;
     if (!model->ekf.initialized) return;
 
-    model->ekf.x[3] = 0.0f;
+    model->ekf.x[2] = 0.0f;
     for (int i = 0; i < EKF_N; i++) {
-        model->ekf.P[i][3] = 0.0f;
-        model->ekf.P[3][i] = 0.0f;
+        model->ekf.P[i][2] = 0.0f;
+        model->ekf.P[2][i] = 0.0f;
     }
-    model->ekf.P[3][3] = EKF_P0_BIAS;
+    model->ekf.P[2][2] = EKF_P0_BIAS;
 }
 
 void ekf_print_state(ekf_t *ekf) {
     float soc = ekf_get_soc(ekf);
-    debug_printf("EKF State: Ah_used=%.4f Ah, V_c1=%.4f V, Capacity=%.2f Ah, Bias=%.1f mA, SOC=%.2f%%\n",
-           ekf->x[0], ekf->x[1], ekf->x[2], ekf->x[3] * 1000.0f, soc * 100.0f);
+    debug_printf("EKF State: Ah_used=%.4f Ah, V_off=%.4f V, Capacity=%.2f Ah, Bias=%.1f mA, SOC=%.2f%%\n",
+           ekf->x[0], ekf->x[1], ekf->cap, ekf->x[2] * 1000.0f, soc * 100.0f);
 }

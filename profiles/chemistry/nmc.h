@@ -63,3 +63,41 @@
 
 #define TEMPERATURE_SOFT_MAX  50.0f
 #define TEMPERATURE_SOFT_MIN   0.0f
+
+// STATE OF CHARGE ESTIMATION (see bms/app/estimators/ekf.c for what each setting does)
+
+#define OCV_LEARN       // learn a per-pack correction to the OCV table as we go...
+#define OCV_LEARN_TABLE // ...and use it, with the SOC pinned at full charge
+// Where the learned capacity is read off: steep, and somewhere packs actually rest
+#define OCV_LEARN_V_REF 3.50f
+#define OCV_DIFF_HALF_WIDTH 1
+
+// Cell resistance, and how quickly the voltage offset decays. Tuned by replaying
+// 10 days of 1s data from an aged 96S pack through ekf_tick (kalman/replay, with
+// --tick and a warm-up pass to train the OCV learner). NMC's sloped curve leaves
+// little for the offset to do, so it's nearly off, and the resistance is what a
+// sustained current sees: the pack's ~1mOhm within 20s grows to ~2.4mOhm over a
+// few minutes. 2-3mOhm did best; at the old 1.3mOhm with Q_OFFSET 1e-6, an 8%
+// starting error took 45 minutes rather than 2 to clear, and an injected 150mA
+// current bias pushed the worst error from 3.8% to 4.3%.
+#define EKF_R_OHM 0.0025
+#define EKF_OFFSET_TAU_S 81.0
+
+// From replaying ~94 days of a 96S BLUETESLA pack, plus synthetic fresher
+// packs driven the same way. NMC's sloped curve keeps the voltage
+// informative everywhere, so no gate. Q_AH:Q_OFFSET trades trusting the count
+// (better when the curve is off) against trusting voltage (better when the
+// capacity or shunt offset is off); this ratio was the best worst case.
+// Q_OFFSET used to be 1e-2, which let the offset soak up every voltage residual and
+// left a 15% starting error two days to clear; now it's minutes. Anything from 0
+// to 1e-7 does as well as 1e-8.
+#define EKF_P0_AH   100.0f  // (10Ah)^2
+#define EKF_P0_AH_VOLTAGE EKF_P0_AH // a voltage start is good on a sloped curve
+#define EKF_P0_OFFSET 1e-4f
+#define EKF_P0_BIAS 0.0f    // Off: with a mismatched curve it learns curve error too
+#define EKF_Q_AH    5e-8f
+#define EKF_Q_OFFSET  1e-8f
+#define EKF_Q_BIAS  0.0f
+#define EKF_R_V     1e-2f
+#define EKF_MIN_OCV_SLOPE  0.0f
+#define EKF_KNEE_OCV_SLOPE 0.0f

@@ -56,6 +56,11 @@ nothing gets overridden by accident. To describe a new pack from scratch,
 include `chemistry/lfp.h` or `chemistry/nmc.h` instead and define the pack
 settings yourself; see the built-in profiles for the full list.
 
+The SOC estimator's tuning (EKF noise settings, the cell model, OCV
+learning) lives in the chemistry files and can be overridden the same way,
+e.g. to set `EKF_R_OHM` for your cells. What each setting does is described
+in `bms/app/estimators/ekf.c`.
+
 `validate.h` then checks the result: that every required setting is present,
 that the voltage and temperature limits nest properly (hard outside soft,
 soft outside working), and that `CELL_PRESENCE_WORDS` has exactly `NUM_CELLS`

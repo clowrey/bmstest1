@@ -13,17 +13,10 @@
 #define PRIOR_SD 0.060            // V, prior on each correction
 #define PRIOR_ELL_BINS 1.5        // correlation length of the prior
 #define Q_PER_DAY 1e-6            // (1mV)^2/day, so the curve can follow ageing
-#define R_OHM 0.0013              // R0 + R1, for low-current readings
+#define R_OHM 0.0013              // steady-state cell resistance, for low-current readings
 #define MAX_GAP_S (21 * 86400)    // full charges further apart than this are too drifty
 #define DAILY_DECAY 0.99446f      // exp(-1/180): counts fade with a 180 day time constant
 #define TRUST_CYCLES 1.5f
-
-// Where the capacity is read off: steep, and somewhere packs actually rest
-#if CHEMISTRY == LFP
-    #define OCV_LEARN_V_REF 3.25f // the bottom knee
-#else
-    #define OCV_LEARN_V_REF 3.50f
-#endif
 
 // Bin index and weight of the upper bin for a given Ah below full. The bins run
 // from full down to the factory curve's 0%, so they scale with the pack.

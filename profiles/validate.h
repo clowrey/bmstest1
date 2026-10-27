@@ -34,6 +34,17 @@
 #error "Profile must define DISCHARGE_MAX_CURRENT_dA"
 #endif
 
+#if !defined(EKF_P0_AH) || !defined(EKF_P0_AH_VOLTAGE) || !defined(EKF_P0_OFFSET) || !defined(EKF_P0_BIAS) \
+    || !defined(EKF_Q_AH) || !defined(EKF_Q_OFFSET) || !defined(EKF_Q_BIAS) || !defined(EKF_R_V) \
+    || !defined(EKF_MIN_OCV_SLOPE) || !defined(EKF_KNEE_OCV_SLOPE) \
+    || !defined(EKF_R_OHM) || !defined(EKF_OFFSET_TAU_S) \
+    || !defined(OCV_DIFF_HALF_WIDTH) || !defined(OCV_LEARN_V_REF)
+#error "Profile is missing an SOC estimation setting (see chemistry/lfp.h or chemistry/nmc.h)"
+#endif
+#if defined(OCV_LEARN_TABLE) && !defined(OCV_LEARN)
+#error "OCV_LEARN_TABLE needs OCV_LEARN"
+#endif
+
 #if CHEMISTRY != LFP && CHEMISTRY != NMC
 #error "CHEMISTRY must be LFP or NMC"
 #endif
@@ -82,3 +93,10 @@ _Static_assert(PROFILE_POPCOUNT4(CELL_PRESENCE_WORDS) == NUM_CELLS,
 _Static_assert(NUM_MODULE_TEMPS >= 1, "NUM_MODULE_TEMPS must be at least 1");
 _Static_assert(NAMEPLATE_CAPACITY_AH > 0, "NAMEPLATE_CAPACITY_AH must be positive");
 _Static_assert(CHARGE_MAX_CURRENT_dA > 0 && DISCHARGE_MAX_CURRENT_dA > 0, "Max currents must be positive");
+
+// SOC estimation
+
+_Static_assert(EKF_R_OHM >= 0, "EKF_R_OHM must not be negative");
+_Static_assert(EKF_OFFSET_TAU_S > 0, "EKF_OFFSET_TAU_S must be positive");
+_Static_assert(EKF_R_V > 0, "EKF_R_V must be positive");
+_Static_assert(OCV_DIFF_HALF_WIDTH >= 1, "OCV_DIFF_HALF_WIDTH must be at least 1");

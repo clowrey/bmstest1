@@ -14,26 +14,28 @@ typedef struct bms_model bms_model_t;
 typedef struct {
     // --- State Vector x ---
     // x[0] = Ah_used (Consumed Charge in Ah)
-    // x[1] = V_c1 (Polarization Voltage in V)
-    // x[2] = Capacity (Total Battery Capacity in Ah)
-    // x[3] = Current sensor bias in A (measured = true + bias). Only weakly
+    // x[1] = V_off, voltage the OCV curve and resistance don't explain (V)
+    // x[2] = Current sensor bias in A (measured = true + bias). Only weakly
     //        observable; it is learned mainly when the voltage pins the SoC at
     //        the top of charge, from how far the coulomb count has drifted.
-    double x[4];
+    double x[3];
 
-    // --- Covariance Matrix P (4x4) ---
-    double P[4][4];
+    // --- Covariance Matrix P (3x3) ---
+    double P[3][3];
 
     // --- Tuning Parameters ---
-    double Q[4];    // Process Noise Variances (Diagonal)
+    double Q[3];    // Process Noise Variances (Diagonal)
     double R;       // Measurement Noise Variance
     double min_ocv_slope; // Skip the voltage update where |dOCV/dSOC| (V per unit SOC) is below this...
     double knee_ocv_slope; // ...unless the measured voltage puts us on a part of the curve this steep
 
     // --- Model Parameters ---
-    double R0;      // Ohmic Resistance
-    double R1;      // Polarization Resistance
-    double C1;      // Polarization Capacitance
+    // Capacity (Ah), which maps Ah_used to SOC. Not a state: as a state it soaked
+    // up OCV curve error rather than measuring capacity. Fade is taken up by the
+    // learned OCV table instead (ocv_learn.c).
+    double cap;
+    double R_ohm;         // Cell resistance to a sustained current
+    double offset_tau_s;  // Time constant V_off decays back to zero with
 
     // --- Output Scaling Cache ---
     uint16_t prev_min_mV;
