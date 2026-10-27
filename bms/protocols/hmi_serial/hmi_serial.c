@@ -446,7 +446,7 @@ static void hmi_handle_read_registers(const uint8_t *rx_buf, size_t len, bms_mod
             continue;
         }
         // Max single register: 2 (id) + 1 (type) + 8 (value) = 11 bytes
-        if(tx_idx + 11 > sizeof(tx_buf)) {
+        if((size_t)tx_idx + 11 > sizeof(tx_buf)) {
             // prevent buffer overflow
             break;
         }
@@ -600,7 +600,7 @@ static void hmi_handle_write_registers(const uint8_t *rx_buf, size_t len, bms_mo
         rx_idx += size;
         
         // Always append the current (possibly new) value to the response
-        if(tx_idx + 11 <= sizeof(tx_buf)) {
+        if((size_t)tx_idx + 11 <= sizeof(tx_buf)) {
             tx_idx += hmi_append_register_value(&tx_buf[tx_idx], reg_id, model);
         }
     }
@@ -714,6 +714,7 @@ static void hmi_handle_read_log(const uint8_t *rx_buf, size_t len) {
 }
 
 static void hmi_handle_read_events(const uint8_t *rx_buf, size_t len, bms_model_t *model) {
+    (void)model;
     if (len < 4) return;
     uint8_t addr = rx_buf[1];
     if (addr != device_address) return;

@@ -3,5 +3,6 @@
 #include "../../config/limits.h"
 
 uint16_t fancy_count_soc_estimate(const bms_model_t *model) {
+    (void)model;
     return 1234;
 }

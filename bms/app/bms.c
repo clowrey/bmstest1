@@ -229,13 +229,13 @@ void bms_tick() {
         //isosnoop_print_buffer();
         uint32_t total = 0;
         for(int i=0; i<NUM_CELLS; i++) {
-            debug_printf("[c%3d]: %4d mV | ", i, (uint32_t)model.raw_cell_voltages_mV[i]);
+            debug_printf("[c%3d]: %4" PRIu32 " mV | ", i, (uint32_t)model.raw_cell_voltages_mV[i]);
             total += model.raw_cell_voltages_mV[i];
             if((i % 5) == 4) {
                 debug_printf("\n");
             }
         }
-        debug_printf("Total: %dmV | Temps: %.1fC - %.1fC | Delta: %d mV %s%s\n\n", 
+        debug_printf("Total: %" PRIu32 "mV | Temps: %.1fC - %.1fC | Delta: %d mV %s%s\n\n", 
             total, 
             model.temperature_min, model.temperature_max, 
             (int)(model.cell_voltage_max_mV - model.cell_voltage_min_mV),

@@ -13,7 +13,7 @@
 
 #define DMA_IRQ_PRIORITY PICO_SHARED_IRQ_HANDLER_DEFAULT_ORDER_PRIORITY
 #define PIO_IRQ_PRIORITY PICO_SHARED_IRQ_HANDLER_DEFAULT_ORDER_PRIORITY
-static uint dma_channel_rx;
+static int dma_channel_rx;
 dma_channel_hw_t *dma_chan;
 
 #define ISOSNOOP_BUFFER_BITS 10 // 2**n byte buffer
@@ -38,7 +38,7 @@ void isosnoop_dma_setup(PIO pio, uint sm) {
         panic("No free dma channels");
     }
 
-    for(int i=0; i<sizeof(read_buffer); i++) {
+    for(size_t i=0; i<sizeof(read_buffer); i++) {
         read_buffer[i] = i;
     }
 
@@ -52,7 +52,7 @@ void isosnoop_dma_setup(PIO pio, uint sm) {
     // enable dma in ring buffer mode with specified bit size
     channel_config_set_ring(&config_rx, true, ISOSNOOP_BUFFER_BITS);
     // configure dma to read from pio fifo
-    dma_channel_configure(dma_channel_rx, &config_rx, read_buffer, (io_rw_8*)&pio->rxf[sm] + 0, dma_encode_endless_transfer_count(), true); // dma started
+    dma_channel_configure(dma_channel_rx, &config_rx, read_buffer, (io_ro_8*)&pio->rxf[sm] + 0, dma_encode_endless_transfer_count(), true); // dma started
 }
 
 void isosnoop_print_buffer() {

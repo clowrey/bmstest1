@@ -151,7 +151,7 @@ static void ads1115_i2c_callback(i2c_inst_t *i2c, bool success, void *user_data)
             dev->cal_accumulator[dev->current_channel] += sample;
             dev->cal_samples_left[dev->current_channel]--;
             if(dev->current_channel==0) {
-                debug_printf("Cal remaining: %d\n", dev->cal_samples_left[0]);
+                debug_printf("Cal remaining: %" PRIu32 "\n", dev->cal_samples_left[0]);
             }
         }
         

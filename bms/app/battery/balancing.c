@@ -98,6 +98,10 @@ static void update_balance_requests(balancing_sm_t *balancing_sm, int16_t decrem
     uint32_t end = time_us_32();
     debug_printf("Updating balance requests took %zu us\n", (size_t)(end - start));
 
+    // Only used by the disabled skip-ahead logic below
+    (void)any_balancing;
+    (void)skipping;
+
     // if(!any_balancing && !skipping) {
     //     // Nothing to balance on this cycle, skip to the next one
     //     balancing_sm->even_cells = !balancing_sm->even_cells;
@@ -106,7 +110,7 @@ static void update_balance_requests(balancing_sm_t *balancing_sm, int16_t decrem
     // }
 
 
-    debug_printf("Balance mask now: %08lX %08lX %08lX %08lX\n",
+    debug_printf("Balance mask now: %08" PRIX32 " %08" PRIX32 " %08" PRIX32 " %08" PRIX32 "\n",
         balancing_sm->balance_request_mask[3],
         balancing_sm->balance_request_mask[2],
         balancing_sm->balance_request_mask[1],
@@ -152,7 +156,7 @@ static bool start_balancing(bms_model_t *model) {
     }
 
     // Temporary higher-res storage
-    uint32_t balance_time_remaining[120];
+    int32_t balance_time_remaining[120];
     int32_t max_balance_time = 0;
 
     // Set balance times based on how far above minimum voltage each cell is

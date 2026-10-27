@@ -25,7 +25,7 @@ bool check_current_is_below(const bms_model_t *model, int32_t threshold_ma) {
     }
     
     if(abs_int32(model->current_mA) > threshold_ma) {
-        debug_printf("Erk, current %d mA is above threshold %d mA\n", abs_int32(model->current_mA), threshold_ma);
+        debug_printf("Erk, current %" PRId32 " mA is above threshold %" PRId32 " mA\n", abs_int32(model->current_mA), threshold_ma);
     }
 
     return abs_int32(model->current_mA) <= threshold_ma;
@@ -106,6 +106,7 @@ bool check_precharge_successful(const bms_model_t *model, bool log_errors) {
 }
 
 bool confirm_battery_is_healthy(const bms_model_t *model) {
+    (void)model;
     // Do we need this as well as the events system?
 
     return true;
@@ -498,7 +499,7 @@ void contactor_sm_tick(bms_model_t *model) {
             contactors_set_pos_pre_neg(false, true, true);
 #endif
 
-            debug_printf("PRECHARGING: %1.3f V, %d mA\n", 
+            debug_printf("PRECHARGING: %1.3f V, %.0f mA\n", 
                 model->high_voltages.battery - model->high_voltages.output,
                 model->current_filtered_mA - contactor_sm->pre_close_current_mA
             );
@@ -510,7 +511,7 @@ void contactor_sm_tick(bms_model_t *model) {
                 state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_OPEN);
             } else if(state_timeout((sm_t*)contactor_sm, 1000) && check_precharge_successful(model, false)) {
                 // Successful precharge
-                info_printf("Precharge successful after %u ms\n", state_time((sm_t*)contactor_sm));
+                info_printf("Precharge successful after %" PRIu32 " ms\n", state_time((sm_t*)contactor_sm));
                 state_transition((sm_t*)contactor_sm, CONTACTORS_STATE_CLOSED);
             } else if(state_timeout((sm_t*)contactor_sm, 10000)) {
                 // Failed to precharge!

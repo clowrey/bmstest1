@@ -262,8 +262,8 @@ void ekf_init(ekf_t *ekf, float initial_soc, float initial_capacity) {
     ekf->C1 = 150000.0f;
 
     // Reset scaling cache
-    ekf->prev_min = 0.0f;
-    ekf->prev_max = 0.0f;
+    ekf->prev_min_mV = 0;
+    ekf->prev_max_mV = 0;
 
     ekf->initialized = true;
 }
@@ -463,7 +463,7 @@ static void ekf_update_limits(bms_model_t *model) {
     uint16_t max_mV = get_cell_voltage_working_max_mV(model);
 
     // Skip update if limits haven't changed
-    if ((float)min_mV == model->ekf.prev_min && (float)max_mV == model->ekf.prev_max) {
+    if (min_mV == model->ekf.prev_min_mV && max_mV == model->ekf.prev_max_mV) {
         return;
     }
 
@@ -471,8 +471,8 @@ static void ekf_update_limits(bms_model_t *model) {
     model->ekf.prev_soc_min = ocv_to_soc((float)min_mV / 1000.0f);
     float soc_max = ocv_to_soc((float)max_mV / 1000.0f);
     model->ekf.prev_soc_mul = 1.0f / (soc_max - model->ekf.prev_soc_min);
-    model->ekf.prev_min = (float)min_mV;
-    model->ekf.prev_max = (float)max_mV;
+    model->ekf.prev_min_mV = min_mV;
+    model->ekf.prev_max_mV = max_mV;
 
     info_printf("EKF Scaling: %d-%d mV (SOC: %2.2f-%2.2f %%, Mul: %2.3f)\n",
                 min_mV, max_mV, model->ekf.prev_soc_min * 100.0f, soc_max * 100.0f, model->ekf.prev_soc_mul);

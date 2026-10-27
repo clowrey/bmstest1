@@ -117,6 +117,7 @@ static bool ina228_read_reg16(ina228_t *dev, uint8_t reg, uint16_t *value) {
 }
 
 bool ina228_init(ina228_t *dev, uint8_t i2c_addr, float shunt_resistor_ohms, float max_current_a) {
+    (void)max_current_a; // current LSB is currently fixed in ina228_configure()
     dev->i2c = INA228_I2C;
     dev->addr = i2c_addr;
     dev->shunt_resistor_ohms = shunt_resistor_ohms;

@@ -340,7 +340,7 @@ void inverter_tick(inverter_outputs_t *outputs) {
 
     if(inverter_present && (millis() - last_received_millis > INVERTER_TIMEOUT_MS)) {
         // We haven't received any messages from the inverter for a while
-        info_printf("BYD_CAN: Inverter timeout, no messages received for %u ms\n", millis() - last_received_millis);
+        info_printf("BYD_CAN: Inverter timeout, no messages received for %" PRIu32 " ms\n", millis() - last_received_millis);
         inverter_present = false;
         inverter_initialized = false;
         inverter_init_state = 0;

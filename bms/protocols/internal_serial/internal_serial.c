@@ -14,6 +14,6 @@ void init_internal_serial() {
 void internal_serial_tick() {
     if((timestep() & 63) == 0) {
         // Send "KeepAliv" message periodically
-        duart_send_packet(&INTERNAL_SERIAL_DUART, (uint8_t *)str, 8);
+        duart_send_packet(&INTERNAL_SERIAL_DUART, str, 8);
     }
 }

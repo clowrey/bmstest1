@@ -101,6 +101,14 @@ target_compile_options(bms PUBLIC
     -Wmissing-format-attribute
 )
 
+# Third-party code: don't apply our stricter warnings
+set_source_files_properties(
+    vendor/can2040/src/can2040.c
+    vendor/littlefs/lfs.c
+    vendor/littlefs/lfs_util.c
+    PROPERTIES COMPILE_OPTIONS "-Wno-unused-parameter;-Wno-cast-qual;-Wno-null-dereference"
+)
+
 
 # pull in common dependencies
 target_link_libraries(bms 

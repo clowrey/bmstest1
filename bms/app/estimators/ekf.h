@@ -26,8 +26,8 @@ typedef struct {
     float C1;      // Polarization Capacitance
 
     // --- Output Scaling Cache ---
-    float prev_min;
-    float prev_max;
+    uint16_t prev_min_mV;
+    uint16_t prev_max_mV;
     float prev_soc_min;
     float prev_soc_mul;
 

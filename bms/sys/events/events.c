@@ -94,8 +94,8 @@ void print_bms_events() {
     for(int i = 0; i < ERR_HIGHEST; i++) {
         bms_event_slot_t *slot = &bms_event_slots[i];
         if (slot->count > 0) {
-            debug_printf("Event %s: Level %s, Count %u, Last Timestamp %lu, Data 0x%016llX\n",
-                   EVENT_TYPE_NAMES[i], EVENT_LEVELS[slot->level], slot->count, slot->timestamp, slot->data64);
+            debug_printf("Event %s: Level %s, Count %u, Last Timestamp %" PRIu32 ", Data 0x%016llX\n",
+                   EVENT_TYPE_NAMES[i], EVENT_LEVELS[slot->level], slot->count, slot->timestamp, (unsigned long long)slot->data64);
         }
     }
 }

@@ -157,7 +157,7 @@ size_t logging_read(uint8_t *dest, uint32_t len) {
 }
 
 void logging_printf(log_level_t level, const char *format, ...) {
-    if (level < LOG_LEVEL_DEBUG || level > LOG_LEVEL_ERROR) {
+    if (level > LOG_LEVEL_ERROR) {
         return;
     }
 

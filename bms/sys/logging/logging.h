@@ -1,5 +1,6 @@
 #pragma once
 
+#include <inttypes.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -15,6 +16,6 @@ typedef enum {
 #define warning_printf(format, ...) logging_printf(LOG_LEVEL_WARNING, format, ##__VA_ARGS__)
 #define error_printf(format, ...)   logging_printf(LOG_LEVEL_ERROR, format, ##__VA_ARGS__)
 
-void logging_printf(log_level_t level, const char *format, ...);
+void logging_printf(log_level_t level, const char *format, ...) __attribute__((format(printf, 2, 3)));
 void logging_flush_to_stdout();
 size_t logging_read(uint8_t *dest, uint32_t len);
