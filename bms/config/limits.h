@@ -313,6 +313,11 @@
 // Pos contactor has wider tolerances due to the way it is measured
 #define CONTACTORS_POS_CLOSED_VOLTAGE_THRESHOLD_MV 5000
 #define CONTACTORS_POS_OPEN_VOLTAGE_THRESHOLD_MV 10000
+#if IS_BMS_BOARD(REV1)
+// Max discrepancy between battery and link voltage while closed (measured by
+// two different ADCs which may be independently [un]calibrated)
+#define CONTACTORS_LINK_MISMATCH_THRESHOLD_MV 16000
+#endif
 
 
 // Precharge thresholds
@@ -330,6 +335,11 @@
 #define PRECHARGE_SUCCESS_MAX_MA 225
 // Maximum voltage difference to consider precharge successful (allowing for uncalibrated contactors)
 #define PRECHARGE_SUCCESS_MAX_MV 16000
+#if IS_BMS_BOARD(REV1)
+// Rev1 also senses the link rail directly, so the voltage across the PTC + FC
+// negative contactor path (link vs output) can be held to a tighter limit
+#define PRECHARGE_SUCCESS_LINK_MAX_MV 8000
+#endif
 
 
 // Contactor opening thresholds

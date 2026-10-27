@@ -97,6 +97,12 @@ typedef struct high_voltages {
     float neg_contactor;
     float neg_contactor_deviation;
     millis_t neg_contactor_millis;
+
+    // Rev1 boards only (second ADS1115): these stay zero/stale on rev0
+    // Link rail voltage (Link+ to Link-)
+    float link;
+    float link_deviation;
+    millis_t link_millis;
 } high_voltages_t;
 
 typedef struct inverter_outputs {

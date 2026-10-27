@@ -128,7 +128,9 @@ typedef enum {
     X(BOOT_NORMAL, LEVEL_INFO, 0)                               \
     X(BOOT_WATCHDOG, LEVEL_WARNING, 0)                          \
     X(LOOP_OVERRUN, LEVEL_WARNING, 0)                           \
-    X(RESTARTING, LEVEL_FATAL, 0)
+    X(RESTARTING, LEVEL_FATAL, 0)                               \
+                                                                \
+    X(LINK_VOLTAGE_MISMATCH, LEVEL_WARNING, 0)
 
 typedef enum {
 #define X(name, _1, _2) ERR_##name,

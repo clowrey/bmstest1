@@ -68,6 +68,15 @@ void read_inputs(bms_model_t *model) {
     model->high_voltages.neg_contactor = ads1115_float_sample(2, neg_contactor_mul) + (0.001f * model->neg_contactor_offset_mV);
     model->high_voltages.neg_contactor_deviation = ads1115_float_deviation(2, neg_contactor_mul);
 
+#if IS_BMS_BOARD(REV1)
+    // Link rail voltage (channel 7 measures LinkNeg - LinkPos, so negate). Not
+    // calibrated, so this uses the default multiplier.
+    float link_voltage_mul = ADS1115_DEFAULT_MUL;
+    model->high_voltages.link_millis = ads1115_get_sample_millis(7);
+    model->high_voltages.link = -ads1115_float_sample(7, link_voltage_mul);
+    model->high_voltages.link_deviation = ads1115_float_deviation(7, link_voltage_mul);
+#endif
+
     // Positive contactor voltage has to be derived from the difference between (battery+
     // to output-) and (output+ to output-), since we can't sample relative to battery+.
 
@@ -269,6 +278,12 @@ void bms_tick() {
             model.high_voltages.pos_contactor,
             model.high_voltages.pos_contactor_deviation
         );
+#if IS_BMS_BOARD(REV1)
+        debug_printf("Link: %6.3fV (%3.3f)\n",
+            model.high_voltages.link,
+            model.high_voltages.link_deviation
+        );
+#endif
         int64_t charge_mC = raw_charge_to_mC(model.charge_raw);
         debug_printf("Current: %6ld mA | Charge: %lld mC | SoC: %2.2f %% | SoC(VB): %2.2f %% | SoC(BC): %2.2f %% | SoC(FC): %2.2f %%\n",
             model.current_mA,
