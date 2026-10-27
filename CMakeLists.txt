@@ -5,21 +5,21 @@ set(CMAKE_C_STANDARD 11)
 set(PICO_BOARD_HEADER_DIRS ${CMAKE_CURRENT_LIST_DIR}/bms/config/boards)
 set(PICO_BOARD bms_rp2354b)
 set(PICO_PLATFORM rp2350)
-set(PICO_STDIO_USB 1)
+
+# Limit the linker's flash region to 1.5MB to reserve space for NVM/LittleFS.
+# Must be set before pico_sdk_init(), which generates the linker script.
+set(PICO_FLASH_SIZE_BYTES 1572864)
 
 # Support for anonymous structs
 add_definitions("-fms-extensions")
 
-# include the SDK
-include(../pico-sdk/pico_sdk_init.cmake)
+# Locate the SDK via PICO_SDK_PATH (environment or -D), must be before project()
+include(pico_sdk_import.cmake)
 
-project(supervisor C CXX)
+project(bms C CXX ASM)
 
 # initialize the Raspberry Pi Pico SDK
 pico_sdk_init()
-
-# Limit flash size to 1.5MB to reserve space for NVM/LittleFS
-set(PICO_FLASH_SIZE_BYTES 1572864)
 
 ######
 
@@ -128,9 +128,8 @@ target_link_libraries(bms
 target_compile_definitions(bms PRIVATE
     USBD_MANUFACTURER="S3XY-BMS"
     USBD_PRODUCT="Controller"
+    PICO_STDIO_USB_CONNECT_WAIT_TIMEOUT_MS=3000
 )
-
-set(PICO_STDIO_USB_CONNECT_WAIT_TIMEOUT_MS 3000)
 
 # enable usb output, disable uart output
 pico_enable_stdio_usb(bms 1)
