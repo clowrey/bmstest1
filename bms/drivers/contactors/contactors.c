@@ -115,10 +115,10 @@ void contactors_set_pos_pre_neg(bool pos, bool pre, bool neg) {
     set_with_pwm(PIN_CONTACTOR_NEG, actual_neg, &neg_level);
 }
 
-void contactors_test_pre(bool closed) {
+void contactors_test_pre_bypass(bool closed) {
     // Independently close the precharge contactor for testing, which you can't
     // normally do without also closing the adjacent contactor, but we do here
-    // for test purposes.
+    // during weld testing.
 
     set_with_pwm(PIN_CONTACTOR_PRE, closed, &pre_level);
     set_with_pwm(PIN_CONTACTOR_POS, false, &pos_level);

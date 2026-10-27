@@ -306,6 +306,9 @@
 #define CONTACTORS_FAILED_PRECHARGE_TIMEOUT_MS 20000
 // How long to wait after a failed contactor test (to avoid rapid cycling)
 #define CONTACTORS_FAILED_TEST_TIMEOUT_MS 20000
+// We need at least this much voltage difference between the battery and output
+// voltages before we allow 'assisted' weld checking.
+#define CONTACTORS_ASSISTED_MIN_DELTA_MV 20000
 // Max voltage across a contactor to consider it closed
 #define CONTACTORS_CLOSED_VOLTAGE_THRESHOLD_MV 2000
 // Min voltage across a contactor to consider it open
@@ -326,6 +329,13 @@
 #define CONTACTORS_POS_CLOSED_VOLTAGE_THRESHOLD_MV 5000
 #define CONTACTORS_POS_OPEN_VOLTAGE_THRESHOLD_MV 10000
 #endif
+// Max bus voltage allowed before we abort offline calibration.
+// During offline calibration, we need to close the negative contactor. We do
+// this cautiously, with precharge first (if applicable), just in case the other
+// contactor is welded. We abort if either a significant current is flowing, or
+// if the voltage across the output is above this threshold (indicating a live
+// bus). Needs to be wide to accommodate uncalibrated voltage readings.
+#define CONTACTORS_CALIBRATION_DEAD_BUS_MAX_MV 50000
 // How long the F4 fuse drop must stay high before the BMS faults (the
 // escalation time of ERR_FUSE_VOLTAGE_DROP_HIGH). It must be longer than the
 // time a reading counts as fresh, so that a single high reading followed by a

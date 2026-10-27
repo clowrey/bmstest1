@@ -40,7 +40,7 @@ void contactors_set_pos_pre_neg(bool pos, bool pre, bool neg) {
     check_expected(neg);
 }
 
-void contactors_test_pre(bool pre) {
+void contactors_test_pre_bypass(bool pre) {
     check_expected(pre);
 }
 
@@ -60,6 +60,24 @@ void tick_sm(bms_model_t *model, uint32_t ms) {
     model->current_millis = stored_millis;
 
     contactor_sm_tick(model);
+}
+
+static void expect_close_pre_side_via_precharge(void) {
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, true);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+}
+
+static void expect_close_other_side_direct(void) {
+#ifdef PRECHARGE_ON_NEGATIVE
+    expect_value(contactors_set_pos_pre_neg, pos, true);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+#else
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, true);
+#endif
 }
 
 static void test_initial_state(void **state) {
@@ -84,60 +102,48 @@ static void test_close_request_to_testing_sequence(void **state) {
     model.contactor_sm.state = CONTACTORS_STATE_OPEN;
     model.contactor_req = CONTACTORS_REQUEST_CLOSE;
     
-    // 1. Transition to TESTING_PRE_CLOSED
+    // 1. Transition to TESTING_BYPASS_CLOSED
     expect_value(contactors_set_pos_pre_neg, pos, false);
     expect_value(contactors_set_pos_pre_neg, pre, false);
     expect_value(contactors_set_pos_pre_neg, neg, false);
     tick_sm(&model, 0);
-    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_PRE_CLOSED);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_BYPASS_CLOSED);
 
-    // 2. TESTING_PRE_CLOSED
+    // 2. TESTING_BYPASS_CLOSED
     model.precharge_closed = true;
-    expect_value(contactors_test_pre, pre, true);
+    expect_value(contactors_test_pre_bypass, pre, true);
     tick_sm(&model, 1100);
-    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_NEG_OPEN);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_INITIALLY_OPEN);
 
-    // 3. TESTING_NEG_OPEN
+    // 3. TESTING_INITIALLY_OPEN
     model.high_voltages.pos_contactor = 15.0f; // Above threshold (open)
     model.high_voltages.neg_contactor = 5.0f;  // Above threshold (open)
     expect_value(contactors_set_pos_pre_neg, pos, false);
     expect_value(contactors_set_pos_pre_neg, pre, false);
     expect_value(contactors_set_pos_pre_neg, neg, false);
     tick_sm(&model, 1100);
-    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_NEG_CLOSED);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_PRE_SIDE_CLOSED);
 
-    // 4. TESTING_NEG_CLOSED
+    // 4. Precharge side closed via the precharge element
     model.high_voltages.neg_contactor = 0.1f; // Below threshold (closed)
-    expect_value(contactors_set_pos_pre_neg, pos, false);
-#ifdef PRECHARGE_ON_NEGATIVE
-    // pre is logically true here (leaves the bypass contactor open)
-    expect_value(contactors_set_pos_pre_neg, pre, true);
-#else
-    expect_value(contactors_set_pos_pre_neg, pre, false);
-#endif
-    expect_value(contactors_set_pos_pre_neg, neg, true);
+    model.high_voltages.pos_contactor = 0.5f; // Below threshold (closed)
+    expect_close_pre_side_via_precharge();
     tick_sm(&model, 1100);
-    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_POS_OPEN);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_REOPENED);
 
-    // 5. TESTING_POS_OPEN
+    // 5. TESTING_REOPENED
     model.high_voltages.neg_contactor = 5.0f;  // Above threshold (open)
     model.high_voltages.pos_contactor = 15.0f; // Above threshold (open)
     expect_value(contactors_set_pos_pre_neg, pos, false);
     expect_value(contactors_set_pos_pre_neg, pre, false);
     expect_value(contactors_set_pos_pre_neg, neg, false);
     tick_sm(&model, 1100);
-    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_POS_CLOSED);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_OTHER_SIDE_CLOSED);
 
-    // 6. TESTING_POS_CLOSED
+    // 6. Other side closed directly
+    model.high_voltages.neg_contactor = 0.1f; // Below threshold (closed)
     model.high_voltages.pos_contactor = 0.5f; // Below threshold (closed)
-    expect_value(contactors_set_pos_pre_neg, pos, true);
-#ifdef PRECHARGE_ON_NEGATIVE
-    expect_value(contactors_set_pos_pre_neg, pre, false);
-#else
-    // pre is logically true here (leaves the bypass contactor open)
-    expect_value(contactors_set_pos_pre_neg, pre, true);
-#endif
-    expect_value(contactors_set_pos_pre_neg, neg, false);
+    expect_close_other_side_direct();
     tick_sm(&model, 1100);
     assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_PRECHARGING_INIT);
 }
@@ -432,8 +438,8 @@ static void test_pos_weld_failure_detection(void **state) {
     (void) state;
     bms_model_t model = {0};
     
-    // Force state to TESTING_POS_OPEN
-    model.contactor_sm.state = CONTACTORS_STATE_TESTING_POS_OPEN;
+    // Force state to TESTING_REOPENED
+    model.contactor_sm.state = CONTACTORS_STATE_TESTING_REOPENED;
     model.contactor_sm.last_transition_time = stored_millis64;
 
     // Set up model to simulate POS contactor weld (stuck closed)
@@ -605,11 +611,413 @@ static void test_testing_failed_recovers_to_open_after_timeout(void **state) {
     assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_OPEN);
 }
 
+// Mode 2 (assisted) helpers: voltages are role-based, since the precharge
+// side is neg on rev1 (PRECHARGE_ON_NEGATIVE) and pos on rev0.
+static void set_assisted_pre_pass_voltages(bms_model_t *model) {
+#ifdef PRECHARGE_ON_NEGATIVE
+    model->high_voltages.neg_contactor = 0.1f; // pre closed (<=2V)
+    model->high_voltages.pos_contactor = 15.0f; // other open (>=3V)
+#else
+    model->high_voltages.pos_contactor = 0.5f; // pre closed (<=5V)
+    model->high_voltages.neg_contactor = 5.0f; // other open (>=3V)
+#endif
+}
+
+static void set_assisted_other_pass_voltages(bms_model_t *model) {
+#ifdef PRECHARGE_ON_NEGATIVE
+    model->high_voltages.pos_contactor = 0.5f; // other closed (<=2V)
+    model->high_voltages.neg_contactor = 5.0f; // pre open (>=3V)
+#else
+    model->high_voltages.neg_contactor = 0.1f; // other closed (<=2V)
+    model->high_voltages.pos_contactor = 15.0f; // pre open (>=10V)
+#endif
+}
+
+static void set_assisted_other_weld_voltages(bms_model_t *model) {
+    // Other side welded: stays small after pre-side PTC pull.
+#ifdef PRECHARGE_ON_NEGATIVE
+    model->high_voltages.neg_contactor = 0.1f;
+    model->high_voltages.pos_contactor = 0.1f;
+#else
+    model->high_voltages.pos_contactor = 0.5f;
+    model->high_voltages.neg_contactor = 0.1f;
+#endif
+}
+
+static void set_assisted_pre_weld_voltages(bms_model_t *model) {
+    // Pre side welded: stays small after other-side direct close.
+#ifdef PRECHARGE_ON_NEGATIVE
+    model->high_voltages.pos_contactor = 0.5f;
+    model->high_voltages.neg_contactor = 0.1f;
+#else
+    model->high_voltages.neg_contactor = 0.1f;
+    model->high_voltages.pos_contactor = 0.5f;
+#endif
+}
+
+static void test_assisted_happy_path(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    // Dead bus, link floating near the precharge rail: pre side reads closed,
+    // other side reads open. Passive both-open fails, but assisted gate passes.
+    model.contactor_sm.state = CONTACTORS_STATE_TESTING_INITIALLY_OPEN;
+    model.contactor_sm.last_transition_time = stored_millis64;
+    model.high_voltages.battery = 400.0f;
+    model.high_voltages.output = 0.0f;
+    set_assisted_pre_pass_voltages(&model);
+    model.precharge_closed = false;
+
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+    tick_sm(&model, 1100);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_ASSISTED_PRE);
+
+    // Tentative PTC pull: pre reads closed, shift proves other open.
+    set_assisted_pre_pass_voltages(&model);
+    model.precharge_closed = false;
+    expect_close_pre_side_via_precharge();
+    tick_sm(&model, 1100);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_ASSISTED_OPEN);
+
+    // Deadband: open-all break-before-make, no voltage verdict.
+    model.precharge_closed = false;
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+    tick_sm(&model, 1100);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_ASSISTED_OTHER);
+
+    // Opposite pull: other reads closed, pre reads open.
+    set_assisted_other_pass_voltages(&model);
+    model.precharge_closed = false;
+    expect_close_other_side_direct();
+    tick_sm(&model, 1100);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_PRECHARGING_INIT);
+    // Stored reference must be the pos *open* reading (15V on both board
+    // variants: other-side shift on PRECHARGE_ON_NEGATIVE, pre-side shift
+    // otherwise) - never the closed reading.
+    assert_int_equal((int)(model.contactor_sm.pre_close_pos_contactor_voltage * 1000), 15000);
+}
+
+static void test_assisted_other_weld_detected(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    model.contactor_sm.state = CONTACTORS_STATE_TESTING_INITIALLY_OPEN;
+    model.contactor_sm.last_transition_time = stored_millis64;
+    model.high_voltages.battery = 400.0f;
+    model.high_voltages.output = 0.0f;
+    set_assisted_pre_pass_voltages(&model);
+    model.precharge_closed = false;
+
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+    tick_sm(&model, 1100);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_ASSISTED_PRE);
+
+    // Other side welded: never looks open after the PTC pull.
+    int16_t count_before = get_event_count(ERR_CONTACTOR_CLOSING_FAILED);
+    set_assisted_other_weld_voltages(&model);
+    model.precharge_closed = false;
+    expect_close_pre_side_via_precharge();
+    tick_sm(&model, 1100);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_FAILED);
+    assert_int_equal(get_event_count(ERR_CONTACTOR_CLOSING_FAILED), count_before + 1);
+}
+
+static void test_assisted_pre_weld_detected(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    // Reach ASSISTED_OTHER via a passing first phase plus deadband.
+    model.contactor_sm.state = CONTACTORS_STATE_TESTING_ASSISTED_PRE;
+    model.contactor_sm.last_transition_time = stored_millis64;
+    model.high_voltages.battery = 400.0f;
+    model.high_voltages.output = 0.0f;
+    set_assisted_pre_pass_voltages(&model);
+    model.precharge_closed = false;
+
+    expect_close_pre_side_via_precharge();
+    tick_sm(&model, 1100);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_ASSISTED_OPEN);
+
+    model.precharge_closed = false;
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+    tick_sm(&model, 1100);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_ASSISTED_OTHER);
+
+    // Pre side welded: never looks open after the direct close.
+    int16_t count_before = get_event_count(ERR_CONTACTOR_CLOSING_FAILED);
+    set_assisted_pre_weld_voltages(&model);
+    model.precharge_closed = false;
+    expect_close_other_side_direct();
+    tick_sm(&model, 1100);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_FAILED);
+    assert_int_equal(get_event_count(ERR_CONTACTOR_CLOSING_FAILED), count_before + 1);
+}
+
+static void test_assisted_hot_bus_refused(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    // Live bus (hot-join): small battery-output difference. Assisted gate
+    // denies, original 0x2000 failure path preserved.
+    model.contactor_sm.state = CONTACTORS_STATE_TESTING_INITIALLY_OPEN;
+    model.contactor_sm.last_transition_time = stored_millis64;
+    model.high_voltages.battery = 400.0f;
+    model.high_voltages.output = 399.0f;
+    set_assisted_pre_pass_voltages(&model);
+    model.precharge_closed = false;
+
+    int16_t count_before = get_event_count(ERR_CONTACTOR_CLOSING_FAILED);
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+    tick_sm(&model, 1100);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_FAILED);
+    assert_int_equal(get_event_count(ERR_CONTACTOR_CLOSING_FAILED), count_before + 1);
+}
+
+static void test_force_open_from_assisted_is_immediate(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    model.contactor_sm.state = CONTACTORS_STATE_TESTING_ASSISTED_PRE;
+    model.contactor_sm.last_transition_time = stored_millis64;
+    model.contactor_req = CONTACTORS_REQUEST_FORCE_OPEN;
+
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+    tick_sm(&model, 1);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_OPEN);
+    assert_int_equal(model.contactor_req, CONTACTORS_REQUEST_NULL);
+
+    model.contactor_sm.state = CONTACTORS_STATE_TESTING_ASSISTED_OTHER;
+    model.contactor_sm.last_transition_time = stored_millis64;
+    model.contactor_req = CONTACTORS_REQUEST_OPEN;
+
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+    tick_sm(&model, 1);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_OPEN);
+    assert_int_equal(model.contactor_req, CONTACTORS_REQUEST_NULL);
+
+    model.contactor_sm.state = CONTACTORS_STATE_TESTING_ASSISTED_OPEN;
+    model.contactor_sm.last_transition_time = stored_millis64;
+    model.contactor_req = CONTACTORS_REQUEST_FORCE_OPEN;
+
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+    tick_sm(&model, 1);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_OPEN);
+    assert_int_equal(model.contactor_req, CONTACTORS_REQUEST_NULL);
+}
+
+static void test_pos_dropout_detected_despite_large_open_reference(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    // Forced full-pack open reference as stored on the assisted path, then
+    // pos drops out onto a half-bled bus: 50V across it. Uncapped half-open
+    // (200V) would still read closed; capped fallback (5V rev1 / 8V rev0)
+    // must trip to AWAITING_OPEN.
+    model.contactor_sm.state = CONTACTORS_STATE_CLOSED;
+    model.contactor_sm.last_transition_time = stored_millis64;
+    model.contactor_sm.pre_close_pos_contactor_voltage = 400.0f;
+    model.high_voltages.battery = 400.0f;
+    model.high_voltages.output = 350.0f;
+    model.high_voltages.pos_contactor = 50.0f;
+    model.high_voltages.neg_contactor = 0.1f;
+#if IS_BMS_BOARD(REV1)
+    model.high_voltages.link = 400.0f;
+    model.high_voltages.fuse_drop = 0.0f;
+#endif
+    model.current_mA = 0;
+
+    expect_value(contactors_set_pos_pre_neg, pos, true);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, true);
+    tick_sm(&model, 2500);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_AWAITING_OPEN);
+}
+
+static void test_pos_closed_tolerates_small_offset(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    // Same large open reference, but a small closed residual (miscalibration
+    // slop) must still read closed via the fallback band between the fixed
+    // closed threshold and the open threshold: 2.5V on rev1 (2V/3V), 6V on
+    // rev0 (5V/10V). Neither passes the fixed threshold, so this exercises
+    // the capped fallback specifically.
+    model.contactor_sm.state = CONTACTORS_STATE_CLOSED;
+    model.contactor_sm.last_transition_time = stored_millis64;
+    model.contactor_sm.pre_close_pos_contactor_voltage = 400.0f;
+    model.high_voltages.battery = 400.0f;
+    model.high_voltages.output = 400.0f;
+#if IS_BMS_BOARD(REV1)
+    model.high_voltages.pos_contactor = 2.5f;
+#else
+    model.high_voltages.pos_contactor = 6.0f;
+#endif
+    model.high_voltages.neg_contactor = 0.1f;
+#if IS_BMS_BOARD(REV1)
+    model.high_voltages.link = 400.0f;
+    model.high_voltages.fuse_drop = 0.0f;
+#endif
+    model.current_mA = 0;
+
+    expect_value(contactors_set_pos_pre_neg, pos, true);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, true);
+    tick_sm(&model, 2500);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_CLOSED);
+}
+
+static void test_calib_neg_init_proceeds_when_current_low(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    model.contactor_sm.state = CONTACTORS_STATE_CALIBRATING_ONLY_NEG_INIT;
+    model.contactor_sm.last_transition_time = stored_millis64;
+    model.current_mA = 0;
+
+#ifdef PRECHARGE_ON_NEGATIVE
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, true);
+    expect_value(contactors_set_pos_pre_neg, neg, true);
+#else
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, true);
+#endif
+    tick_sm(&model, 1100);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_CALIBRATING_ONLY_NEG);
+}
+
+static void test_calib_neg_init_aborts_when_bus_live(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    // Quiet current but the bus is live (welded pos feeding it, or caps
+    // holding charge): must bail without ever driving the direct close.
+    model.contactor_sm.state = CONTACTORS_STATE_CALIBRATING_ONLY_NEG_INIT;
+    model.contactor_sm.last_transition_time = stored_millis64;
+    model.current_mA = 0;
+    model.high_voltages.output = 400.0f;
+
+#ifdef PRECHARGE_ON_NEGATIVE
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, true);
+    expect_value(contactors_set_pos_pre_neg, neg, true);
+#else
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, true);
+#endif
+    tick_sm(&model, 1100);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_OPEN);
+}
+
+static void test_calib_neg_init_aborts_when_current_high(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    // PTC probe already carrying fault current (e.g. welded pos + load):
+    // must bail to OPEN without ever driving the direct close.
+    model.contactor_sm.state = CONTACTORS_STATE_CALIBRATING_ONLY_NEG_INIT;
+    model.contactor_sm.last_transition_time = stored_millis64;
+    model.current_mA = 3000;
+
+#ifdef PRECHARGE_ON_NEGATIVE
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, true);
+    expect_value(contactors_set_pos_pre_neg, neg, true);
+#else
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, true);
+#endif
+    tick_sm(&model, 1100);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_OPEN);
+}
+
+static void test_assisted_deadband_bypass_weld_aborts(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    // Bypass welds shut mid-sequence and is still shut at the deadband:
+    // must fail without ever driving the direct other-side close.
+    model.contactor_sm.state = CONTACTORS_STATE_TESTING_ASSISTED_OPEN;
+    model.contactor_sm.last_transition_time = stored_millis64;
+    model.high_voltages.battery = 400.0f;
+    model.high_voltages.output = 0.0f;
+    set_assisted_other_pass_voltages(&model);
+    model.precharge_closed = true;
+
+    int16_t count_before = get_event_count(ERR_CONTACTOR_CLOSING_FAILED);
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+    tick_sm(&model, 1100);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_FAILED);
+    assert_int_equal(get_event_count(ERR_CONTACTOR_CLOSING_FAILED), count_before + 1);
+}
+
+static void test_assisted_bypass_weld_aborts_before_driving(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+
+    // Bypass welded (aux closed) on entry to ASSISTED_PRE: must fail
+    // immediately with open_all, never driving the PTC pull.
+    model.contactor_sm.state = CONTACTORS_STATE_TESTING_ASSISTED_PRE;
+    model.contactor_sm.last_transition_time = stored_millis64;
+    model.high_voltages.battery = 400.0f;
+    model.high_voltages.output = 0.0f;
+    set_assisted_pre_pass_voltages(&model);
+    model.precharge_closed = true;
+
+    int16_t count_before = get_event_count(ERR_CONTACTOR_CLOSING_FAILED);
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+    tick_sm(&model, 10);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_FAILED);
+    assert_int_equal(get_event_count(ERR_CONTACTOR_CLOSING_FAILED), count_before + 1);
+
+    // Bypass welded on entry to ASSISTED_OTHER: must fail with open_all,
+    // never driving the direct other-side close (which would be a dead
+    // short onto a discharged bus with no PTC in circuit).
+    memset(&model, 0, sizeof(model));
+    model.contactor_sm.state = CONTACTORS_STATE_TESTING_ASSISTED_OTHER;
+    model.contactor_sm.last_transition_time = stored_millis64;
+    model.high_voltages.battery = 400.0f;
+    model.high_voltages.output = 0.0f;
+    set_assisted_other_pass_voltages(&model);
+    model.precharge_closed = true;
+
+    count_before = get_event_count(ERR_CONTACTOR_CLOSING_FAILED);
+    expect_value(contactors_set_pos_pre_neg, pos, false);
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+    tick_sm(&model, 10);
+    assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_FAILED);
+    assert_int_equal(get_event_count(ERR_CONTACTOR_CLOSING_FAILED), count_before + 1);
+}
+
 static void test_force_open_from_testing_state_is_immediate(void **state) {
     (void) state;
     bms_model_t model = {0};
 
-    model.contactor_sm.state = CONTACTORS_STATE_TESTING_NEG_CLOSED;
+    model.contactor_sm.state = CONTACTORS_STATE_TESTING_PRE_SIDE_CLOSED;
     model.contactor_sm.last_transition_time = stored_millis64;
     model.contactor_req = CONTACTORS_REQUEST_FORCE_OPEN;
 
@@ -647,6 +1055,18 @@ int main(void) {
         cmocka_unit_test(test_precharge_failed_recovers_to_open_after_cooldown),
         cmocka_unit_test(test_testing_failed_recovers_to_open_after_timeout),
         cmocka_unit_test(test_force_open_from_testing_state_is_immediate),
+        cmocka_unit_test(test_assisted_happy_path),
+        cmocka_unit_test(test_assisted_other_weld_detected),
+        cmocka_unit_test(test_assisted_pre_weld_detected),
+        cmocka_unit_test(test_assisted_hot_bus_refused),
+        cmocka_unit_test(test_assisted_bypass_weld_aborts_before_driving),
+        cmocka_unit_test(test_assisted_deadband_bypass_weld_aborts),
+        cmocka_unit_test(test_pos_dropout_detected_despite_large_open_reference),
+        cmocka_unit_test(test_pos_closed_tolerates_small_offset),
+        cmocka_unit_test(test_calib_neg_init_proceeds_when_current_low),
+        cmocka_unit_test(test_calib_neg_init_aborts_when_current_high),
+        cmocka_unit_test(test_calib_neg_init_aborts_when_bus_live),
+        cmocka_unit_test(test_force_open_from_assisted_is_immediate),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
