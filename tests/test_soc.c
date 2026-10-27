@@ -14,12 +14,22 @@
 #include "can2040.h"
 #include "sys/logging/logging.h"
 
+// Everything logged since the test last cleared it, for asserting on decisions
+static char log_text[4096];
+static size_t log_len;
+
 void logging_printf(log_level_t level, const char *format, ...) {
     (void)level;
     va_list args;
     va_start(args, format);
     vprintf(format, args);
     va_end(args);
+    if (log_len < sizeof(log_text) - 1) {
+        va_start(args, format);
+        int n = vsnprintf(log_text + log_len, sizeof(log_text) - log_len, format, args);
+        va_end(args);
+        if (n > 0) log_len += (size_t)n < sizeof(log_text) - log_len ? (size_t)n : sizeof(log_text) - 1 - log_len;
+    }
 }
 
 // Mock globals
@@ -118,11 +128,15 @@ static void test_ekf_init_full_charge(void **state) {
     model.charge_used_Ah = 0.0f;
 
     // Voltage at 4150 mV/cell — 97.4% absolute SoC on NMC curve, inside working range.
+    log_len = 0;
+    log_text[0] = '\0';
     uint32_t soc_out = ekf_tick(&model, 0, 0, 4150);
 
-    // With the fix: initialises from stored (100%), result clamped to 100.00% → 10000.
-    // Without the fix: initialises from voltage (~97.4%), result ≈ 98.8% → ~9880.
-    assert_true(soc_out > 9950);
+    // With the fix it initialises from the stored 100%; without it, from voltage.
+    // The first update then weighs that start against the voltage by P0_AH, so
+    // check the decision itself rather than the filtered output.
+    assert_non_null(strstr(log_text, "from NVM"));
+    assert_true(soc_out > 9500);
 }
  
 static void test_ekf_init_uninitialized_falls_back_to_voltage(void **state) {
@@ -221,6 +235,7 @@ static void test_inverter_soc_scaling(void **state) {
     sent_soc = (last_150.data[0] << 8) | last_150.data[1];
     assert_int_equal(sent_soc, 10000);
 }
+
 
 int main(void) {
     const struct CMUnitTest tests[] = {

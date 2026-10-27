@@ -162,17 +162,22 @@ static float nmc_ocv_curve[101] = {
     #define ocv_curve nmc_ocv_curve
     #define OCV_DIFF_HALF_WIDTH 1
 
-    // The original tuning, with the bias state switched off. NMC's sloped curve
-    // keeps the voltage informative everywhere; there's no logged data to
-    // retune against yet.
-    #define EKF_P0_AH   1e-3f
-    #define EKF_P0_AH_VOLTAGE EKF_P0_AH
-    #define EKF_P0_VC1  1e-2f
-    #define EKF_P0_CAP  1.0f
-    #define EKF_P0_BIAS 0.0f
-    #define EKF_Q_AH    1e-3f
-    #define EKF_Q_VC1   1e-2f
-    #define EKF_Q_CAP   1e-7f
+    // From replaying ~94 days of a 96S BLUETESLA pack, plus synthetic fresher
+    // packs driven the same way. NMC's sloped curve keeps the voltage
+    // informative everywhere, so no gate. Q_AH:Q_VC1 trades trusting the count
+    // (better when the curve is off) against trusting voltage (better when the
+    // capacity or shunt offset is off); this ratio was the best worst case.
+    // Q_VC1 used to be 1e-2, which let V_c1 soak up every voltage residual and
+    // left a 15% starting error two days to clear; now it's minutes.
+    #define EKF_P0_AH   100.0f  // (10Ah)^2
+    #define EKF_P0_AH_VOLTAGE EKF_P0_AH // a voltage start is good on a sloped curve
+    #define EKF_P0_VC1  1e-4f
+    #define EKF_P0_CAP  0.0f    // The capacity state soaks up OCV curve error rather
+                                // than measuring capacity; it has to come from outside
+    #define EKF_P0_BIAS 0.0f    // Off: with a mismatched curve it learns curve error too
+    #define EKF_Q_AH    5e-8f
+    #define EKF_Q_VC1   1e-6f
+    #define EKF_Q_CAP   0.0f
     #define EKF_Q_BIAS  0.0f
     #define EKF_R_V     1e-2f
     #define EKF_MIN_OCV_SLOPE  0.0f
