@@ -56,6 +56,10 @@ bool nvm_save_persistent_slow(bms_model_t *model) {
     return true;
 }
 
+void ekf_reset_bias(bms_model_t *model) {
+    (void)model;
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================

@@ -15,6 +15,10 @@ void logging_printf(log_level_t level, const char *format, ...) {
     (void)format;
 }
 
+void ekf_reset_bias(bms_model_t *model) {
+    (void)model;
+}
+
 #define N_SAMPLES 64.0f
 #define MUL_EPSILON 1e-6f
 
