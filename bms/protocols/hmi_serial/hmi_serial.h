@@ -28,7 +28,8 @@
 // Version of this protocol, in HMI_REG_PROTOCOL_VERSION:
 //   1 = READ_ARRAY
 //   2 = WRITE_ARRAY, the EKF and OCV learner arrays, HMI_REG_OCV_LEARN_*
-#define HMI_PROTOCOL_VERSION 2
+//   3 = HMI_REG_NAMEPLATE_CAPACITY; HMI_REG_CAPACITY is the actual capacity, saved to NVM
+#define HMI_PROTOCOL_VERSION 3
 
 #define HMI_ANNOUNCE_DEVICE_TYPE_BMS 0x01
 
@@ -63,7 +64,8 @@
 #define HMI_REG_SOC_VOLTAGE_BASED      17 // uint16
 #define HMI_REG_SOC_BASIC_COUNT        18 // uint16
 
-#define HMI_REG_CAPACITY               20 // uint32 (mC)
+#define HMI_REG_CAPACITY               20 // uint32 (mC), actual capacity the SOC estimator uses. Writes are
+                                          // saved to NVM; 0 goes back to the profile's ACTUAL_CAPACITY_AH
 #define HMI_REG_SUPPLY_VOLTAGE_3V3     21 // uint16 (mV)
 #define HMI_REG_SUPPLY_VOLTAGE_5V      22 // uint16 (mV)
 #define HMI_REG_SUPPLY_VOLTAGE_12V     23 // uint16 (mV)
@@ -109,6 +111,8 @@
 #define HMI_REG_OCV_LEARN_S_FULL       72 // float, factory-curve SOC (0-1] of full charge; absent until learning
                                           // starts. Writing it starts learning (to restore a saved learner).
 #define HMI_REG_OCV_LEARN_CAPACITY_REF 73 // float (Ah), from full to OCV_LEARN_V_REF; NaN until trusted
+
+#define HMI_REG_NAMEPLATE_CAPACITY     74 // uint32 (mC), the profile's NAMEPLATE_CAPACITY_AH (the label's); read only
 
 // Deprecated: these ranges and READ_CELL_VOLTAGES / READ_BALANCING_TIMES stay
 // for older HMIs, and are fixed at the first 120 cells and 8 modules. Use

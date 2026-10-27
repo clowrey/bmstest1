@@ -9,7 +9,9 @@
 #define NUM_CELLS 96
 #define NUM_MODULE_VOLTAGES 8
 #define NUM_MODULE_TEMPS 8
-#define NAMEPLATE_CAPACITY_AH 173
+#define NAMEPLATE_CAPACITY_AH 210 // possibly; unclear what voltage range it's rated over
+// Aged: three full-to-3.4V sweeps in Sep 2026 (kalman/replay) put it at ~173Ah on the G0 midpoint curve
+#define ACTUAL_CAPACITY_AH 173
 #define INA228_SHUNT_CAL 332
 #define INVERTER_MODEL_STRING "CellKeeper Tesla NMC 1\x00\x00\x00\x00\x00"
 

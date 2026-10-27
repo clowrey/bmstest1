@@ -128,7 +128,8 @@ static void init_model() {
     }
 
     info_printf("Pack profile: %s\n", BMS_PROFILE_NAME);
-    model.nameplate_capacity_mC = NAMEPLATE_CAPACITY_AH * 3600 * 1000; // in mC
+    info_printf("Capacity: %.1fAh%s (nameplate %.1fAh)\n", get_actual_capacity_mC(&model) / 3600000.0f,
+                model.actual_capacity_mC > 0 ? "" : " from the profile", (float)NAMEPLATE_CAPACITY_AH);
 
     model.current_filtered_mA = NAN;
     model.working_charge_current_limit_filtered_dA = NAN;

@@ -465,7 +465,7 @@ static float ekf_stored_bias(const bms_model_t *model) {
 
 static void ekf_init_from_model(bms_model_t *model, float voltage_volts) {
     if (model->ekf.initialized || voltage_volts <= 0.0f) return;
-    float capacity_ah = (float)model->nameplate_capacity_mC / 3600000.0f;
+    float capacity_ah = (float)get_actual_capacity_mC(model) / 3600000.0f;
     bool from_voltage;
     float initial_soc = estimate_initial_soc(model, voltage_volts, capacity_ah, &from_voltage);
     info_printf("EKF init: SOC %.2f%% from %s (voltage %.3fV, stored %.4fAh, bias %.1fmA)\n",
@@ -495,10 +495,19 @@ static void ekf_update_limits(bms_model_t *model) {
     info_printf("EKF Scaling: %d-%d mV (SOC: %2.2f-%2.2f %%, Mul: %2.3f)\n",
                 min_mV, max_mV, model->ekf.prev_soc_min * 100.0f, soc_max * 100.0f, model->ekf.prev_soc_mul);
 
-    // working_capacity_mC is the usable subset of nameplate capacity given the current
+    // working_capacity_mC is the usable subset of the actual capacity given the current
     // working voltage range. Computed here because it shares the same min/max limit
     // inputs as the SOC scaling factors above.
-    model->working_capacity_mC = (soc_max - model->ekf.prev_soc_min) * (float)model->nameplate_capacity_mC;
+    //
+    // It's an overestimate, knowingly tolerated. This treats the working min as the mean
+    // cell's resting voltage, but discharge stops when the weakest cell reaches it under
+    // load, while the mean cell still rests higher (by I * R plus the min-to-mean spread,
+    // which grows at the bottom knee). On an aged 96S NMC pack at 10A that was ~60mV, ~3%
+    // of SOC, ~5Ah; the steep bottom of an LFP curve makes it negligible. Correcting it
+    // would need the spread learned against SOC and a typical discharge current. Don't
+    // "fix" this against the learned capacity: that one is the mean cell's at rest, which
+    // is what the filter tracks, and doesn't have this problem.
+    model->working_capacity_mC = (soc_max - model->ekf.prev_soc_min) * (float)get_actual_capacity_mC(model);
 }
 
 uint32_t ekf_tick(bms_model_t *model, float charge_Ah, int32_t current_mA, int32_t voltage_mV) {
@@ -509,7 +518,7 @@ uint32_t ekf_tick(bms_model_t *model, float charge_Ah, int32_t current_mA, int32
     // Where the inverter stops charging, per cell: the working max plus the inverter limit offset
     float charge_V = (get_cell_voltage_working_max_mV(model) * NUM_CELLS * 0.001f
                       + model->pack_voltage_limit_upper_offset_dV * 0.1f) / NUM_CELLS;
-    if (ocv_learn_tick(&model->ocv_learn, ocv_factory, (double)model->nameplate_capacity_mC / 3600000.0,
+    if (ocv_learn_tick(&model->ocv_learn, ocv_factory, (double)get_actual_capacity_mC(model) / 3600000.0,
                        charge_V, charge_Ah, current_amps, voltage_volts)) {
 #ifdef OCV_LEARN_TABLE
         ocv_table = model->ocv_learn.table;
@@ -561,7 +570,7 @@ void ekf_set_soc(bms_model_t *model, uint16_t soc) {
     float soc_abs = (soc_rel / model->ekf.prev_soc_mul) + model->ekf.prev_soc_min;
 
     if (!model->ekf.initialized) {
-        float initial_capacity_ah = (float)model->nameplate_capacity_mC / 3600000.0f;
+        float initial_capacity_ah = (float)get_actual_capacity_mC(model) / 3600000.0f;
         ekf_init(&model->ekf, soc_abs, initial_capacity_ah, ekf_stored_bias(model));
     } else {
         model->ekf.x[0] = (1.0f - soc_abs) * model->ekf.cap;
@@ -571,6 +580,17 @@ void ekf_set_soc(bms_model_t *model, uint16_t soc) {
     
     info_printf("EKF SOC Manual Set: %u (rel=%2.2f%%, abs=%2.2f%%, Ah Used: %f)\n", 
                 soc, soc_rel * 100.0f, soc_abs * 100.0f, model->ekf.x[0]);
+}
+
+void ekf_set_capacity(bms_model_t *model, uint32_t capacity_mC) {
+    model->actual_capacity_mC = capacity_mC;
+    model->ekf.prev_min_mV = 0; // so the next tick recomputes working_capacity_mC
+    if (!model->ekf.initialized) return;
+
+    // The Ah used since full was measured, so keep it, and the SOC moves to suit the new capacity
+    model->ekf.cap = (double)get_actual_capacity_mC(model) / 3600000.0;
+    info_printf("EKF capacity set: %.1fAh%s, SOC %.2f%%\n", model->ekf.cap,
+                capacity_mC > 0 ? "" : " (the profile's)", ekf_get_soc(&model->ekf) * 100.0);
 }
 
 void ekf_reset_bias(bms_model_t *model) {

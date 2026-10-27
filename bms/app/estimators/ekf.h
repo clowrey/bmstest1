@@ -61,6 +61,8 @@ void ekf_step(ekf_t *ekf, double charge_Ah, double current_amps, double voltage_
 // Helper to get current SOC
 double ekf_get_soc(ekf_t *ekf);
 void ekf_set_soc(bms_model_t *model, uint16_t soc);
+// Set the actual capacity (mC; zero for the profile's) and use it from now on
+void ekf_set_capacity(bms_model_t *model, uint32_t capacity_mC);
 // Forget the learned current bias, e.g. because the sensor offset was just recalibrated
 void ekf_reset_bias(bms_model_t *model);
 

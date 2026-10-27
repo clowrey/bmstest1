@@ -39,7 +39,7 @@ typedef struct {
     bool edited;            // persistent data changed from outside (the HMI); rebuild on the next tick
 
     const float *factory;   // the factory OCV table, set on the first tick
-    double cap;             // nameplate capacity (Ah), which maps Ah below full to SOC
+    double cap;             // actual capacity (Ah), which maps Ah below full to SOC
     float table[101];       // factory + learned correction, for the EKF
     uint32_t t_s;           // seconds since boot (one tick per second)
     double charge_Ah;       // running charge count

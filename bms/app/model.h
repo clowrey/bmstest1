@@ -21,7 +21,8 @@
 // 'Fast' persistent data (saved frequently)
 
 typedef struct {
-    uint32_t nameplate_capacity_mC; // nameplate battery capacity in mC
+    uint32_t unused_capacity_mC; // was the capacity, which init overwrote from the profile at every
+                                 // boot; now actual_capacity_mC in the slow data. Kept for the layout.
     float charge_used_Ah; // charge used in Ah
     bool operating; // Whether BMS should resume operating if restarted
     float current_bias_A; // current sensor bias learned by the SoC EKF
@@ -76,6 +77,10 @@ typedef struct {
     // these default to zero on older saves and rev0 boards)
     float pos_contactor_offset_mV; // offset for the direct pos contactor channel
     float link_voltage_mul;
+
+    // Pack capacity the SOC estimator uses (mC), set over the HMI; zero (as on
+    // older saves) for the profile's ACTUAL_CAPACITY_AH. See get_actual_capacity_mC.
+    uint32_t actual_capacity_mC;
 
 } bms_model_persistent_slow_t;
 
@@ -198,8 +203,8 @@ typedef struct bms_model {
 
     uint32_t nvm_fast_saved_timestep;
 
-    //uint32_t nameplate_capacity_mC; // nameplate battery capacity in mC
-    uint32_t working_capacity_mC; // nameplate capacity within working voltage range in mC
+    uint32_t working_capacity_mC; // actual capacity within working voltage range in mC; an
+                                  // overestimate on packs with a weak cell (see ekf_update_limits)
 
     system_sm_t system_sm;
     system_requests_t system_req;
@@ -335,6 +340,12 @@ static inline uint16_t get_cell_voltage_working_max_mV(const bms_model_t *model)
         (model->cell_voltage_working_max_mV > 0) ? model->cell_voltage_working_max_mV : DEFAULT_CELL_VOLTAGE_WORKING_MAX_mV,
         get_cell_voltage_soft_max_mV(model) - 25
     );
+}
+
+// The capacity the SOC estimator uses: the one saved over the HMI, else the profile's
+static inline uint32_t get_actual_capacity_mC(const bms_model_t *model) {
+    return (model->actual_capacity_mC > 0) ? model->actual_capacity_mC
+                                           : (uint32_t)(ACTUAL_CAPACITY_AH * 3600000.0 + 0.5);
 }
 
 static inline uint16_t get_minimum_balancing_voltage_mV(const bms_model_t *model) {

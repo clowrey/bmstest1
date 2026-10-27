@@ -6,4 +6,6 @@
 #include "builtin/lfp1.h"
 
 #undef  NAMEPLATE_CAPACITY_AH
-#define NAMEPLATE_CAPACITY_AH 155
+#define NAMEPLATE_CAPACITY_AH 155 // the label's
+#undef  ACTUAL_CAPACITY_AH
+#define ACTUAL_CAPACITY_AH 155    // what the SOC estimator starts from (lfp1 sets its own)

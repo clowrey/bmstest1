@@ -80,7 +80,7 @@ static void test_ekf_soc_scaling_midrange(void **state) {
 
     // Reset model
     memset(&model, 0, sizeof(bms_model_t));
-    model.nameplate_capacity_mC = 100 * 3600 * 1000; // 100Ah
+    model.actual_capacity_mC = 100 * 3600 * 1000; // 100Ah
 
     // Use upper half of the SoC range
     model.cell_voltage_working_min_mV = 3690; // ~50% SoC in NMC curve
@@ -99,7 +99,7 @@ static void test_ekf_soc_scaling_top(void **state) {
     
     // Reset model
     memset(&model, 0, sizeof(bms_model_t));
-    model.nameplate_capacity_mC = 100 * 3600 * 1000; // 100Ah
+    model.actual_capacity_mC = 100 * 3600 * 1000; // 100Ah
 
     // Use lower half of the SoC range
     model.cell_voltage_working_min_mV = 3200; // ~10% SoC in NMC curve
@@ -117,7 +117,7 @@ static void test_ekf_init_full_charge(void **state) {
     (void)state;
 
     memset(&model, 0, sizeof(bms_model_t));
-    model.nameplate_capacity_mC = 100 * 3600 * 1000; // 100 Ah
+    model.actual_capacity_mC = 100 * 3600 * 1000; // 100 Ah
 
     // Working range that reaches near 100% absolute SoC on the NMC curve.
     // working_max 4175 mV is the ceiling after soft-limit clamping (soft_max=4200, -25).
@@ -144,7 +144,7 @@ static void test_ekf_init_uninitialized_falls_back_to_voltage(void **state) {
     (void)state;
  
     memset(&model, 0, sizeof(bms_model_t));
-    model.nameplate_capacity_mC = 100 * 3600 * 1000; // 100 Ah
+    model.actual_capacity_mC = 100 * 3600 * 1000; // 100 Ah
  
     // Wide working range covering 0-100%
     model.cell_voltage_working_min_mV = 3300;
@@ -241,7 +241,7 @@ static void test_ekf_pinned_at_full_charge(void **state) {
     (void)state;
 
     memset(&model, 0, sizeof(bms_model_t));
-    model.nameplate_capacity_mC = 100 * 3600 * 1000; // 100 Ah
+    model.actual_capacity_mC = 100 * 3600 * 1000; // 100 Ah
     model.cell_voltage_working_min_mV = 3300;
     model.cell_voltage_working_max_mV = 4100;
     model.charge_used_Ah = 12.0f; // a stale count, close enough to voltage to be used
@@ -255,6 +255,46 @@ static void test_ekf_pinned_at_full_charge(void **state) {
     assert_float_equal(model.ekf.P[0][0], 1.0, 1e-9);
     assert_float_equal(model.ekf.x[0], (1.0 - model.ocv_learn.persistent.s_full) * 100.0, 1e-6);
     assert_int_equal(soc_out, 10000);
+}
+
+static void test_actual_capacity_default_and_saved(void **state) {
+    (void)state;
+
+    // Nothing saved (as on older NVM): the profile's
+    memset(&model, 0, sizeof(bms_model_t));
+    assert_int_equal(get_actual_capacity_mC(&model), (uint32_t)(ACTUAL_CAPACITY_AH * 3600000.0 + 0.5));
+
+    model.actual_capacity_mC = 150 * 3600 * 1000;
+    assert_int_equal(get_actual_capacity_mC(&model), 150u * 3600 * 1000);
+}
+
+static void test_ekf_set_capacity_keeps_ah_used(void **state) {
+    (void)state;
+
+    // Voltages from the factory table, so this holds for either chemistry
+    const float *ocv = ekf_factory_ocv_table();
+    memset(&model, 0, sizeof(bms_model_t));
+    model.actual_capacity_mC = 100 * 3600 * 1000; // 100 Ah
+    model.cell_voltage_working_min_mV = (uint16_t)lroundf(ocv[5] * 1000.0f);
+    model.cell_voltage_working_max_mV = (uint16_t)lroundf(ocv[95] * 1000.0f);
+    ekf_tick(&model, 0, 0, (int32_t)lroundf(ocv[30] * 1000.0f)); // starts from the voltage, at ~30%
+    double ah_used = model.ekf.x[0];
+    uint32_t working_mC = model.working_capacity_mC;
+    assert_true(ah_used > 10.0 && working_mC > 0);
+
+    // The Ah used since full was measured, so it stays and the SOC follows the new capacity
+    ekf_set_capacity(&model, 80 * 3600 * 1000);
+    assert_int_equal(model.actual_capacity_mC, 80u * 3600 * 1000);
+    assert_float_equal(model.ekf.cap, 80.0, 1e-9);
+    assert_float_equal(model.ekf.x[0], ah_used, 1e-9);
+    assert_float_equal(ekf_get_soc(&model.ekf), 1.0 - ah_used / 80.0, 1e-9);
+    ekf_tick(&model, 0, 0, 3750);
+    assert_float_equal((double)model.working_capacity_mC, working_mC * 0.8, working_mC * 1e-4);
+
+    // Zero goes back to the profile's
+    ekf_set_capacity(&model, 0);
+    assert_int_equal(model.actual_capacity_mC, 0);
+    assert_float_equal(model.ekf.cap, ACTUAL_CAPACITY_AH, 1e-6);
 }
 
 // Pack whose cells rest 30mV above a linear factory table, cycled from full to
@@ -306,6 +346,8 @@ int main(void) {
         cmocka_unit_test(test_inverter_soc_scaling),
         cmocka_unit_test(test_ocv_learn_cycles),
         cmocka_unit_test(test_ekf_pinned_at_full_charge),
+        cmocka_unit_test(test_actual_capacity_default_and_saved),
+        cmocka_unit_test(test_ekf_set_capacity_keeps_ah_used),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

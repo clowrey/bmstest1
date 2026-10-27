@@ -24,6 +24,11 @@
 #ifndef NAMEPLATE_CAPACITY_AH
 #error "Profile must define NAMEPLATE_CAPACITY_AH"
 #endif
+// The capacity the SOC estimator uses until one is saved over the HMI. A new
+// pack starts at the label's, so that's the default.
+#ifndef ACTUAL_CAPACITY_AH
+#define ACTUAL_CAPACITY_AH NAMEPLATE_CAPACITY_AH
+#endif
 #ifndef INA228_SHUNT_CAL
 #error "Profile must define INA228_SHUNT_CAL"
 #endif
@@ -92,6 +97,7 @@ _Static_assert(PROFILE_POPCOUNT4(CELL_PRESENCE_WORDS) == NUM_CELLS,
 
 _Static_assert(NUM_MODULE_TEMPS >= 1, "NUM_MODULE_TEMPS must be at least 1");
 _Static_assert(NAMEPLATE_CAPACITY_AH > 0, "NAMEPLATE_CAPACITY_AH must be positive");
+_Static_assert(ACTUAL_CAPACITY_AH >= 1 && ACTUAL_CAPACITY_AH <= 1000, "ACTUAL_CAPACITY_AH must be 1 to 1000Ah");
 _Static_assert(CHARGE_MAX_CURRENT_dA > 0 && DISCHARGE_MAX_CURRENT_dA > 0, "Max currents must be positive");
 
 // SOC estimation

@@ -224,7 +224,11 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
             break;
         case HMI_REG_CAPACITY:
             buf[idx++] = HMI_TYPE_UINT32;
-            idx += hmi_buf_append_uint32(&buf[idx], model->nameplate_capacity_mC);
+            idx += hmi_buf_append_uint32(&buf[idx], get_actual_capacity_mC(model));
+            break;
+        case HMI_REG_NAMEPLATE_CAPACITY:
+            buf[idx++] = HMI_TYPE_UINT32;
+            idx += hmi_buf_append_uint32(&buf[idx], (uint32_t)(NAMEPLATE_CAPACITY_AH * 3600000.0 + 0.5));
             break;
         case HMI_REG_SUPPLY_VOLTAGE_3V3:
             buf[idx++] = HMI_TYPE_UINT16;
@@ -618,9 +622,10 @@ static void hmi_handle_write_registers(const uint8_t *rx_buf, size_t len, bms_mo
             uint32_t v = hmi_buf_get_uint32(&rx_buf[rx_idx]);
             switch(reg_id) {
                 case HMI_REG_CAPACITY:
-                    if(model->nameplate_capacity_mC != v) {
-                        model->nameplate_capacity_mC = v;
-                        // Don't need to flash since this gets saved automatically
+                    // 0 goes back to the profile's; otherwise 1 to 1000Ah
+                    if(model->actual_capacity_mC != v && (v == 0 || (v >= 3600000u && v <= 3600000000u))) {
+                        ekf_set_capacity(model, v);
+                        needs_flashing = true;
                     }
                     break;
                 case HMI_REG_AUTO_BALANCING_PERIOD_MS:
