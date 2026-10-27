@@ -148,6 +148,9 @@ void print_bms_events();
 uint16_t get_highest_event_level();
 void events_tick();
 
+extern const char* EVENT_TYPE_NAMES[];
+extern const char* EVENT_LEVELS[];
+
 extern bms_event_slot_t bms_event_slots[];
 
 static inline int16_t get_event_count(bms_event_type_t type) {

@@ -58,6 +58,14 @@ void system_sm_tick(bms_model_t *model) {
             // Go straight to fault state
             model->operating = false; // TODO: avoid setting this if RESTARTING?
             nvm_schedule_save_persistent_fast(model);
+            error_printf("FAULT due to fatal events:\n");
+            for(int i = 0; i < ERR_HIGHEST; i++) {
+                if(bms_event_slots[i].level == LEVEL_FATAL) {
+                    error_printf("  %s: Count %u, Data 0x%016llX\n",
+                        EVENT_TYPE_NAMES[i], bms_event_slots[i].count,
+                        (unsigned long long)bms_event_slots[i].data64);
+                }
+            }
             state_transition((sm_t*)system_sm, SYSTEM_STATE_FAULT);
         }
     }
@@ -74,6 +82,14 @@ void system_sm_tick(bms_model_t *model) {
                 }
             } else if(state_timeout((sm_t*)system_sm, 10000)) {
                 // TODO: raise a specific event too?
+                error_printf("System init timeout: battery=%d output=%d neg=%d pos=%d current=%d cell=%d temp=%d\n",
+                    millis_recent_enough(model->high_voltages.battery_millis, BATTERY_VOLTAGE_STALE_THRESHOLD_MS),
+                    millis_recent_enough(model->high_voltages.output_millis, OUTPUT_VOLTAGE_STALE_THRESHOLD_MS),
+                    millis_recent_enough(model->high_voltages.neg_contactor_millis, CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS),
+                    millis_recent_enough(model->high_voltages.pos_contactor_millis, CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS),
+                    millis_recent_enough(model->current_millis, CURRENT_STALE_THRESHOLD_MS),
+                    millis_recent_enough(model->cell_voltage_millis, CELL_VOLTAGE_STALE_THRESHOLD_MS),
+                    millis_recent_enough(model->temperature_millis, TEMPERATURE_STALE_THRESHOLD_MS(model)));
                 state_transition((sm_t*)system_sm, SYSTEM_STATE_FAULT);
             }
             break;

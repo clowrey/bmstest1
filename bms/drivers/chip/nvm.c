@@ -117,11 +117,18 @@ int update_boot_count(void) {
 
 bool nvm_save(const char *name, const void *data, size_t size) {
     int err = lfs_mount(&lfs, &cfg);
-    if (err) return false;
+    if (err) {
+        error_printf("NVM: mount failed saving '%s' (%d)\n", name, err);
+        return false;
+    }
 
     lfs_file_t file;
     err = lfs_file_open(&lfs, &file, name, LFS_O_WRONLY | LFS_O_CREAT);
-    if (err) return false;
+    if (err) {
+        error_printf("NVM: open failed saving '%s' (%d)\n", name, err);
+        lfs_unmount(&lfs);
+        return false;
+    }
 
     lfs_file_write(&lfs, &file, data, size);
     lfs_file_close(&lfs, &file);
@@ -132,11 +139,18 @@ bool nvm_save(const char *name, const void *data, size_t size) {
 
 bool nvm_load(const char *name, void *data, size_t size) {
     int err = lfs_mount(&lfs, &cfg);
-    if (err) return false;
+    if (err) {
+        error_printf("NVM: mount failed loading '%s' (%d)\n", name, err);
+        return false;
+    }
 
     lfs_file_t file;
     err = lfs_file_open(&lfs, &file, name, LFS_O_RDONLY);
-    if (err) return false;
+    if (err) {
+        error_printf("NVM: open failed loading '%s' (%d)\n", name, err);
+        lfs_unmount(&lfs);
+        return false;
+    }
 
     lfs_file_read(&lfs, &file, data, size);
     lfs_file_close(&lfs, &file);
@@ -236,7 +250,10 @@ void nvm_tick(bms_model_t *model) {
     // Save 'fast' persistent data every 5 minutes
     if(timestep_every_ms(300000, &model->nvm_fast_saved_timestep)) {
         uint32_t start = time_us_32();
-        nvm_save_persistent_fast(model);
-        debug_printf("NVM: saved persistent fast data in %ld us\n", time_us_32() - start);
+        if(!nvm_save_persistent_fast(model)) {
+            error_printf("NVM: failed to save persistent fast data\n");
+        } else {
+            debug_printf("NVM: saved persistent fast data in %ld us\n", time_us_32() - start);
+        }
     }
 }

@@ -25,6 +25,9 @@
 #include "sys/time/time.h"
 #include "model.h"
 
+#ifndef VERBOSE_DEBUG
+#define VERBOSE_DEBUG 0
+#endif
 
 #include "hardware/watchdog.h"
 #include "pico/stdlib.h"
@@ -244,6 +247,7 @@ void bms_tick() {
 
     timings[8] = time_us_32();
 
+#if VERBOSE_DEBUG
     // Phase 6: Debug output
 
     if((timestep() & 0x3f) == 32) {
@@ -358,6 +362,7 @@ void bms_tick() {
         );
 
     }
+#endif
 
     timings[9] = time_us_32();
 
@@ -369,12 +374,18 @@ void bms_tick() {
     }
 
     if((timestep() & 0x3ff) == 33) {
+#if VERBOSE_DEBUG
         debug_printf("Max timings (us): ");
         for(int i=0; i<9; i++) {
             debug_printf("%lu ", max_timings[i]);
             max_timings[i] = 0;
         }
         debug_printf("\n");
+#else
+        for(int i=0; i<9; i++) {
+            max_timings[i] = 0;
+        }
+#endif
     }
 
 }

@@ -72,6 +72,8 @@ void record_bms_event(bms_event_type_t type, uint64_t data, bool repeat) {
     if(slot->level < new_level) {
         slot->level = new_level;
         recalculate_highest_level();
+        info_printf("Event %s raised: Level %s, Count %u, Data 0x%016llX\n",
+            EVENT_TYPE_NAMES[type], EVENT_LEVELS[new_level], slot->count, (unsigned long long)data);
     }
 }
 
@@ -85,6 +87,8 @@ void clear_bms_event(bms_event_type_t type) {
     }
 
     if(slot->level != LEVEL_NONE) {
+        info_printf("Event %s cleared: was Level %s, Count %u\n",
+            EVENT_TYPE_NAMES[type], EVENT_LEVELS[slot->level], slot->count);
         slot->level = LEVEL_NONE;
         recalculate_highest_level();
     }
@@ -124,6 +128,8 @@ void events_tick() {
                 slot->accumulator = max_accumulator;
                 slot->level = LEVEL_FATAL;
                 escalated = true;
+                info_printf("Event %s escalated: Level %s, Data 0x%016llX\n",
+                    EVENT_TYPE_NAMES[i], EVENT_LEVELS[LEVEL_FATAL], (unsigned long long)slot->data64);
             } else {
                 // just increment
                 slot->accumulator += elapsed_ds;

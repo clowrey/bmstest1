@@ -1,4 +1,5 @@
 #include "logging.h"
+#include "../time/time.h"
 
 #include "tusb.h"
 
@@ -168,17 +169,34 @@ void logging_printf(log_level_t level, const char *format, ...) {
 
     char buffer[256];
 
-    // Format and print the actual message
+    // 'now' timestamp, same format as state_transition: "<millis>ms "
+    int prefix = snprintf(buffer, sizeof(buffer), "%llums ", (unsigned long long)millis64());
+    if(prefix < 0) {
+        return;
+    }
+    size_t prefix_len = (size_t)prefix;
+    if(prefix_len >= sizeof(buffer)) {
+        return;
+    }
+
+    // Format and print the actual message after the timestamp
     va_list args;
     va_start(args, format);
-    int ret = vsnprintf(buffer, sizeof(buffer), format, args);
+    int ret = vsnprintf(buffer + prefix_len, sizeof(buffer) - prefix_len, format, args);
     va_end(args);
 
     if(ret < 0) {
         return;
     }
 
-    rb_write(&log_ringbuffer, (const uint8_t *)buffer, ret);
+    size_t msg_len = (size_t)ret;
+    size_t space = sizeof(buffer) - prefix_len;
+    if(msg_len >= space) {
+        // vsnprintf truncated; only the bytes that fit are in the buffer
+        msg_len = space - 1;
+    }
+
+    rb_write(&log_ringbuffer, (const uint8_t *)buffer, prefix_len + msg_len);
 }
 
 void logging_flush_to_stdout() {
