@@ -9,10 +9,18 @@
 #define NUM_CELLS 96
 #define NUM_MODULE_VOLTAGES 8
 #define NUM_MODULE_TEMPS 8
-#define NAMEPLATE_CAPACITY_AH 147
+#define NAMEPLATE_CAPACITY_AH 173
 #define INA228_SHUNT_CAL 332
 #define INVERTER_MODEL_STRING "CellKeeper Tesla NMC 1\x00\x00\x00\x00\x00"
 
 // Absolute maximum current limits
 #define CHARGE_MAX_CURRENT_dA 300 // 30A
 #define DISCHARGE_MAX_CURRENT_dA 300 // 30A
+
+// Trust the voltage more than the chemistry default does, now that the OCV curve
+// fits this pack better (G0 midpoint). From replaying 10 days of 1s data and 40
+// days of hourly data through ekf_tick: the worst error over the start and
+// +/-150mA bias scenarios fell from 5.1% to 3.9% of capacity, and a correct start
+// costs at most 0.4% more. Q_AH between 5e-7 and 1e-6 did equally well.
+#undef  EKF_Q_AH
+#define EKF_Q_AH 1e-6f

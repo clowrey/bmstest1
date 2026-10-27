@@ -63,12 +63,14 @@
 #define OCV_DIFF_HALF_WIDTH 4
 
 // Cell resistance, and how quickly the voltage offset decays. Tuned by replaying
-// 10 days of 1s data from a 108S pack (kalman/replay): anything from 0.2 to
-// 0.4mOhm did best, which is the pack's instant resistance; the offset takes up
-// the ~0.8mOhm of polarisation that builds over the following half minute.
-// The SOC error is only weakly sensitive to it: at 1.3mOhm, the RMS error from a
-// correct start was 0.54% rather than 0.39%.
-#define EKF_R_OHM 0.0003
+// 10 days of 1s data from a 108S pack (kalman/replay, 27 Sep - 7 Oct 2026, with a
+// deep discharge) after moving to the LFP_A midpoint curve: 1.2 to 2.5mOhm all did
+// better than the old 0.3mOhm, which is the resistance a sustained current sees
+// (~0.3mOhm instantly, ~2mOhm after a few minutes). At 1.8mOhm, the worst error
+// from a correct start fell from 3.3% to 2.1%, from a 15% high start from 6.7% to
+// 3.0%, and with a +150mA injected bias from 7.4% to 5.7%. The RMS error from a
+// correct start is ~0.5% either way, and -150mA stays ~6.6%.
+#define EKF_R_OHM 0.0018
 #define EKF_OFFSET_TAU_S 81.0
 
 // From replaying ~10 days of logged pack data through the filter (scripts in
