@@ -14,180 +14,135 @@
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/* 
+/*
  * Modified by jonny5532, 2025
  */
 
 #ifndef RINGBUF_H
 #define RINGBUF_H
 
-#include <errno.h>
-#include <inttypes.h>
 #include <stdatomic.h>
-#include <stdlib.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <string.h>
+
+// Lock-free SPSC ring buffer. Capacity must be a power of two.
 
 struct ringbuf {
 	_Atomic size_t read_idx;
 	_Atomic size_t write_idx;
-	size_t capacity;
 	size_t capacity_mask;
 	uint8_t *data;
 };
 
-static void ringbuf_init(struct ringbuf *rb, uint8_t *buffer, size_t capacity)
+static inline void
+ringbuf_init(struct ringbuf *rb, uint8_t *buffer, size_t capacity)
 {
-    rb->data = buffer;
-	atomic_init(&rb->read_idx, 0);
-	atomic_init(&rb->write_idx, capacity * 2);
-	rb->capacity = capacity;
+	rb->data = buffer;
 	rb->capacity_mask = capacity - 1;
-}
-
-static inline size_t
-_ringbuf_size(struct ringbuf *rb, size_t read_idx, size_t write_idx)
-{
-	return (write_idx - read_idx) & ((rb->capacity_mask << 1) | 1);
+	atomic_init(&rb->read_idx, 0);
+	atomic_init(&rb->write_idx, 0);
 }
 
 static inline size_t
 _ringbuf_min(size_t a, size_t b)
 {
-	if (a < b)
-		return a;
-	else
-		return b;
+	return a < b ? a : b;
 }
 
-//! True ring buffer array index.
-#define _RINGBUF_IDX(idx) ((idx) & rb->capacity_mask)
-
 /*!
- * \brief Write to ring buffer.
+ * \brief Write to ring buffer. Partial writes are not allowed.
  * \warning Only call this function from a single producer thread.
  *
  * \param rb Ring buffer instance.
  * \param buf Buffer holding data to be written to ring buffer.
  * \param buf_size Buffer size in bytes.
- * \return Number of bytes written to ring buffer.
+ * \return buf_size if the data was written, or 0 if there wasn't room for all
+ * of it.
  */
-static size_t
+static inline size_t
 ringbuf_write(struct ringbuf *rb, const uint8_t *buf, size_t buf_size)
 {
 	size_t write_idx = atomic_load_explicit(&rb->write_idx, memory_order_relaxed);
 	size_t read_idx = atomic_load_explicit(&rb->read_idx, memory_order_acquire);
-	size_t size = _ringbuf_size(rb, read_idx, write_idx);
+	size_t capacity = rb->capacity_mask + 1;
 
-	if (size < rb->capacity) {
-		size_t write0, write1;
-		size_t write = _ringbuf_min(rb->capacity - size, buf_size);
-        //if(write==0) {
-        if(write<buf_size) {
-            // Don't allow partial writes
-            errno = EWOULDBLOCK;
-            return 0;
-        }
-		size_t write_overflow = _RINGBUF_IDX(write_idx) + write;
-		if (write_overflow > rb->capacity) {
-			write1 = write_overflow & rb->capacity_mask;
-			write0 = write - write1;
-		}
-		else {
-			write0 = write;
-			write1 = 0;
-		}
+	if (buf_size > capacity - (write_idx - read_idx))
+		return 0;
 
-		memcpy(&rb->data[_RINGBUF_IDX(write_idx)], buf, write0);
+	size_t offset = write_idx & rb->capacity_mask;
+	size_t write0 = _ringbuf_min(buf_size, capacity - offset);
 
-		if (write1)
-			memcpy(rb->data, buf + write0, write1);
+	memcpy(&rb->data[offset], buf, write0);
+	memcpy(rb->data, buf + write0, buf_size - write0);
 
-		write_idx = (write_idx + write < rb->capacity * 4) ? write_idx + write : rb->capacity * 2 + write1;
-		atomic_store_explicit(&rb->write_idx, write_idx, memory_order_release);
-		return write;
-	}
-	errno = EWOULDBLOCK;
-	return 0;
+	atomic_store_explicit(&rb->write_idx, write_idx + buf_size, memory_order_release);
+	return buf_size;
 }
-
 
 /*!
  * \brief Read from ring buffer.
  * \warning Only call this function from a single consumer thread.
  *
  * \param rb Ring buffer instance.
- * \param buf Buffer to copy data to from ring buffer.
+ * \param buf Buffer to copy data to from ring buffer, or NULL to just discard
+ * the data.
  * \param buf_size Buffer size in bytes.
  * \return Number of bytes read from ring buffer.
  */
-static size_t
+static inline size_t
 ringbuf_read(struct ringbuf *rb, uint8_t *buf, size_t buf_size)
 {
 	size_t read_idx = atomic_load_explicit(&rb->read_idx, memory_order_relaxed);
 	size_t write_idx = atomic_load_explicit(&rb->write_idx, memory_order_acquire);
-	size_t size = _ringbuf_size(rb, read_idx, write_idx);
+	size_t read = _ringbuf_min(write_idx - read_idx, buf_size);
 
-	if (size > 0)
-	{
-		size_t read0, read1;
-		size_t read = _ringbuf_min(size, buf_size);
-		size_t read_overflow = _RINGBUF_IDX(read_idx) + read;
-		if (read_overflow > rb->capacity) {
-            // read0 = read - (read_overflow & rb->capacity_mask);
-            // read1 = 0;
-			read1 = read_overflow & rb->capacity_mask;
-			read0 = read - read1;
-		}
-		else {
-			read0 = read;
-			read1 = 0;
-		}
+	if (buf) {
+		size_t offset = read_idx & rb->capacity_mask;
+		size_t read0 = _ringbuf_min(read, rb->capacity_mask + 1 - offset);
 
-        if(buf) {
-            memcpy(buf, &rb->data[_RINGBUF_IDX(read_idx)], read0);
-
-            if (read1)
-                memcpy(buf + read0, rb->data, read1);
-        }
-
-		read_idx = (read_idx + read < rb->capacity * 2) ? read_idx + read : read1;
-		atomic_store_explicit(&rb->read_idx, read_idx, memory_order_release);
-		return read;
+		memcpy(buf, &rb->data[offset], read0);
+		memcpy(buf + read0, rb->data, read - read0);
 	}
-	errno = EWOULDBLOCK;
-	return 0;
+
+	atomic_store_explicit(&rb->read_idx, read_idx + read, memory_order_release);
+	return read;
 }
 
-static size_t ringbuf_peek(struct ringbuf *rb, uint8_t **buf)
+/*!
+ * \brief Get a pointer to the next unread data, without consuming it.
+ * \warning Only call this function from a single consumer thread.
+ *
+ * \param rb Ring buffer instance.
+ * \param buf Set to point at the next unread byte in the ring buffer.
+ * \return Number of bytes available contiguously from *buf, which may be less
+ * than the total available if the data wraps around the end of the buffer.
+ */
+static inline size_t
+ringbuf_peek(struct ringbuf *rb, uint8_t **buf)
 {
-    size_t read_idx = atomic_load_explicit(&rb->read_idx, memory_order_relaxed);
-    size_t write_idx = atomic_load_explicit(&rb->write_idx, memory_order_acquire);
-    size_t size = _ringbuf_size(rb, read_idx, write_idx);
+	size_t read_idx = atomic_load_explicit(&rb->read_idx, memory_order_relaxed);
+	size_t write_idx = atomic_load_explicit(&rb->write_idx, memory_order_acquire);
+	size_t offset = read_idx & rb->capacity_mask;
 
-    if(size>0) {
-        size_t read0, read1;
-		size_t read = size;
-		size_t read_overflow = _RINGBUF_IDX(read_idx) + read;
-		if (read_overflow > rb->capacity) {
-            // Only peek up to the end of the buffer, as we can't return a
-            // contiguous pointer otherwise.
-            read0 = read - (read_overflow & rb->capacity_mask);
-            //read1 = 0;
+	*buf = &rb->data[offset];
+	return _ringbuf_min(write_idx - read_idx, rb->capacity_mask + 1 - offset);
+}
 
-			//read1 = read_overflow & rb->capacity_mask;
-			//read0 = read - read1;
-		}
-		else {
-			read0 = read;
-			//read1 = 0;
-		}
+/*!
+ * \brief Discard data from the ring buffer, typically after ringbuf_peek().
+ * \warning Only call this function from a single consumer thread.
+ *
+ * \param rb Ring buffer instance.
+ * \param n Number of bytes to discard. This isn't checked, so it must not
+ * exceed the number of unread bytes, e.g. the count ringbuf_peek() returned.
+ */
+static inline void
+ringbuf_consume(struct ringbuf *rb, size_t n)
+{
+	size_t read_idx = atomic_load_explicit(&rb->read_idx, memory_order_relaxed);
 
-        *buf = &rb->data[_RINGBUF_IDX(read_idx)];
-        return read0;
-    }
-
-    // No data available
-    return 0;
+	atomic_store_explicit(&rb->read_idx, read_idx + n, memory_order_release);
 }
 
 static inline size_t
@@ -195,23 +150,14 @@ ringbuf_free_space(struct ringbuf *rb)
 {
 	size_t write_idx = atomic_load_explicit(&rb->write_idx, memory_order_relaxed);
 	size_t read_idx = atomic_load_explicit(&rb->read_idx, memory_order_acquire);
-	size_t size = _ringbuf_size(rb, read_idx, write_idx);
+	size_t size = write_idx - read_idx;
 
-	if (size >= rb->capacity)
+	// Clamp, in case this isn't called from the producer thread and the two
+	// loads were torn.
+	if (size > rb->capacity_mask)
 		return 0;
 
-	return rb->capacity - size;
+	return rb->capacity_mask + 1 - size;
 }
-
-/*!
- * \brief Free allocated ring buffer.
- * \param rb Pointer to ring buffer or NULL.
- */
-static void
-ringbuf_free(struct ringbuf *rb)
-{
-	free(rb);
-}
-
 
 #endif

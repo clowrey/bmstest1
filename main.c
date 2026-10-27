@@ -2,6 +2,8 @@
 #include "pico/multicore.h"
 #include "pico/stdlib.h"
 
+#include "app/bms.h"
+
 #include <stdbool.h>
 
 void core1_entry() {

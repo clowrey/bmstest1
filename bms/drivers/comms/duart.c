@@ -72,7 +72,7 @@ static void __not_in_flash_func(on_uart_tx_complete)(duart *u, uint irq_index) {
 
         if(u->tx_sending > 0) {
             // Finished sending previous chunk, consume it from the ringbuf
-            ringbuf_read(&u->tx_ringbuf, NULL, u->tx_sending);
+            ringbuf_consume(&u->tx_ringbuf, u->tx_sending);
             u->tx_sending = 0;
         }
 

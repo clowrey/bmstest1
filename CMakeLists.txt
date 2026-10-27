@@ -79,6 +79,10 @@ pico_generate_pio_header(bms ${CMAKE_CURRENT_LIST_DIR}/bms/drivers/isospi/isosno
 #pico_generate_pio_header(isosnooper ${CMAKE_CURRENT_LIST_DIR}/isospi_scope.pio)
 #pico_generate_pio_header(isosnooper ${CMAKE_CURRENT_LIST_DIR}/isospi_device.pio)
 
+# Disable C++ in this project
+target_compile_definitions(bms PRIVATE PICO_CXX_DISABLE_ALLOCATION_OVERRIDES=1)
+set_target_properties(bms PROPERTIES LINKER_LANGUAGE C)
+
 if(BMS_PROFILE)
     add_compile_definitions(BMS_PROFILE=${BMS_PROFILE})
 endif()

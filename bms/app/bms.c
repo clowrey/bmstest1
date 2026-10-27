@@ -1,3 +1,4 @@
+#include "bms.h"
 #include "app/monitoring/counters.h"
 #include "drivers/bmb3y/bmb3y.h"
 #include "drivers/chip/nvm.h"

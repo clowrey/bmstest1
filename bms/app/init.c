@@ -15,6 +15,7 @@
 #include "../drivers/isospi/isospi_master.h"
 #include "state_machines/contactors.h"
 #include "model.h"
+#include "bms.h"
 #include "sys/logging/logging.h"
 #include "pico/stdlib.h"
 #include <math.h>

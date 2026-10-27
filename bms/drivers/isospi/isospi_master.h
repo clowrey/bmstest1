@@ -4,6 +4,12 @@
 
 #define ISOSPI_MASTER_SM 0
 
+// Defined in isospi_master.pio (via the generated isospi_master.pio.h)
+#include "hardware/pio.h"
+void isospi_master_program_init(PIO pio, uint tx_pin_base, uint rx_pin_base);
+void isospi_master_cs(bool start);
+void isospi_master_flush();
+
 void isospi_master_setup(unsigned int tx_pin_base, unsigned int rx_pin_base);
 void isospi_send_wakeup_cs_blocking();
 bool isospi_write_read_blocking(uint8_t* out_buf, uint8_t* in_buf, size_t len, size_t skip);
