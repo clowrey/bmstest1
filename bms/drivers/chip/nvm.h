@@ -14,4 +14,5 @@ bool nvm_load_persistent_slow(bms_model_t *model);
 bool nvm_save_persistent_fast(bms_model_t *model);
 bool nvm_load_persistent_fast(bms_model_t *model);
 void nvm_schedule_save_persistent_fast(bms_model_t *model);
+bool nvm_load_ocv_learn(bms_model_t *model);
 void nvm_tick(bms_model_t *model);

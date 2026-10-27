@@ -118,6 +118,9 @@ static void init_model() {
     } else {
         info_printf("No persistent fast data in NVM\n");
     }
+    if(nvm_load_ocv_learn(&model)) {
+        info_printf("Learned OCV correction loaded from NVM\n");
+    }
 
     // If NVM contained operating=true, resume operating
     if(model.operating) {

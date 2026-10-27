@@ -237,6 +237,36 @@ bool nvm_load_persistent_slow(bms_model_t *model) {
     return true;
 }
 
+typedef struct {
+    uint32_t version;
+    ocv_learn_persistent_t data;
+} stored_ocv_learn_t;
+
+static const uint32_t OCV_LEARN_VERSION = 1;
+
+static bool nvm_save_ocv_learn(bms_model_t *model) {
+    stored_ocv_learn_t data = {
+        .version = OCV_LEARN_VERSION,
+        .data = model->ocv_learn.persistent,
+    };
+
+    // Allow missing a deadline due to NVM write slowness
+    model->ignore_missed_deadline = true;
+
+    return nvm_save("ocv_learn", &data, sizeof(data));
+}
+
+bool nvm_load_ocv_learn(bms_model_t *model) {
+    stored_ocv_learn_t data = {0};
+    if(!nvm_load("ocv_learn", &data, sizeof(data)) || data.version != OCV_LEARN_VERSION) {
+        return false;
+    }
+
+    model->ocv_learn.persistent = data.data;
+
+    return true;
+}
+
 void nvm_schedule_save_persistent_fast(bms_model_t *model) {
     // TODO: prevent too many saves in a short time?
 
@@ -255,5 +285,9 @@ void nvm_tick(bms_model_t *model) {
         } else {
             debug_printf("NVM: saved persistent fast data in %ld us\n", time_us_32() - start);
         }
+    } else if(model->ocv_learn.dirty) {
+        // At most daily: after each settled full charge and each daily decay of the counts
+        model->ocv_learn.dirty = false;
+        nvm_save_ocv_learn(model);
     }
 }

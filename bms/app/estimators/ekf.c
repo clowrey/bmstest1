@@ -1,4 +1,5 @@
 #include "ekf.h"
+#include "ocv_learn.h"
 #include "config/limits.h"
 #include "sys/time/time.h"
 #include "app/model.h"
@@ -68,7 +69,7 @@ static const float lfp_ocv_curve[101] = {
 // lfp2 { 2.7f, 2.9354999f, 3.0335f, 3.0976f, 3.1454f, 3.1759f, 3.1912999f, 3.1982f, 3.201f, 3.2024f, 3.2028f, 3.204f, 3.2063999f, 3.2126999f, 3.2188f, 3.2244999f, 3.2300999f, 3.2355f, 3.2409f, 3.2460999f, 3.2509999f, 3.2543f, 3.2576f, 3.2605f, 3.2637f, 3.2672999f, 3.2709f, 3.2744999f, 3.2781999f, 3.282f, 3.2852f, 3.286f, 3.2869f, 3.2878f, 3.2887f, 3.2894f, 3.2894f, 3.2894f, 3.2894f, 3.2894f, 3.2894f, 3.2894f, 3.2894f, 3.2894f, 3.2895f, 3.2895f, 3.2895f, 3.2895f, 3.2895f, 3.2895f, 3.2895999f, 3.2904f, 3.2911999f, 3.2921f, 3.2929f, 3.2937f, 3.2948f, 3.2962999f, 3.2988f, 3.3032999f, 3.3127f, 3.3229f, 3.3274f, 3.3278f, 3.3283f, 3.3287f, 3.3288f, 3.3288f, 3.3289f, 3.3289f, 3.329f, 3.3290999f, 3.3292f, 3.3292999f, 3.3292999f, 3.3294f, 3.3294f, 3.3295f, 3.3295f, 3.3295f, 3.3295f, 3.3296f, 3.3296f, 3.3296f, 3.3297f, 3.3297f, 3.3297999f, 3.3299f, 3.3299f, 3.3299999f, 3.3301f, 3.3303f, 3.3306f, 3.331f, 3.3315f, 3.332f, 3.3327f, 3.3338f, 3.336f, 3.3548999f, 3.571f, }
 // lfp3 { 2.9f, 2.9995f, 3.0682f, 3.1194f, 3.1554999f, 3.1810999f, 3.1926999f, 3.1966f, 3.1988f, 3.2000999f, 3.2012f, 3.2025f, 3.2056f, 3.2119f, 3.2188f, 3.2242999f, 3.2288f, 3.2337f, 3.239f, 3.2437999f, 3.2478f, 3.2509999f, 3.2537f, 3.2565f, 3.2593999f, 3.2629f, 3.2663f, 3.2693999f, 3.2722f, 3.275f, 3.2778f, 3.2823f, 3.2851f, 3.2860999f, 3.2865f, 3.2869f, 3.2871f, 3.2873f, 3.2876f, 3.2878f, 3.2879f, 3.288f, 3.2883f, 3.2885f, 3.2887f, 3.2888999f, 3.2890999f, 3.2893f, 3.2895999f, 3.2899f, 3.2902f, 3.2904999f, 3.2909f, 3.2914f, 3.2918999f, 3.2925999f, 3.2936f, 3.2946999f, 3.2962999f, 3.2973f, 3.2981999f, 3.3032f, 3.3127f, 3.3206999f, 3.3239999f, 3.3253f, 3.3257999f, 3.3262f, 3.3262999f, 3.3264f, 3.3264999f, 3.3266f, 3.3267f, 3.3268f, 3.3269f, 3.3271f, 3.3271999f, 3.3273f, 3.3275f, 3.3276999f, 3.3278f, 3.328f, 3.3281f, 3.3282f, 3.3283999f, 3.3285999f, 3.3288f, 3.3289f, 3.3292f, 3.3295f, 3.3297f, 3.3299999f, 3.3304f, 3.3306999f, 3.3311f, 3.3317f, 3.3324f, 3.3331f, 3.3354f, 3.3575f, 3.5251999f, }
 
-static float nmc_ocv_curve[101] = {
+static const float nmc_ocv_curve[101] = {
     2.9f,       3.0443f,    3.1399f,    3.2162f,    3.2762f,
     3.3229f,    3.3527f,    3.3664999f, 3.3755f,    3.3834f,
     3.3908f,    3.3982999f, 3.4063f,    3.4164f,    3.4296f,
@@ -137,7 +138,11 @@ static float nmc_ocv_curve[101] = {
 // at least this steep. This uses the unsmoothed slope, because the LFP curve is
 // flat right up to the start of the top knee.
 #if CHEMISTRY == LFP
+    #define ocv_factory lfp_ocv_curve
     #define ocv_curve lfp_ocv_curve
+    // Learn the curve only to report capacity, e.g. after a deliberate deep discharge.
+    // The flat middle carries no SOC information and hysteresis would bias a learned table.
+    #define OCV_LEARN
     #define OCV_DIFF_HALF_WIDTH 4
 
     // From replaying ~10 days of logged pack data through this filter (scripts
@@ -159,7 +164,10 @@ static float nmc_ocv_curve[101] = {
     #define EKF_MIN_OCV_SLOPE  1.5f
     #define EKF_KNEE_OCV_SLOPE 5.0f
 #elif CHEMISTRY == NMC
-    #define ocv_curve nmc_ocv_curve
+    #define ocv_factory nmc_ocv_curve
+    #define ocv_curve ocv_table
+    #define OCV_LEARN       // learn a per-pack correction to the table as we go (ocv_learn.c)...
+    #define OCV_LEARN_TABLE // ...and use it
     #define OCV_DIFF_HALF_WIDTH 1
 
     // From replaying ~94 days of a 96S BLUETESLA pack, plus synthetic fresher
@@ -191,23 +199,30 @@ static float nmc_ocv_curve[101] = {
 
 #define EKF_N 4
 
-float ocv_to_soc(float ocv) {
+#ifdef OCV_LEARN_TABLE
+// The table in use: the factory one until the learner has built its own
+static const float *ocv_table = ocv_factory;
+#endif
+
+float table_soc(const float *table, float ocv) {
     // Simple linear search (could be optimized with binary search)
-    if (ocv <= ocv_curve[0]) return 0.0f;
-    if (ocv >= ocv_curve[100]) return 1.0f;
+    if (ocv <= table[0]) return 0.0f;
+    if (ocv >= table[100]) return 1.0f;
 
     for (int i = 0; i < 100; i++) {
-        if (ocv < ocv_curve[i + 1]) {
-            float frac = (ocv - ocv_curve[i]) / (ocv_curve[i + 1] - ocv_curve[i]);
+        if (ocv < table[i + 1]) {
+            float frac = (ocv - table[i]) / (table[i + 1] - table[i]);
             return (i + frac) / 100.0f;
         }
     }
     return 1.0f; // Should not reach here
 }
 
-// --- Helper: OCV Curve ---
-// Returns Open Circuit Voltage for a given SOC
-static double soc_to_ocv(double soc) {
+float ocv_to_soc(float ocv) {
+    return table_soc(ocv_curve, ocv);
+}
+
+double table_ocv(const float *table, double soc) {
     // Clamp SOC for safety
     if (soc < 0.0) soc = 0.0;
     if (soc > 1.0) soc = 1.0;
@@ -215,10 +230,16 @@ static double soc_to_ocv(double soc) {
     // Simple linear interpolation on the OCV curve
     double index = soc * 100.0;
     int idx_lower = (int)index;
-    if (idx_lower >= 100) return ocv_curve[100];
+    if (idx_lower >= 100) return table[100];
     int idx_upper = idx_lower + 1;
     double frac = index - (double)idx_lower;
-    return ocv_curve[idx_lower] * (1.0 - frac) + ocv_curve[idx_upper] * frac;
+    return table[idx_lower] * (1.0 - frac) + table[idx_upper] * frac;
+}
+
+// --- Helper: OCV Curve ---
+// Returns Open Circuit Voltage for a given SOC
+static double soc_to_ocv(double soc) {
+    return table_ocv(ocv_curve, soc);
 }
 
 // --- Helper: OCV Derivative ---
@@ -479,9 +500,10 @@ static void ekf_update_limits(bms_model_t *model) {
         return;
     }
 
-    // Cache the scaling factors
-    model->ekf.prev_soc_min = ocv_to_soc((float)min_mV / 1000.0f);
-    float soc_max = ocv_to_soc((float)max_mV / 1000.0f);
+    // Cache the scaling factors. On the factory table, so learning doesn't move 0% and
+    // 100%.
+    model->ekf.prev_soc_min = table_soc(ocv_factory, (float)min_mV / 1000.0f);
+    float soc_max = table_soc(ocv_factory, (float)max_mV / 1000.0f);
     model->ekf.prev_soc_mul = 1.0f / (soc_max - model->ekf.prev_soc_min);
     model->ekf.prev_min_mV = min_mV;
     model->ekf.prev_max_mV = max_mV;
@@ -498,6 +520,18 @@ static void ekf_update_limits(bms_model_t *model) {
 uint32_t ekf_tick(bms_model_t *model, float charge_Ah, int32_t current_mA, int32_t voltage_mV) {
     float current_amps = (float)current_mA * 0.001f;
     float voltage_volts = (float)voltage_mV * 0.001f;
+
+#ifdef OCV_LEARN
+    // Where the inverter stops charging, per cell: the working max plus the inverter limit offset
+    float charge_V = (get_cell_voltage_working_max_mV(model) * NUM_CELLS * 0.001f
+                      + model->pack_voltage_limit_upper_offset_dV * 0.1f) / NUM_CELLS;
+    if (ocv_learn_tick(&model->ocv_learn, ocv_factory, (double)model->nameplate_capacity_mC / 3600000.0,
+                       charge_V, charge_Ah, current_amps, voltage_volts)) {
+#ifdef OCV_LEARN_TABLE
+        ocv_table = model->ocv_learn.table;
+#endif
+    }
+#endif
 
     ekf_init_from_model(model, voltage_volts);
 

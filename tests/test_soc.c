@@ -10,6 +10,7 @@
 
 #include "app/model.h"
 #include "app/estimators/ekf.h"
+#include "app/estimators/ocv_learn.h"
 #include "protocols/inverter/inverter.h"
 #include "can2040.h"
 #include "sys/logging/logging.h"
@@ -236,6 +237,45 @@ static void test_inverter_soc_scaling(void **state) {
     assert_int_equal(sent_soc, 10000);
 }
 
+// Pack whose cells rest 30mV above a linear factory table, cycled from full to
+// 48.75Ah below (between bins 6 and 7, 7.5Ah apart) and back with a 6h rest there
+static ocv_learn_t learn;
+static float learn_factory[101];
+
+static bool learn_run(int seconds, float current_A, float voltage_V) {
+    bool changed = false;
+    for (int i = 0; i < seconds; i++) {
+        changed |= ocv_learn_tick(&learn, learn_factory, 100.0, 4.08f, current_A / 3600.0, current_A, voltage_V);
+    }
+    return changed;
+}
+
+static void learn_cycle(void) {
+    assert_false(learn_run(1200, 0.0f, 4.08f));             // settled full: the anchor
+    learn_run(7020, -25.0f, 3.5f);                            // discharge, too much current to read
+    learn_run(6 * 3600, 0.0f, 3.0f + 1.2f * 0.4125f + 0.03f); // rest at 41.25% SOC
+    learn_run(7020, 25.0f, 3.9f);                             // charge back
+}
+
+static void test_ocv_learn_cycles(void **state) {
+    (void)state;
+
+    memset(&learn, 0, sizeof(learn));
+    for (int i = 0; i <= 100; i++) learn_factory[i] = 3.0f + 1.2f * i / 100.0f;
+    // Charge voltage 4.08V puts full at 90% on the factory curve
+
+    learn_cycle();
+    assert_true(learn_run(1200, 0.0f, 4.08f)); // next full charge: the rest is learned
+    assert_true(learn.persistent.corr[6] > 0.02 && learn.persistent.corr[6] < 0.04);
+    assert_true(learn.persistent.corr[7] > 0.02 && learn.persistent.corr[7] < 0.04);
+    assert_float_equal(learn.table[41], 3.0f + 1.2f * 0.41f + 0.03f, 0.01f);
+    assert_true(isnan(learn.capacity_ref_Ah)); // one cycle isn't enough to trust
+
+    learn_cycle();
+    learn_run(1200, 0.0f, 4.08f);
+    // Full (90%) down to the 3.50V reference: 3.0 + 1.2 * (0.9 - a / 100) + 0.03 = 3.5 at a = 50.8Ah
+    assert_float_equal(learn.capacity_ref_Ah, 50.8f, 1.5f);
+}
 
 int main(void) {
     const struct CMUnitTest tests[] = {
@@ -244,6 +284,7 @@ int main(void) {
         cmocka_unit_test(test_ekf_init_full_charge),
         cmocka_unit_test(test_ekf_init_uninitialized_falls_back_to_voltage),
         cmocka_unit_test(test_inverter_soc_scaling),
+        cmocka_unit_test(test_ocv_learn_cycles),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

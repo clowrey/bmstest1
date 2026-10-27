@@ -61,4 +61,8 @@ void ekf_reset_bias(bms_model_t *model);
 
 uint32_t ekf_tick(bms_model_t *model, float charge_Ah, int32_t current_mA, int32_t voltage_mV);
 
+// Lookups on a 101-point OCV table (index = SOC in percent)
+float table_soc(const float *table, float ocv);
+double table_ocv(const float *table, double soc);
+
 void ekf_print_state(ekf_t *ekf);

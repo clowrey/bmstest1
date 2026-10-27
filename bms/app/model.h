@@ -7,6 +7,7 @@
 #include "app/state_machines/contactors.h"
 #include "app/state_machines/system.h"
 #include "app/estimators/ekf.h"
+#include "app/estimators/ocv_learn.h"
 #include "config/limits.h"
 #include "lib/math.h"
 
@@ -219,6 +220,7 @@ typedef struct bms_model {
 
 
     ekf_t ekf;
+    ocv_learn_t ocv_learn;
 
     // Aggregated cell voltage data
     int16_t cell_voltage_min_mV;
