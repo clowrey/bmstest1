@@ -120,6 +120,7 @@ bool ina228_init(ina228_t *dev, uint8_t i2c_addr, float shunt_resistor_ohms, flo
     (void)max_current_a; // current LSB is currently fixed in ina228_configure()
     dev->i2c = INA228_I2C;
     dev->addr = i2c_addr;
+    dev->present = false;
     dev->shunt_resistor_ohms = shunt_resistor_ohms;
     dev->async_busy = false;
     
@@ -166,7 +167,8 @@ bool ina228_init(ina228_t *dev, uint8_t i2c_addr, float shunt_resistor_ohms, flo
     ina228_configure(dev);
 
     ina228_start_async_timer(dev);
-    
+
+    dev->present = true;
     return true;
 }
 
