@@ -66,6 +66,9 @@
 #define IS_BMS_BOARD(rev) (BMS_BOARD == BMS_BOARD_##rev)
 
 #if IS_BMS_BOARD(REV1)
+// Rev1 adds a second ADS1115 (0x49) sensing the Link and Drive Unit rails.
+// Function-like for the same reason as IS_BMS_BOARD.
+#define HAS_ADS1115_SECONDARY() 1
 // Rev1's default contactor arrangement precharges via the FC negative contactor
 #ifndef PRECHARGE_ON_NEGATIVE
 #define PRECHARGE_ON_NEGATIVE 1
@@ -73,6 +76,7 @@
 // Rev1 uses 501:1 dividers (12M/24k): 501 * 1.024/32768 V per count
 #define ADS1115_DEFAULT_MUL 0.015656f
 #elif IS_BMS_BOARD(REV0)
+#define HAS_ADS1115_SECONDARY() 0
 // Rev0 divider ratio is ~416:1
 #define ADS1115_DEFAULT_MUL 0.013f
 #else

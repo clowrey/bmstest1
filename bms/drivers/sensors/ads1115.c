@@ -24,7 +24,8 @@ static const int ADS1115_CONVERSION_TIME_EXTRA_MS = 1;
 
 // The scan runs in rounds. In each round, one channel from each present device
 // is converted concurrently (the chips convert independently; only the I2C
-// transactions are serialized).
+// transactions are serialized). ADC A has the most channels, so it sets the
+// number of rounds and the cycle time is the same with or without ADC B.
 #define ADS1115_SCAN_ROUNDS 6
 // Max devices converting concurrently in one round
 #define ADS1115_MAX_PER_ROUND 2
@@ -51,6 +52,9 @@ float filtered_samples[ADS1115_CHANNEL_COUNT] = { [0 ... (ADS1115_CHANNEL_COUNT-
 float sample_deviations[ADS1115_CHANNEL_COUNT] = { [0 ... (ADS1115_CHANNEL_COUNT-1)] = NAN };
 
 ads1115_t ads1115_dev = {0};   // ADC A (0x48)
+#if HAS_ADS1115_SECONDARY()
+ads1115_t ads1115_dev_b = {0}; // ADC B (0x49)
+#endif
 
 typedef struct {
     ads1115_t *dev;
@@ -66,6 +70,13 @@ static const ads1115_channel_cfg_t channel_table[ADS1115_CHANNEL_COUNT] = {
     [3] = { &ads1115_dev, ADS1115_CONFIG_MUX_DIFF_0_3 | ADS1115_CONFIG_PGA_1_024V }, // battery pos to output neg
     [4] = { &ads1115_dev, ADS1115_CONFIG_MUX_SINGLE_0 | ADS1115_CONFIG_PGA_4_096V }, // battery pos (isolation)
     [5] = { &ads1115_dev, ADS1115_CONFIG_MUX_SINGLE_1 | ADS1115_CONFIG_PGA_4_096V }, // battery neg (isolation)
+#if HAS_ADS1115_SECONDARY()
+    // ADC B
+    [6] = { &ads1115_dev_b, ADS1115_CONFIG_MUX_DIFF_2_3 | ADS1115_CONFIG_PGA_1_024V }, // across pos (Link Positive) contactor
+    [7] = { &ads1115_dev_b, ADS1115_CONFIG_MUX_DIFF_0_3 | ADS1115_CONFIG_PGA_1_024V }, // negated link voltage
+    [8] = { &ads1115_dev_b, ADS1115_CONFIG_MUX_DIFF_1_3 | ADS1115_CONFIG_PGA_1_024V }, // fuse/jumper drop
+    [9] = { &ads1115_dev_b, ADS1115_CONFIG_MUX_SINGLE_1 | ADS1115_CONFIG_PGA_4_096V }, // out pos (diagnostics)
+#endif
 };
 
 // The channel each device converts in a given round, or -1 if none.
@@ -169,6 +180,12 @@ static bool ads1115_setup_round(void) {
     if (ch_a >= 0) {
         scan.round_channels[scan.round_count++] = ch_a;
     }
+#if HAS_ADS1115_SECONDARY()
+    int ch_b = ads1115_dev_b.present ? round_channel(&ads1115_dev_b, scan.round) : -1;
+    if (ch_b >= 0) {
+        scan.round_channels[scan.round_count++] = ch_b;
+    }
+#endif
 
     return scan.round_count > 0;
 }
@@ -192,7 +209,11 @@ static void ads1115_start_round(void) {
 
     // Free-running: start the next cycle straight away. Guarded by a device
     // being present so this can't recurse endlessly with nothing to scan.
-    if (ads1115_dev.present) {
+    if (ads1115_dev.present
+#if HAS_ADS1115_SECONDARY()
+        || ads1115_dev_b.present
+#endif
+    ) {
         ads1115_start_sampling();
     }
 }

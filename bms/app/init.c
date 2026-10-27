@@ -71,6 +71,11 @@ static void init_hw() {
     if(!ads1115_init(&ads1115_dev, 0x48)) {
         error_printf("ADS1115 init failed!\n");
     }
+#if HAS_ADS1115_SECONDARY()
+    if(!ads1115_init(&ads1115_dev_b, 0x49)) {
+        error_printf("ADS1115 (secondary, 0x49) init failed!\n");
+    }
+#endif
 
     isospi_master_setup(
         PIN_ISOSPI_TX_EN,

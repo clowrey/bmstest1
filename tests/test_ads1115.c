@@ -209,6 +209,9 @@ static int setup(void **state) {
     if (!initialized) {
         stored_millis = 1000;
         assert_true(ads1115_init(&ads1115_dev, 0x48));
+#if HAS_ADS1115_SECONDARY()
+        assert_true(ads1115_init(&ads1115_dev_b, 0x49));
+#endif
         // Watchdog's first fire starts the free-running scan
         fire_watchdog();
         initialized = true;

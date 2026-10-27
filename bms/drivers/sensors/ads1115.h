@@ -2,6 +2,7 @@
 
 #include "sys/time/time.h"
 #include "lib/sampler.h"
+#include "config/limits.h"
 
 #include "hardware/i2c.h"
 #include <stdint.h>
@@ -39,16 +40,26 @@
 
 /* Logical channels:
 
-ADC A (0x48):
+ADC A (0x48), all board revs:
 0: AIN0-AIN1 (battery voltage)
 1: AIN2-AIN3 (output/FC voltage)
 2: AIN1-AIN3 (voltage across negative path)
 3: AIN0-AIN3 (battery positive to output negative)
 4: AIN0 single (battery pos, isolation)
 5: AIN1 single (battery neg, isolation)
+
+ADC B (0x49), rev1 boards:
+6: AIN2-AIN3 (bat pos - link pos = across Link Positive contactor)
+7: AIN0-AIN3 (link neg - link pos = negated link voltage)
+8: AIN1-AIN3 (out pos - link pos = drop across F4 fuse/jumper)
+9: AIN1 single (out pos, diagnostics)
 */
 
+#if HAS_ADS1115_SECONDARY()
+#define ADS1115_CHANNEL_COUNT 10
+#else
 #define ADS1115_CHANNEL_COUNT 6
+#endif
 
 extern sampler_t samples[ADS1115_CHANNEL_COUNT];
 extern float filtered_samples[ADS1115_CHANNEL_COUNT];
@@ -62,6 +73,9 @@ typedef struct {
 
 // Device handles owned by the driver
 extern ads1115_t ads1115_dev;   // ADC A (0x48)
+#if HAS_ADS1115_SECONDARY()
+extern ads1115_t ads1115_dev_b; // ADC B (0x49)
+#endif
 
 bool ads1115_init(ads1115_t *dev, uint8_t addr);
 int16_t ads1115_get_sample_range(int channel);

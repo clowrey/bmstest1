@@ -121,6 +121,9 @@ static void cli_handle_command(const char *cmd) {
     } else if(strcmp(cmd, "ads") == 0) {
         millis_t now = millis();
         printf("ADS A (0x48): %s\n", ads1115_dev.present ? "present" : "NOT DETECTED");
+#if HAS_ADS1115_SECONDARY()
+        printf("ADS B (0x49): %s\n", ads1115_dev_b.present ? "present" : "NOT DETECTED");
+#endif
         for(int ch = 0; ch < ADS1115_CHANNEL_COUNT; ch++) {
             printf("ADS ch%d: raw %8.1f (age %lu ms)\n",
                 ch, (double)filtered_samples[ch], now - ads1115_get_sample_millis(ch));
