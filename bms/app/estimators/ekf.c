@@ -54,33 +54,6 @@ static const float lfp_ocv_curve[101] = {
 //     3.54337311
 // };
 
-static const float lfp_ocv_curve_diff[100] = {
-    3.04504279e+01, 1.12852723e+01, 7.36080383e+00, 5.51233281e+00,
-    4.45260149e+00, 3.66959150e+00, 3.10225816e+00, 2.51265842e+00,
-    1.28693842e+00, 4.80256891e-01, 2.93050462e-01, 2.61157934e-01,
-    2.56751913e-01, 3.26648183e-01, 5.02606972e-01, 5.32305790e-01,
-    4.94907965e-01, 4.36072002e-01, 4.43762908e-01, 4.46017035e-01,
-    4.28211109e-01, 3.88457429e-01, 3.73624734e-01, 3.09451285e-01,
-    3.20657021e-01, 3.01442391e-01, 2.85629494e-01, 2.50064631e-01,
-    2.72351310e-01, 2.61522934e-01, 2.53905605e-01, 2.77602187e-01,
-    2.51605857e-01, 2.67352178e-01, 2.63131214e-01, 2.85348878e-01,
-    2.15914181e-01, 1.49897034e-01, 1.01252482e-01, 6.99333444e-02,
-    6.50894896e-02, 2.84886292e-02, 5.00528107e-02, 3.39919125e-02,
-    3.07798386e-02, 1.71284905e-02, 3.94742400e-02, 2.43234253e-02,
-    4.21812775e-02, 2.97851429e-02, 1.59312431e-02, 4.39257577e-02,
-    2.64946995e-02, 2.23556717e-02, 3.16603521e-02, 1.58282885e-02,
-    3.56952678e-02, 3.36276390e-02, 4.00384190e-02, 3.79584737e-02,
-    3.98073290e-02, 3.65687399e-02, 6.28162463e-02, 5.07282226e-02,
-    6.98110058e-02, 6.86744258e-02, 1.07038369e-01, 1.07413640e-01,
-    1.64005338e-01, 2.20103399e-01, 2.84339974e-01, 4.36437416e-01,
-    5.22081945e-01, 4.87316958e-01, 3.63976796e-01, 2.19380955e-01,
-    1.23587336e-01, 7.48360482e-02, 5.50851299e-02, 5.48622327e-02,
-    2.21231080e-02, 5.65240771e-02, 3.36453669e-02, 6.06097020e-02,
-    3.44172818e-02, 4.99443193e-02, 5.71021557e-02, 6.03331964e-02,
-    9.22976916e-02, 7.67467000e-02, 1.13005804e-01, 1.70047729e-01,
-    2.02332608e-01, 3.16384891e-01, 4.99421087e-01, 7.39938801e-01,
-    1.27445802e+00, 2.35352176e+00, 4.52885401e+00, 9.12102423e+00
-};
 
 // use nmc5? looks most normal, widest range
 // nmc1 { 2.9f, 2.9551f, 2.9992f, 3.0358f, 3.0669f, 3.0938f, 3.1189f, 3.142f, 3.1640999f, 3.1824999f, 3.1952f, 3.2103f, 3.2255f, 3.2419f, 3.2600999f, 3.2804f, 3.3025f, 3.3261f, 3.3501f, 3.3733f, 3.3954f, 3.4163f, 3.4347f, 3.4512f, 3.4640999f, 3.4726f, 3.4798999f, 3.4870999f, 3.4930999f, 3.5016999f, 3.5132f, 3.5269f, 3.5402999f, 3.5539f, 3.5676999f, 3.5799999f, 3.5908999f, 3.6017f, 3.6127999f, 3.6236f, 3.6338999f, 3.6434f, 3.6526f, 3.6615f, 3.67f, 3.6786f, 3.6872f, 3.696f, 3.7051f, 3.7144f, 3.724f, 3.7337999f, 3.7437999f, 3.7537f, 3.7636f, 3.7735f, 3.7832f, 3.7927999f, 3.8022f, 3.8113f, 3.8204f, 3.8295f, 3.8390999f, 3.8499999f, 3.8626f, 3.8763f, 3.8889999f, 3.8994999f, 3.9084f, 3.9165f, 3.9244f, 3.9324f, 3.9409f, 3.9498999f, 3.9595f, 3.9698f, 3.9807f, 3.9921999f, 4.0040998f, 4.0160999f, 4.0278f, 4.0388999f, 4.0490999f, 4.0583f, 4.0664f, 4.0735f, 4.0794f, 4.0844998f, 4.089f, 4.0931f, 4.0971999f, 4.1012f, 4.1055999f, 4.1103f, 4.1156998f, 4.1217999f, 4.1290998f, 4.138f, 4.1493f, 4.1643f, 4.1866999f }
@@ -141,56 +114,73 @@ static float nmc_ocv_curve[101] = {
     // 4.20008564
 };
 
-static float nmc_ocv_curve_diff[100] = {
-    14.43   ,  9.56   ,  7.63   ,  6.     ,  4.67   ,  2.98   ,
-    1.37999,  0.90001,  0.79   ,  0.74   ,  0.74999,  0.80001,
-    1.01   ,  1.32   ,  1.39   ,  1.37999,  1.43001,  1.31   ,
-    1.11999,  1.03001,  1.03   ,  1.00999,  0.95   ,  0.87001,
-    0.82   ,  0.76999,  0.75001,  0.72   ,  0.66   ,  0.6    ,
-    0.54999,  0.52001,  0.49999,  0.49   ,  0.47001,  0.47999,
-    0.47001,  0.47   ,  0.47999,  0.49001,  0.5    ,  0.53   ,
-    0.54   ,  0.56   ,  0.6    ,  0.62   ,  0.68   ,  0.72999,
-    0.78001,  0.86   ,  0.95999,  1.10001,  1.28   ,  1.46   ,
-    1.54999,  1.47001,  1.31   ,  1.18   ,  1.09   ,  1.03   ,
-    1.     ,  0.95   ,  0.93   ,  0.91   ,  0.88   ,  0.84   ,
-    0.83   ,  0.81   ,  0.79   ,  0.79   ,  0.79   ,  0.81   ,
-    0.82999,  0.87001,  0.91   ,  0.95   ,  1.     ,  1.05   ,
-    1.07999,  1.11001,  1.11   ,  1.09   ,  1.06   ,  1.01   ,
-    0.92   ,  0.81998,  0.71001,  0.58999,  0.46   ,  0.39001,
-    0.36001,  0.36998,  0.42   ,  0.49002,  0.60999,  0.79001,
-    1.02998,  1.39002,  1.87999,  2.63
-    
-    // 60.02618656, 14.59384462,  8.99283794,  6.45481512,  4.82400582,
-    // 1.99650039,  0.50113891,  0.46930313,  0.46930313,  0.50038961,
-    // 0.57545365,  0.72047384,  0.83704336,  0.96453191,  1.04544938,
-    // 0.98069849,  0.97865236,  1.04308176,  0.86653185,  0.77564423,
-    // 0.94073653,  0.95807081,  0.60637599,  0.4143    ,  0.3829984 ,
-    // 0.33984184,  0.30967921,  0.29337938,  0.29774512,  0.26439556,
-    // 0.28383479,  0.26638761,  0.29129982,  0.26958231,  0.28064009,
-    // 0.28390649,  0.26865009,  0.29308647,  0.29835633,  0.29628725,
-    // 0.30748844,  0.3422442 ,  0.33338428,  0.36008567,  0.35603046,
-    // 0.38113396,  0.4143    ,  0.44667724,  0.4617986 ,  0.48007407,
-    // 0.55994991,  0.56249923,  0.7030505 ,  0.77033047,  0.99689964,
-    // 1.21633849,  1.10109018,  0.83506111,  0.76444303,  0.72824955,
-    // 0.76060295,  0.77948431,  0.80645224,  0.83556307,  0.87883157,
-    // 0.85871403,  0.90625286,  0.90625286,  0.94465207,  0.98026644,
-    // 0.95807081,  1.01713332,  0.98354717,  1.00299322,  1.02280092,
-    // 1.02961159,  1.02925304,  1.04189365,  1.05516395,  1.05545602,
-    // 1.06837823,  1.07402669,  1.07832087,  1.11663342,  1.13239178,
-    // 1.10087505,  1.14898682,  1.14558201,  1.14253523,  1.19112451,
-    // 1.18446342,  1.1976915 ,  1.22011146,  1.22041754,  1.24607086,
-    // 1.27195335,  1.2590027 ,  1.3141156 ,  1.30435473,  1.35620603
-};
-
+// The Jacobian uses the OCV slope averaged over a window of 2 * OCV_DIFF_HALF_WIDTH
+// percent around the current SoC, rather than the exact local slope. The LFP
+// curve is flat to within a few mV between ~65% and ~97%, so with the exact slope
+// the filter can sit in that region with a large residual (e.g. at float, 80mV
+// above the plateau) and still see no reason to move. The wider window lets it
+// see the knee coming. A half width of 1 gives the exact segment slope.
+//
+// Filter tuning per chemistry. P0_* is the initial covariance, Q_* the process
+// noise per 1s step, R_V the voltage measurement noise.
+//
+// EKF_MIN_OCV_SLOPE: the voltage update only runs where the OCV curve is steep
+// enough for the voltage to say something about SOC. On the LFP plateaus a few
+// mV of hysteresis or curve mismatch is worth tens of percent of SOC, and since
+// that error is slow rather than white noise, the filter would follow it, and
+// then misread the resulting SOC drift as a current bias.
+//
+// EKF_KNEE_OCV_SLOPE: but if the estimate has drifted onto a plateau while the
+// battery is really at a knee, the slope at the estimate is small and the gate
+// above would keep the filter from ever seeing it. So the update also runs when
+// the measured voltage (corrected for the RC model) sits on a part of the curve
+// at least this steep. This uses the unsmoothed slope, because the LFP curve is
+// flat right up to the start of the top knee.
 #if CHEMISTRY == LFP
     #define ocv_curve lfp_ocv_curve
-    #define ocv_curve_diff lfp_ocv_curve_diff
+    #define OCV_DIFF_HALF_WIDTH 4
+
+    // From replaying ~10 days of logged pack data through this filter (scripts
+    // in rpipico/kalman, next to this repo).
+    #define EKF_P0_AH   100.0f  // (10Ah)^2: the starting SOC comes from voltage or NVM, and
+                                // on the plateau voltage gives little. Too small and the
+                                // first full charge blames the starting error on the bias.
+    #define EKF_P0_VC1  1e-4f
+    #define EKF_P0_CAP  0.0f    // Capacity isn't observable without reaching both ends; hold it
+    #define EKF_P0_BIAS 1e-2f   // (100mA)^2
+    #define EKF_Q_AH    1e-7f
+    #define EKF_Q_VC1   1e-4f
+    #define EKF_Q_CAP   0.0f
+    #define EKF_Q_BIAS  1e-10f  // bias can wander ~3mA/day (e.g. with temperature)
+    #define EKF_R_V     1e-2f
+    #define EKF_MIN_OCV_SLOPE  1.5f
+    #define EKF_KNEE_OCV_SLOPE 5.0f
 #elif CHEMISTRY == NMC
     #define ocv_curve nmc_ocv_curve
-    #define ocv_curve_diff nmc_ocv_curve_diff
+    #define OCV_DIFF_HALF_WIDTH 1
+
+    // The original tuning, with the bias state switched off. NMC's sloped curve
+    // keeps the voltage informative everywhere; there's no logged data to
+    // retune against yet.
+    #define EKF_P0_AH   1e-3f
+    #define EKF_P0_VC1  1e-2f
+    #define EKF_P0_CAP  1.0f
+    #define EKF_P0_BIAS 0.0f
+    #define EKF_Q_AH    1e-3f
+    #define EKF_Q_VC1   1e-2f
+    #define EKF_Q_CAP   1e-7f
+    #define EKF_Q_BIAS  0.0f
+    #define EKF_R_V     1e-2f
+    #define EKF_MIN_OCV_SLOPE  0.0f
+    #define EKF_KNEE_OCV_SLOPE 0.0f
 #else
     #error "Unsupported chemistry"
 #endif
+
+// Largest current sensor bias the filter may learn
+#define EKF_BIAS_LIMIT_A 0.5f
+
+#define EKF_N 4
 
 float ocv_to_soc(float ocv) {
     // Simple linear search (could be optimized with binary search)
@@ -228,33 +218,53 @@ static float soc_to_ocv_derivative(float soc) {
     if (soc < 0.0f) soc = 0.0f;
     if (soc > 1.0f) soc = 1.0f;
 
-    float index = soc * 100.0f;
-    int idx_lower = (int)index;
-    if (idx_lower >= 100) return ocv_curve_diff[99];
-    return ocv_curve_diff[idx_lower];
+    int idx = (int)(soc * 100.0f);
+    if (idx > 99) idx = 99;
+
+    int lo = idx - OCV_DIFF_HALF_WIDTH + 1;
+    int hi = idx + OCV_DIFF_HALF_WIDTH;
+    if (lo < 0) lo = 0;
+    if (hi > 100) hi = 100;
+    return (ocv_curve[hi] - ocv_curve[lo]) * 100.0f / (float)(hi - lo);
 }
 
-void ekf_init(ekf_t *ekf, float initial_soc, float initial_capacity) {
+// Returns d(OCV)/d(SOC) of the curve segment containing soc, without smoothing
+static float ocv_segment_slope(float soc) {
+    if (soc < 0.0f) soc = 0.0f;
+    if (soc > 1.0f) soc = 1.0f;
+
+    int idx = (int)(soc * 100.0f);
+    if (idx > 99) idx = 99;
+    return (ocv_curve[idx + 1] - ocv_curve[idx]) * 100.0f;
+}
+
+void ekf_init(ekf_t *ekf, float initial_soc, float initial_capacity, float initial_bias_A) {
     // Initial States
     ekf->x[0] = (1.0f - initial_soc) * initial_capacity; // Ah_used
     ekf->x[1] = 0.0f;               // V_c1 starts relaxed
     ekf->x[2] = initial_capacity;   // Initial guess
-    
-    // Initial Covariance P (Identity * scalar)
-    for(int i=0; i<3; i++) {
-        for(int j=0; j<3; j++) ekf->P[i][j] = 0.0f;
-    }
-    ekf->P[0][0] = 0.001f; // Uncertainty in Ah_used
-    ekf->P[1][1] = 0.01f;  // Uncertainty in V_c1
-    ekf->P[2][2] = 1.0f;   // High uncertainty in Capacity
+    ekf->x[3] = initial_bias_A;     // Current sensor bias, from NVM if we have it
 
-    // Process Noise Q
-    ekf->Q[0] = 1e-3f;     // Trust current integration highly
-    ekf->Q[1] = 1e-2f;     // V_c1 can vary
-    ekf->Q[2] = 1e-7f;     // Capacity changes very slowly
-    
-    // Measurement Noise R
-    ekf->R = 0.01f;        // Voltage sensor variance (e.g. 0.14V std dev)
+    // Initial Covariance P
+    for(int i=0; i<EKF_N; i++) {
+        for(int j=0; j<EKF_N; j++) ekf->P[i][j] = 0.0f;
+    }
+    ekf->P[0][0] = EKF_P0_AH;   // Uncertainty in Ah_used
+    ekf->P[1][1] = EKF_P0_VC1;  // Uncertainty in V_c1
+    ekf->P[2][2] = EKF_P0_CAP;  // Uncertainty in Capacity
+    ekf->P[3][3] = EKF_P0_BIAS; // Uncertainty in current bias
+
+    // Process Noise Q (per 1s step)
+    ekf->Q[0] = EKF_Q_AH;
+    ekf->Q[1] = EKF_Q_VC1;
+    ekf->Q[2] = EKF_Q_CAP;
+    ekf->Q[3] = EKF_Q_BIAS;
+
+    // Measurement Noise R. This is dominated by OCV model error (hysteresis,
+    // and the curve not quite matching the cells), not by the ADC.
+    ekf->R = EKF_R_V;
+    ekf->min_ocv_slope = EKF_MIN_OCV_SLOPE;
+    ekf->knee_ocv_slope = EKF_KNEE_OCV_SLOPE;
 
     // Fitted RC model parameters
     ekf->R0 = 0.00076f;
@@ -273,54 +283,53 @@ void ekf_step(ekf_t *ekf, float charge_Ah, float current_amps, float voltage_mea
     // 1. PREDICTION STEP
     // -----------------------------------------
     float dt = 1.0f;
-    
-    // Positive current/charge = Charging
+
+    // Positive current/charge = Charging. The measured values include the
+    // sensor bias x[3], so the true current is current_amps - bias.
+    float bias = ekf->x[3];
+    float current_true = current_amps - bias;
 
     // --- State Prediction ---
-    // x[0] = Ah_used + I * dt / 3600
-    ekf->x[0] = ekf->x[0] - charge_Ah;
-    //(current_amps * ekf->dt) / 3600.0f;
-    
-    // x[1] = V_c1 * exp + I * R1 * (1 - exp)
-    float exp_val = expf(-dt / (ekf->R1 * ekf->C1));
-    ekf->x[1] = ekf->x[1] * exp_val - current_amps * ekf->R1 * (1.0f - exp_val);
-    //printf("Predicted V_c1: %2.3f V | exp: %2.8f | I*R1*(1-exp): %2.8f V\n",
-    //       ekf->x[1], exp_val, -current_amps * ekf->R1 * (1.0f - exp_val));    
+    // x[0] = Ah_used - true charge = Ah_used - charge_Ah + bias * dt / 3600
+    ekf->x[0] = ekf->x[0] - charge_Ah + bias * dt / 3600.0f;
 
-    // x[2] Capacity stays constant in prediction
-    // ekf->x[2] = ekf->x[2]; 
+    // x[1] = V_c1 * exp - I * R1 * (1 - exp)
+    float exp_val = expf(-dt / (ekf->R1 * ekf->C1));
+    ekf->x[1] = ekf->x[1] * exp_val - current_true * ekf->R1 * (1.0f - exp_val);
+    //printf("Predicted V_c1: %2.3f V | exp: %2.8f | I*R1*(1-exp): %2.8f V\n",
+    //       ekf->x[1], exp_val, -current_true * ekf->R1 * (1.0f - exp_val));
+
+    // x[2] Capacity and x[3] bias stay constant in prediction
 
     // --- Covariance Prediction ---
-    // F is Jacobian of process model.
-    // Since Ah_used doesn't depend on Cap, F is diagonal-ish.
-    // F = [1, 0, 0]
-    //     [0, exp, 0]
-    //     [0, 0, 1]
-    
-    // P_pred = F * P * F^T + Q
-    // We update P elements manually taking advantage of F's sparsity.
-    
-    // Row 0 (Ah_used) -> multiplied by 1
-    // Row 1 (V_c1)    -> multiplied by exp_val
-    // Row 2 (Cap)     -> multiplied by 1
-    
-    // Update diagonals (simplified for sparse F)
-    // Note: A full matrix multiply is safer if F becomes complex, 
-    // but for this specific physics model, this manual update is efficient.
-    
-    // P[1][1] scales by exp^2
-    ekf->P[1][1] = ekf->P[1][1] * exp_val * exp_val;
-    
-    // Cross terms involving row 1 or col 1 scale by exp
-    ekf->P[0][1] *= exp_val;
-    ekf->P[1][0] *= exp_val;
-    ekf->P[1][2] *= exp_val;
-    ekf->P[2][1] *= exp_val;
+    // F is the Jacobian of the process model:
+    // F = [1, 0,   0, dt/3600          ]
+    //     [0, exp, 0, R1 * (1 - exp)   ]
+    //     [0, 0,   1, 0                ]
+    //     [0, 0,   0, 1                ]
+    float F[EKF_N][EKF_N] = {
+        {1.0f, 0.0f,    0.0f, dt / 3600.0f},
+        {0.0f, exp_val, 0.0f, ekf->R1 * (1.0f - exp_val)},
+        {0.0f, 0.0f,    1.0f, 0.0f},
+        {0.0f, 0.0f,    0.0f, 1.0f},
+    };
 
-    // Add Process Noise Q
-    ekf->P[0][0] += ekf->Q[0];
-    ekf->P[1][1] += ekf->Q[1];
-    ekf->P[2][2] += ekf->Q[2];
+    // P_pred = F * P * F^T + Q
+    float FP[EKF_N][EKF_N];
+    for(int i=0; i<EKF_N; i++) {
+        for(int j=0; j<EKF_N; j++) {
+            FP[i][j] = 0.0f;
+            for(int k=0; k<EKF_N; k++) FP[i][j] += F[i][k] * ekf->P[k][j];
+        }
+    }
+    for(int i=0; i<EKF_N; i++) {
+        for(int j=0; j<EKF_N; j++) {
+            float sum = 0.0f;
+            for(int k=0; k<EKF_N; k++) sum += FP[i][k] * F[j][k];
+            ekf->P[i][j] = sum;
+        }
+        ekf->P[i][i] += ekf->Q[i];
+    }
 
     // -----------------------------------------
     // 2. UPDATE STEP
@@ -335,93 +344,71 @@ void ekf_step(ekf_t *ekf, float charge_Ah, float current_amps, float voltage_mea
 
     // Predict Voltage
     float ocv = soc_to_ocv(soc_est);
-    float v_pred = ocv - v_c1 + (current_amps * ekf->R0);
+    float v_pred = ocv - v_c1 + (current_true * ekf->R0);
     //printf("v_pred: %2.3f V | OCV: %2.3f V | V_c1: %2.3f V | I*R0: %2.3f V | SOC_est: %2.2f %%\n",
-    //       v_pred, ocv, v_c1, -current_amps * ekf->R0, soc_est * 100.0f);
-    
+    //       v_pred, ocv, v_c1, current_true * ekf->R0, soc_est * 100.0f);
+
     // Calculate Residual (y)
     float y = voltage_measured - v_pred;
 
     // --- Calculate Jacobian H ---
-    // H = [dH/dAh, dH/dVc1, dH/dCap]
+    // H = [dH/dAh, dH/dVc1, dH/dCap, dH/dBias]
     float d_ocv = soc_to_ocv_derivative(soc_est);
-    
-    // dV/dAh = dOCV/dSOC * dSOC/dAh = dOCV * (-1/Cap)
-    float h0 = d_ocv * (-1.0f / cap);
-    
-    // dV/dVc1 = -1
-    float h1 = -1.0f;
-    
-    // dV/dCap = dOCV/dSOC * dSOC/dCap = dOCV * (Ah / Cap^2)
-    float h2 = d_ocv * (ah_used / (cap * cap));
-    
-    float H[3] = {h0, h1, h2};
+
+    // On the plateaus, rely on (bias corrected) coulomb counting alone
+    if (fabsf(d_ocv) < ekf->min_ocv_slope) {
+        float ocv_measured = voltage_measured + v_c1 - current_true * ekf->R0;
+        if (fabsf(ocv_segment_slope(ocv_to_soc(ocv_measured))) < ekf->knee_ocv_slope) return;
+    }
+
+    float H[EKF_N] = {
+        d_ocv * (-1.0f / cap),             // dV/dAh = dOCV/dSOC * dSOC/dAh
+        -1.0f,                             // dV/dVc1
+        d_ocv * (ah_used / (cap * cap)),   // dV/dCap = dOCV/dSOC * dSOC/dCap
+        -ekf->R0,                          // dV/dBias, via the I*R0 term
+    };
 
     // --- Calculate Kalman Gain K ---
-    // S = H * P * H^T + R (Scalar, since measurement is 1D)
-    
-    // H * P (1x3 vector temp)
-    float HP[3];
-    HP[0] = H[0]*ekf->P[0][0] + H[1]*ekf->P[1][0] + H[2]*ekf->P[2][0];
-    HP[1] = H[0]*ekf->P[0][1] + H[1]*ekf->P[1][1] + H[2]*ekf->P[2][1];
-    HP[2] = H[0]*ekf->P[0][2] + H[1]*ekf->P[1][2] + H[2]*ekf->P[2][2];
-
-    // S = (HP) * H^T + R
-    float S = (HP[0]*H[0] + HP[1]*H[1] + HP[2]*H[2]) + ekf->R;
-    
-    // K = P * H^T * (1/S) -> (3x1 vector)
-    float K[3];
-    // PH_T corresponds to the column vector resulting from P * H^T
-    // Since P is symmetric, P * H^T is the same as (H * P)^T which is HP computed above
-    // EXCEPT we need to be careful with indices. Let's do it explicitly:
-    // K[i] = (sum(P[i][j] * H[j])) / S
-    for(int i=0; i<3; i++) {
-        float sum = 0.0f;
-        for(int j=0; j<3; j++) {
-            sum += ekf->P[i][j] * H[j];
-        }
-        K[i] = sum / S;
+    // PH = P * H^T, S = H * P * H^T + R (scalar, since measurement is 1D)
+    float PH[EKF_N];
+    float S = ekf->R;
+    for(int i=0; i<EKF_N; i++) {
+        PH[i] = 0.0f;
+        for(int j=0; j<EKF_N; j++) PH[i] += ekf->P[i][j] * H[j];
+        S += H[i] * PH[i];
     }
+
+    float K[EKF_N];
+    for(int i=0; i<EKF_N; i++) K[i] = PH[i] / S;
 
     // --- Update State Vector ---
     // x = x + K * y
-    for(int i=0; i<3; i++) {
+    for(int i=0; i<EKF_N; i++) {
         ekf->x[i] += K[i] * y;
     }
 
     // Constraints
     // Capacity cannot be <= 0
-    if(ekf->x[2] < 0.1f) ekf->x[2] = 0.1f; 
+    if(ekf->x[2] < 0.1f) ekf->x[2] = 0.1f;
     // Ah_used cannot be negative (cannot be "more than full")
     if(ekf->x[0] < 0.0f) ekf->x[0] = 0.0f;
+    // Keep the bias within a plausible range for the shunt
+    if(ekf->x[3] > EKF_BIAS_LIMIT_A) ekf->x[3] = EKF_BIAS_LIMIT_A;
+    if(ekf->x[3] < -EKF_BIAS_LIMIT_A) ekf->x[3] = -EKF_BIAS_LIMIT_A;
 
     // --- Update Covariance P ---
-    // P = (I - K * H) * P
-    // We use a temporary matrix to store (I - KH)
-    float I_KH[3][3];
-    for(int i=0; i<3; i++) {
-        for(int j=0; j<3; j++) {
-            float identity = (i == j) ? 1.0f : 0.0f;
-            I_KH[i][j] = identity - (K[i] * H[j]);
+    // P = (I - K * H) * P = P - K * (H * P), and H * P = PH^T since P is symmetric
+    for(int i=0; i<EKF_N; i++) {
+        for(int j=0; j<EKF_N; j++) {
+            ekf->P[i][j] -= K[i] * PH[j];
         }
     }
-
-    // Now P_new = I_KH * P_old
-    // We need a temp buffer for P to avoid overwriting while reading
-    float P_new[3][3];
-    for(int i=0; i<3; i++) {
-        for(int j=0; j<3; j++) {
-            P_new[i][j] = 0.0f;
-            for(int k=0; k<3; k++) {
-                P_new[i][j] += I_KH[i][k] * ekf->P[k][j];
-            }
-        }
-    }
-
-    // Copy back
-    for(int i=0; i<3; i++) {
-        for(int j=0; j<3; j++) {
-            ekf->P[i][j] = P_new[i][j];
+    // Keep P symmetric against float rounding
+    for(int i=0; i<EKF_N; i++) {
+        for(int j=i+1; j<EKF_N; j++) {
+            float avg = 0.5f * (ekf->P[i][j] + ekf->P[j][i]);
+            ekf->P[i][j] = avg;
+            ekf->P[j][i] = avg;
         }
     }
 }
@@ -449,13 +436,22 @@ static float estimate_initial_soc(const bms_model_t *model, float voltage_volts,
     return voltage_soc;
 }
 
+// Learned current bias from NVM. A corrupt or out-of-range value is ignored,
+// and the filter re-learns from zero at the next full charge.
+static float ekf_stored_bias(const bms_model_t *model) {
+    float bias = model->current_bias_A;
+    if (!(bias >= -EKF_BIAS_LIMIT_A && bias <= EKF_BIAS_LIMIT_A)) return 0.0f;
+    return bias;
+}
+
 static void ekf_init_from_model(bms_model_t *model, float voltage_volts) {
     if (model->ekf.initialized || voltage_volts <= 0.0f) return;
     float capacity_ah = (float)model->nameplate_capacity_mC / 3600000.0f;
     float initial_soc = estimate_initial_soc(model, voltage_volts, capacity_ah);
-    info_printf("EKF init: SOC %.2f%% (voltage %.3fV, stored %.4fAh)\n",
-                initial_soc * 100.0f, voltage_volts, model->charge_used_Ah);
-    ekf_init(&model->ekf, initial_soc, capacity_ah);
+    info_printf("EKF init: SOC %.2f%% (voltage %.3fV, stored %.4fAh, bias %.1fmA)\n",
+                initial_soc * 100.0f, voltage_volts, model->charge_used_Ah,
+                model->current_bias_A * 1000.0f);
+    ekf_init(&model->ekf, initial_soc, capacity_ah, ekf_stored_bias(model));
 }
 
 static void ekf_update_limits(bms_model_t *model) {
@@ -506,6 +502,7 @@ uint32_t ekf_tick(bms_model_t *model, float charge_Ah, int32_t current_mA, int32
     if (soc > 1.0f) soc = 1.0f;
 
     model->charge_used_Ah = model->ekf.x[0];
+    model->current_bias_A = model->ekf.x[3];
 
     return (uint32_t)(soc * 10000.0f); // Return SOC in 0.01% units
 }
@@ -521,7 +518,7 @@ void ekf_set_soc(bms_model_t *model, uint16_t soc) {
 
     if (!model->ekf.initialized) {
         float initial_capacity_ah = (float)model->nameplate_capacity_mC / 3600000.0f;
-        ekf_init(&model->ekf, soc_abs, initial_capacity_ah);
+        ekf_init(&model->ekf, soc_abs, initial_capacity_ah, ekf_stored_bias(model));
     } else {
         model->ekf.x[0] = (1.0f - soc_abs) * model->ekf.x[2];
     }
@@ -532,8 +529,20 @@ void ekf_set_soc(bms_model_t *model, uint16_t soc) {
                 soc, soc_rel * 100.0f, soc_abs * 100.0f, model->ekf.x[0]);
 }
 
+void ekf_reset_bias(bms_model_t *model) {
+    model->current_bias_A = 0.0f;
+    if (!model->ekf.initialized) return;
+
+    model->ekf.x[3] = 0.0f;
+    for (int i = 0; i < EKF_N; i++) {
+        model->ekf.P[i][3] = 0.0f;
+        model->ekf.P[3][i] = 0.0f;
+    }
+    model->ekf.P[3][3] = EKF_P0_BIAS;
+}
+
 void ekf_print_state(ekf_t *ekf) {
     float soc = ekf_get_soc(ekf);
-    debug_printf("EKF State: Ah_used=%.4f Ah, V_c1=%.4f V, Capacity=%.2f Ah, SOC=%.2f%%\n",
-           ekf->x[0], ekf->x[1], ekf->x[2], soc * 100.0f);
+    debug_printf("EKF State: Ah_used=%.4f Ah, V_c1=%.4f V, Capacity=%.2f Ah, Bias=%.1f mA, SOC=%.2f%%\n",
+           ekf->x[0], ekf->x[1], ekf->x[2], ekf->x[3] * 1000.0f, soc * 100.0f);
 }

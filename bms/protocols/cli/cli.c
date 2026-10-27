@@ -64,9 +64,18 @@ static void cli_handle_command(const char *cmd) {
             } else if (strcmp(name, "ekf_q2") == 0) {
                 model.ekf.Q[2] = value;
                 info_printf("Set ekf_q2 to %f\n", value);
+            } else if (strcmp(name, "ekf_q3") == 0) {
+                model.ekf.Q[3] = value;
+                info_printf("Set ekf_q3 to %f\n", value);
             } else if (strcmp(name, "ekf_r") == 0) {
                 model.ekf.R = value;
                 info_printf("Set ekf_r to %f\n", value);
+            } else if (strcmp(name, "ekf_min_slope") == 0) {
+                model.ekf.min_ocv_slope = value;
+                info_printf("Set ekf_min_slope to %f\n", value);
+            } else if (strcmp(name, "ekf_knee_slope") == 0) {
+                model.ekf.knee_ocv_slope = value;
+                info_printf("Set ekf_knee_slope to %f\n", value);
             } else if (strcmp(name, "ekf_r0") == 0) {
                 model.ekf.R0 = value;
                 info_printf("Set ekf_r0 to %f\n", value);
@@ -100,11 +109,11 @@ static void cli_handle_command(const char *cmd) {
             model.system_req = SYSTEM_REQUEST_STOP;
         }
     } else if(strcmp(cmd, "print_ekf_state") == 0) {
-        info_printf("EKF Constants: Q=[%e, %e, %e], R=%f, R0=%f, R1=%f, C1=%f\n",
-                     model.ekf.Q[0], model.ekf.Q[1], model.ekf.Q[2],
-                     model.ekf.R, model.ekf.R0, model.ekf.R1, model.ekf.C1);
-        info_printf("EKF State: Ah_used=%.4f Ah, V_c1=%.4f V, Capacity=%.2f Ah\n",
-           model.ekf.x[0], model.ekf.x[1], model.ekf.x[2]);
+        info_printf("EKF Constants: Q=[%e, %e, %e, %e], R=%f, min_slope=%f, knee_slope=%f, R0=%f, R1=%f, C1=%f\n",
+                     model.ekf.Q[0], model.ekf.Q[1], model.ekf.Q[2], model.ekf.Q[3],
+                     model.ekf.R, model.ekf.min_ocv_slope, model.ekf.knee_ocv_slope, model.ekf.R0, model.ekf.R1, model.ekf.C1);
+        info_printf("EKF State: Ah_used=%.4f Ah, V_c1=%.4f V, Capacity=%.2f Ah, Bias=%.1f mA\n",
+           model.ekf.x[0], model.ekf.x[1], model.ekf.x[2], model.ekf.x[3] * 1000.0f);
     } else if(strcmp(cmd, "adc") == 0) {
         // printf directly (not via logger) so the response is visible even
         // when the buffered logger is saturated by other errors

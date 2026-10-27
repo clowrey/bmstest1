@@ -11,14 +11,19 @@ typedef struct {
     // x[0] = Ah_used (Consumed Charge in Ah)
     // x[1] = V_c1 (Polarization Voltage in V)
     // x[2] = Capacity (Total Battery Capacity in Ah)
-    float x[3];
+    // x[3] = Current sensor bias in A (measured = true + bias). Only weakly
+    //        observable; it is learned mainly when the voltage pins the SoC at
+    //        the top of charge, from how far the coulomb count has drifted.
+    float x[4];
 
-    // --- Covariance Matrix P (3x3) ---
-    float P[3][3];
+    // --- Covariance Matrix P (4x4) ---
+    float P[4][4];
 
     // --- Tuning Parameters ---
-    float Q[3];    // Process Noise Variances (Diagonal)
+    float Q[4];    // Process Noise Variances (Diagonal)
     float R;       // Measurement Noise Variance
+    float min_ocv_slope; // Skip the voltage update where |dOCV/dSOC| (V per unit SOC) is below this...
+    float knee_ocv_slope; // ...unless the measured voltage puts us on a part of the curve this steep
     
     // --- Model Parameters ---
     float R0;      // Ohmic Resistance
@@ -35,16 +40,19 @@ typedef struct {
 } ekf_t;
 
 // Initialize the filter
-void ekf_init(ekf_t *ekf, float initial_soc, float initial_capacity);
+void ekf_init(ekf_t *ekf, float initial_soc, float initial_capacity, float initial_bias_A);
 
 // Run one iteration of the filter
-// current_amps: Positive = Discharge, Negative = Charge
+// charge_Ah, current_amps: as measured (including any sensor bias).
+// Positive = Charge, Negative = Discharge
 // voltage_measured: Terminal voltage
 void ekf_step(ekf_t *ekf, float charge_Ah, float current_amps, float voltage_measured);
 
 // Helper to get current SOC
 float ekf_get_soc(ekf_t *ekf);
 void ekf_set_soc(bms_model_t *model, uint16_t soc);
+// Forget the learned current bias, e.g. because the sensor offset was just recalibrated
+void ekf_reset_bias(bms_model_t *model);
 
 uint32_t ekf_tick(bms_model_t *model, float charge_Ah, int32_t current_mA, int32_t voltage_mV);
 

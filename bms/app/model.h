@@ -23,6 +23,7 @@ typedef struct {
     uint32_t nameplate_capacity_mC; // nameplate battery capacity in mC
     float charge_used_Ah; // charge used in Ah
     bool operating; // Whether BMS should resume operating if restarted
+    float current_bias_A; // current sensor bias learned by the SoC EKF
 } bms_model_persistent_fast_t;
 
 static const uint32_t BMS_MODEL_PERSISTENT_FAST_VERSION = 1;

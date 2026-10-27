@@ -127,6 +127,8 @@ bool calibrate_current_offset(bms_model_t *model, int32_t raw_offset) {
     if(raw_offset > MIN_CURRENT_OFFSET && raw_offset < MAX_CURRENT_OFFSET) {
         info_printf("Current calibration complete: offset=%" PRId32 "\n", raw_offset);
         model->current_offset = raw_offset;
+        // The SoC filter's learned bias was relative to the old offset
+        ekf_reset_bias(model);
         return true;
     } else {
         error_printf("Current calibration out of range: %" PRId32 "\n", raw_offset);
