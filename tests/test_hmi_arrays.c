@@ -38,8 +38,15 @@ static uint32_t get_uint32(const uint8_t *buf) {
     return (uint32_t)buf[0] | ((uint32_t)buf[1] << 8) | ((uint32_t)buf[2] << 16) | ((uint32_t)buf[3] << 24);
 }
 
-// Decode count delta coded values, returning the bytes consumed
-static size_t decode_int16_delta(const uint8_t *buf, size_t count, int16_t *out) {
+// Read count little-endian int16 elements
+static void decode_int16(const uint8_t *buf, size_t count, int16_t *out) {
+    for (size_t i = 0; i < count; i++) {
+        out[i] = (int16_t)get_uint16(&buf[i * 2]);
+    }
+}
+
+// Decode count values in the older delta coding, returning the bytes consumed
+static size_t decode_legacy_delta(const uint8_t *buf, size_t count, int16_t *out) {
     int16_t last = 0;
     size_t idx = 0;
     for (size_t i = 0; i < count; i++) {
@@ -100,11 +107,11 @@ static int read_int16_array(uint8_t array_id, int16_t *out, uint16_t expected_to
         response_t r = parse_response(buf, len);
         assert_int_equal(r.start, start);
         assert_int_equal(r.total, expected_total);
-        assert_int_equal(r.encoding, HMI_ARRAY_ENCODING_INT16_DELTA);
+        assert_int_equal(r.encoding, HMI_TYPE_INT16);
         assert_true(r.count > 0);
 
-        size_t used = decode_int16_delta(r.elements, r.count, &out[start]);
-        assert_int_equal(HMI_ARRAY_RESPONSE_HEADER_LEN + used, len);
+        decode_int16(r.elements, r.count, &out[start]);
+        assert_int_equal(HMI_ARRAY_RESPONSE_HEADER_LEN + 2 * r.count, len);
 
         start += r.count;
         pages++;
@@ -133,7 +140,7 @@ static size_t legacy_encode(uint8_t *buf, const int16_t *values, size_t count) {
 }
 
 // ============================================================================
-// Delta coding
+// Older delta coding (READ_CELL_VOLTAGES / READ_BALANCING_TIMES)
 // ============================================================================
 
 static void test_delta_round_trip(void **state) {
@@ -147,7 +154,7 @@ static void test_delta_round_trip(void **state) {
     assert_int_equal(encoded, n);
 
     int16_t out[sizeof(values) / sizeof(values[0])];
-    assert_int_equal(decode_int16_delta(buf, n, out), len);
+    assert_int_equal(decode_legacy_delta(buf, n, out), len);
     assert_memory_equal(out, values, sizeof(values));
 }
 
@@ -192,7 +199,7 @@ static void test_delta_large_jump_not_wrapped(void **state) {
     assert_int_equal(len, 4);
 
     int16_t out[2];
-    decode_int16_delta(buf, 2, out);
+    decode_legacy_delta(buf, 2, out);
     assert_memory_equal(out, values, sizeof(values));
 }
 
@@ -212,20 +219,25 @@ static void test_cell_voltages_header(void **state) {
     assert_int_equal(r.type, HMI_MSG_READ_ARRAY_RESPONSE);
     assert_int_equal(r.address, DEVICE_ADDRESS);
     assert_int_equal(r.array_id, HMI_ARRAY_CELL_VOLTAGES);
-    assert_int_equal(r.encoding, HMI_ARRAY_ENCODING_INT16_DELTA);
+    assert_int_equal(r.encoding, HMI_TYPE_INT16);
     assert_int_equal(r.start, 0);
     assert_int_equal(r.total, 120);
     assert_int_equal(r.count, 120);
     assert_int_equal(r.sample_millis, 123456);
-    // One absolute, then 119 zero deltas
-    assert_int_equal(len, HMI_ARRAY_RESPONSE_HEADER_LEN + 2 + 119);
+    // 120 cells fit one packet: 13 + 240 = 253 bytes
+    assert_int_equal(len, HMI_ARRAY_RESPONSE_HEADER_LEN + 2 * 120);
+    assert_true(len <= MAX_PAYLOAD);
+
+    int16_t out[120];
+    decode_int16(r.elements, 120, out);
+    assert_memory_equal(out, model.cell_voltages_mV, sizeof(out));
 }
 
-static void test_cell_voltages_worst_case_fits_one_packet(void **state) {
+static void test_cell_voltages_full_range(void **state) {
     (void) state;
-    // Alternating values never fit a delta, so every value takes two bytes:
-    // 120 of them still fit one packet with the header
-    for (int i = 0; i < 120; i++) model.cell_voltages_mV[i] = (i % 2) ? 4000 : 2000;
+    // Every int16 value survives, including -1 for an absent channel
+    const int16_t values[] = { -1, INT16_MIN, INT16_MAX, 0, 1, 16384, -16385, 3300 };
+    for (int i = 0; i < 120; i++) model.cell_voltages_mV[i] = values[i % 8];
     model.cell_voltages_millis = 1;
 
     int16_t out[120];
@@ -238,7 +250,7 @@ static void test_cell_voltages_worst_case_fits_one_packet(void **state) {
 static void test_cell_voltages_paged(void **state) {
     (void) state;
     // A smaller packet stands in for an array too big for one packet
-    for (int i = 0; i < 120; i++) model.cell_voltages_mV[i] = (i % 2) ? 4000 : 2000;
+    for (int i = 0; i < 120; i++) model.cell_voltages_mV[i] = (int16_t)(3000 + i);
     model.cell_voltages_mV[50] = -1;
     model.cell_voltages_millis = 1;
 
@@ -262,7 +274,7 @@ static void test_cell_voltages_from_middle(void **state) {
     assert_int_equal(r.start, 100);
     assert_int_equal(r.count, 20);
     int16_t out[20];
-    decode_int16_delta(r.elements, 20, out);
+    decode_int16(r.elements, 20, out);
     assert_memory_equal(out, &model.cell_voltages_mV[100], sizeof(out));
 }
 
@@ -310,8 +322,13 @@ static void test_unknown_array(void **state) {
 
 static void test_balancing_times_untimestamped(void **state) {
     (void) state;
-    // Balancing times have no sample time, so are sent straight away
+    // Balancing times have no sample time, so are sent straight away. They
+    // run up to INT16_MAX, beyond what the older delta coding can carry.
     for (int i = 0; i < 120; i++) model.balancing_sm.balance_time_remaining[i] = (int16_t)(i * 3);
+    model.balancing_sm.balance_time_remaining[10] = INT16_MAX;
+    model.balancing_sm.balance_time_remaining[11] = 0;
+    model.balancing_sm.balance_time_remaining[12] = 16384;
+    model.balancing_sm.balance_time_remaining[13] = 20000;
 
     int16_t out[120];
     read_int16_array(HMI_ARRAY_BALANCING_TIMES, out, 120, MAX_PAYLOAD);
@@ -372,7 +389,7 @@ static void test_raw_temps_uint16_paged_by_capacity(void **state) {
 
 int main(void) {
     const struct CMUnitTest tests[] = {
-        // Delta coding
+        // Older delta coding
         cmocka_unit_test_setup(test_delta_round_trip, setup),
         cmocka_unit_test_setup(test_delta_matches_legacy_encoder, setup),
         cmocka_unit_test_setup(test_delta_stops_at_capacity, setup),
@@ -380,7 +397,7 @@ int main(void) {
 
         // Responses
         cmocka_unit_test_setup(test_cell_voltages_header, setup),
-        cmocka_unit_test_setup(test_cell_voltages_worst_case_fits_one_packet, setup),
+        cmocka_unit_test_setup(test_cell_voltages_full_range, setup),
         cmocka_unit_test_setup(test_cell_voltages_paged, setup),
         cmocka_unit_test_setup(test_cell_voltages_from_middle, setup),
         cmocka_unit_test_setup(test_cell_voltages_not_read_yet, setup),

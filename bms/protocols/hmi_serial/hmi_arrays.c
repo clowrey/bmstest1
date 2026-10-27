@@ -18,7 +18,7 @@ static bool hmi_get_array(const bms_model_t *model, uint8_t array_id, hmi_array_
             *array = (hmi_array_t){
                 .values = model->cell_voltages_mV,
                 .total = sizeof(model->cell_voltages_mV) / sizeof(model->cell_voltages_mV[0]),
-                .encoding = HMI_ARRAY_ENCODING_INT16_DELTA,
+                .encoding = HMI_TYPE_INT16,
                 .sample_millis = model->cell_voltages_millis,
                 .timestamped = true,
             };
@@ -27,7 +27,7 @@ static bool hmi_get_array(const bms_model_t *model, uint8_t array_id, hmi_array_
             *array = (hmi_array_t){
                 .values = model->balancing_sm.balance_time_remaining,
                 .total = sizeof(model->balancing_sm.balance_time_remaining) / sizeof(model->balancing_sm.balance_time_remaining[0]),
-                .encoding = HMI_ARRAY_ENCODING_INT16_DELTA,
+                .encoding = HMI_TYPE_INT16,
             };
             return true;
         case HMI_ARRAY_MODULE_TEMPS:
@@ -105,6 +105,9 @@ static size_t hmi_encode_fixed_array(uint8_t *buf, size_t capacity, const hmi_ar
                 put_uint32(out, u);
                 break;
             }
+            case HMI_TYPE_INT16:
+                put_uint16(out, (uint16_t)((const int16_t *)array->values)[index]);
+                break;
             case HMI_TYPE_UINT16:
                 put_uint16(out, ((const uint16_t *)array->values)[index]);
                 break;
@@ -141,12 +144,7 @@ size_t hmi_build_read_array_response(uint8_t *buf, size_t capacity, uint8_t devi
         // The count is one byte
         if (remaining > 255) remaining = 255;
 
-        if (array.encoding == HMI_ARRAY_ENCODING_INT16_DELTA) {
-            idx += hmi_encode_int16_delta_array(&buf[idx], capacity - idx,
-                                                &((const int16_t *)array.values)[start], remaining, &count);
-        } else {
-            idx += hmi_encode_fixed_array(&buf[idx], capacity - idx, &array, start, remaining, &count);
-        }
+        idx += hmi_encode_fixed_array(&buf[idx], capacity - idx, &array, start, remaining, &count);
     }
     buf[count_idx] = (uint8_t)count;
 

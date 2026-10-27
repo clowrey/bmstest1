@@ -251,7 +251,7 @@ reads the rest by asking again from start index + element count. The format is:
 <message type byte = HMI_MSG_READ_ARRAY_RESPONSE (0x89)>
 <device address (1 byte)>
 <array id (1 byte)>
-<encoding (1 byte)> (HMI_ARRAY_ENCODING_*, or an HMI_TYPE_* for fixed size elements)
+<encoding (1 byte)> (element HMI_TYPE_*, 0 for an unknown array)
 <start index (2 bytes)>
 <total elements in the array (2 bytes)>
 <element count in packet (1 byte)>
@@ -262,10 +262,16 @@ An unknown array id gives a total of 0 and encoding HMI_ARRAY_ENCODING_NONE.
 An array with a sample time and no reading yet gives an element count of 0.
 Pages read at different sample times may come from different readings.
 
-Delta coded int16 elements start from zero in every packet: absolute values
-are two bytes, big-endian, with the MSB set (keeping the low 15 bits of the
-value); deltas from the previous value in -64 to +63 are one byte with the MSB
-clear.
+The encoding is the elements' HMI_TYPE_*, and each element is that type's
+usual little-endian value. The top bit (0x80) is reserved for a packed (for
+example delta coded) form of the type in future; an HMI should treat an
+encoding it doesn't know as an error rather than guess its size.
+
+READ_CELL_VOLTAGES_RESPONSE and READ_BALANCING_TIMES_RESPONSE use an older
+delta coding: absolute values are two bytes, big-endian, with the MSB set
+(keeping only the low 15 bits of the value); deltas from the previous value in
+-64 to +63 are one byte with the MSB clear. Balancing times of 16384 or more
+don't survive it.
 
 */
 
