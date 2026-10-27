@@ -319,13 +319,20 @@
 // two different ADCs which may be independently [un]calibrated)
 #define CONTACTORS_LINK_MISMATCH_THRESHOLD_MV 16000
 // Max drop across the F4 fuse/jumper while the contactors are closed. Exceeding
-// it for 1s (see ERR_FUSE_VOLTAGE_DROP_HIGH) means it has blown, and faults the BMS
+// it for FUSE_DROP_FAULT_DELAY_MS means it has blown, and faults the BMS
 #define FUSE_DROP_FAULT_THRESHOLD_MV 10000
 #else
 // Pos contactor has wider tolerances due to the way it is measured
 #define CONTACTORS_POS_CLOSED_VOLTAGE_THRESHOLD_MV 5000
 #define CONTACTORS_POS_OPEN_VOLTAGE_THRESHOLD_MV 10000
 #endif
+// How long the F4 fuse drop must stay high before the BMS faults (the
+// escalation time of ERR_FUSE_VOLTAGE_DROP_HIGH). It must be longer than the
+// time a reading counts as fresh, so that a single high reading followed by a
+// stalled ADC can't fault the BMS before the reading goes stale.
+#define FUSE_DROP_FAULT_DELAY_MS 2000
+_Static_assert(FUSE_DROP_FAULT_DELAY_MS > CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS,
+    "the fuse fault delay must be longer than the contactor voltage staleness limit");
 
 
 // Precharge thresholds

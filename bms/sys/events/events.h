@@ -28,6 +28,7 @@
 // should we ensure no two events have the same timestamp?
 
 #include "../../sys/time/time.h"
+#include "../../config/limits.h"
 
 #include <stdint.h>
 
@@ -131,7 +132,7 @@ typedef enum {
     X(RESTARTING, LEVEL_FATAL, 0)                               \
                                                                 \
     X(LINK_VOLTAGE_MISMATCH, LEVEL_WARNING, 0)                  \
-    X(FUSE_VOLTAGE_DROP_HIGH, LEVEL_CRITICAL, 1000)
+    X(FUSE_VOLTAGE_DROP_HIGH, LEVEL_CRITICAL, FUSE_DROP_FAULT_DELAY_MS)
 
 typedef enum {
 #define X(name, _1, _2) ERR_##name,

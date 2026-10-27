@@ -329,10 +329,10 @@ static void test_fuse_drop_sustained_is_fatal(void **state) {
     assert_int_equal(get_event_level(ERR_FUSE_VOLTAGE_DROP_HIGH), LEVEL_NONE);
 
     model.high_voltages.fuse_drop = 50.0f;
-    tick_closed(&model, 500);
+    tick_closed(&model, FUSE_DROP_FAULT_DELAY_MS - 200);
     assert_int_equal(get_event_level(ERR_FUSE_VOLTAGE_DROP_HIGH), LEVEL_CRITICAL);
 
-    tick_closed(&model, 600);
+    tick_closed(&model, 300);
     assert_int_equal(get_event_level(ERR_FUSE_VOLTAGE_DROP_HIGH), LEVEL_FATAL);
 
     // Stays fatal even once the drop goes away (until reset)
@@ -367,28 +367,29 @@ static void test_fuse_drop_without_current_is_fatal(void **state) {
     // A blown fuse can itself stop the current, so it must still be detected
     model.current_mA = 0;
     model.high_voltages.fuse_drop = 50.0f;
-    tick_closed(&model, 1100);
+    tick_closed(&model, FUSE_DROP_FAULT_DELAY_MS + 100);
     assert_int_equal(get_event_level(ERR_FUSE_VOLTAGE_DROP_HIGH), LEVEL_FATAL);
 }
 
-static void test_fuse_drop_cleared_when_reading_stale(void **state) {
+static void test_fuse_drop_frozen_reading_is_not_fatal(void **state) {
     (void) state;
     bms_model_t model = {0};
     closed_test_setup(&model);
     tick_closed(&model, 2500);
 
+    // A single high reading (e.g. a noise spike), after which ADC B stops
+    // updating, so the same reading stays in place
     model.high_voltages.fuse_drop = 50.0f;
-    tick_closed(&model, 500);
+    tick_closed(&model, 100);
     assert_int_equal(get_event_level(ERR_FUSE_VOLTAGE_DROP_HIGH), LEVEL_CRITICAL);
+    millis_t frozen_reading = model.high_voltages.fuse_drop_millis;
 
-    // Once the reading is too old the check can no longer be made, so the
-    // event must not keep escalating. (Until then, the last reading is still
-    // used.)
-    for(int i = 0; i < 20; i++) {
+    // The reading counts until it goes stale, which is sooner than the fault
+    // delay, and then the event clears rather than escalating
+    for(int i = 0; i < 30; i++) {
         expect_value(contactors_set_pos_pre_neg, pos, true);
         expect_value(contactors_set_pos_pre_neg, pre, false);
         expect_value(contactors_set_pos_pre_neg, neg, true);
-        millis_t last_fuse_reading = stored_millis - CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS;
         stored_millis += 100;
         stored_millis64 += 100;
         model.high_voltages.battery_millis = stored_millis;
@@ -396,10 +397,11 @@ static void test_fuse_drop_cleared_when_reading_stale(void **state) {
         model.high_voltages.pos_contactor_millis = stored_millis;
         model.high_voltages.neg_contactor_millis = stored_millis;
         model.high_voltages.link_millis = stored_millis;
-        model.high_voltages.fuse_drop_millis = last_fuse_reading;
+        model.high_voltages.fuse_drop_millis = frozen_reading;
         model.current_millis = stored_millis;
         contactor_sm_tick(&model);
         events_tick();
+        assert_int_not_equal(get_event_level(ERR_FUSE_VOLTAGE_DROP_HIGH), LEVEL_FATAL);
     }
     assert_int_equal(get_event_level(ERR_FUSE_VOLTAGE_DROP_HIGH), LEVEL_NONE);
 }
@@ -633,7 +635,7 @@ int main(void) {
         cmocka_unit_test(test_fuse_drop_sustained_is_fatal),
         cmocka_unit_test(test_fuse_drop_spikes_are_not_fatal),
         cmocka_unit_test(test_fuse_drop_without_current_is_fatal),
-        cmocka_unit_test(test_fuse_drop_cleared_when_reading_stale),
+        cmocka_unit_test(test_fuse_drop_frozen_reading_is_not_fatal),
         cmocka_unit_test(test_fuse_drop_cleared_when_contactors_open),
 #endif
         cmocka_unit_test(test_pos_weld_failure_detection),
