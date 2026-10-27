@@ -312,6 +312,27 @@ bool confirm_contactors_staying_closed(const bms_model_t *model) {
     return ret;
 }
 
+#if IS_BMS_BOARD(REV1)
+// Raise an event if the F4 fuse voltage drop is too high (ie, fuse blown).
+static void check_fuse(bms_model_t *model) {
+    contactors_sm_t *contactor_sm = &(model->contactor_sm);
+
+    bool can_check = contactor_sm->state == CONTACTORS_STATE_CLOSED
+        && state_timeout((sm_t*)contactor_sm, 2000)
+        && millis_recent_enough(model->high_voltages.fuse_drop_millis, CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS);
+
+    if(can_check) {
+        confirm(
+            fabsf(model->high_voltages.fuse_drop) <= (FUSE_DROP_FAULT_THRESHOLD_MV * 0.001f),
+            ERR_FUSE_VOLTAGE_DROP_HIGH,
+            (int32_t)(model->high_voltages.fuse_drop * 1000)
+        );
+    } else {
+        clear_bms_event(ERR_FUSE_VOLTAGE_DROP_HIGH);
+    }
+}
+#endif
+
 void contactor_sm_tick(bms_model_t *model) {
     contactors_sm_t *contactor_sm = &(model->contactor_sm);
 
@@ -658,4 +679,8 @@ void contactor_sm_tick(bms_model_t *model) {
             state_reset((sm_t*)contactor_sm);
             break;
     }
+
+#if IS_BMS_BOARD(REV1)
+    check_fuse(model);
+#endif
 }

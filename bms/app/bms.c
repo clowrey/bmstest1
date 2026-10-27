@@ -82,6 +82,14 @@ void read_inputs(bms_model_t *model) {
     model->high_voltages.link_millis = ads1115_get_sample_millis(7);
     model->high_voltages.link = -ads1115_float_sample(7, link_voltage_mul);
     model->high_voltages.link_deviation = ads1115_float_deviation(7, link_voltage_mul);
+
+    // Drop across the F4 fuse / drive-unit jumper (channel 8, OutPos - LinkPos)
+    // Not calibrated: a blown fuse reads the whole link voltage against ~0V when
+    // intact, so the default multiplier is plenty to tell them apart
+    float fuse_drop_mul = ADS1115_DEFAULT_MUL;
+    model->high_voltages.fuse_drop_millis = ads1115_get_sample_millis(8);
+    model->high_voltages.fuse_drop = ads1115_float_sample(8, fuse_drop_mul);
+    model->high_voltages.fuse_drop_deviation = ads1115_float_deviation(8, fuse_drop_mul);
 #else
     // Positive contactor voltage has to be derived from the difference between (battery+
     // to output-) and (output+ to output-), since we can't sample relative to battery+.
@@ -285,9 +293,11 @@ void bms_tick() {
             model.high_voltages.pos_contactor_deviation
         );
 #if IS_BMS_BOARD(REV1)
-        debug_printf("Link: %6.3fV (%3.3f)\n",
+        debug_printf("Link: %6.3fV (%3.3f) | Fuse: %6.3fV (%3.3f)\n",
             model.high_voltages.link,
-            model.high_voltages.link_deviation
+            model.high_voltages.link_deviation,
+            model.high_voltages.fuse_drop,
+            model.high_voltages.fuse_drop_deviation
         );
 #endif
         int64_t charge_mC = raw_charge_to_mC(model.charge_raw);

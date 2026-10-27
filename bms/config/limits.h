@@ -318,6 +318,9 @@
 // Max discrepancy between battery and link voltage while closed (measured by
 // two different ADCs which may be independently [un]calibrated)
 #define CONTACTORS_LINK_MISMATCH_THRESHOLD_MV 16000
+// Max drop across the F4 fuse/jumper while the contactors are closed. Exceeding
+// it for 1s (see ERR_FUSE_VOLTAGE_DROP_HIGH) means it has blown, and faults the BMS
+#define FUSE_DROP_FAULT_THRESHOLD_MV 10000
 #else
 // Pos contactor has wider tolerances due to the way it is measured
 #define CONTACTORS_POS_CLOSED_VOLTAGE_THRESHOLD_MV 5000

@@ -108,6 +108,10 @@ typedef struct high_voltages {
     float link;
     float link_deviation;
     millis_t link_millis;
+    // Voltage drop across the F4 fuse / drive-unit jumper (OutPos - LinkPos)
+    float fuse_drop;
+    float fuse_drop_deviation;
+    millis_t fuse_drop_millis;
 } high_voltages_t;
 
 typedef struct inverter_outputs {

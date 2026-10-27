@@ -130,7 +130,8 @@ typedef enum {
     X(LOOP_OVERRUN, LEVEL_WARNING, 0)                           \
     X(RESTARTING, LEVEL_FATAL, 0)                               \
                                                                 \
-    X(LINK_VOLTAGE_MISMATCH, LEVEL_WARNING, 0)
+    X(LINK_VOLTAGE_MISMATCH, LEVEL_WARNING, 0)                  \
+    X(FUSE_VOLTAGE_DROP_HIGH, LEVEL_CRITICAL, 1000)
 
 typedef enum {
 #define X(name, _1, _2) ERR_##name,

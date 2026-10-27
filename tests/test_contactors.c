@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "app/model.h"
 #include "app/state_machines/contactors.h"
@@ -54,6 +55,7 @@ void tick_sm(bms_model_t *model, uint32_t ms) {
     model->high_voltages.neg_contactor_millis = stored_millis;
 #if IS_BMS_BOARD(REV1)
     model->high_voltages.link_millis = stored_millis;
+    model->high_voltages.fuse_drop_millis = stored_millis;
 #endif
     model->current_millis = stored_millis;
 
@@ -250,6 +252,144 @@ static void test_precharge_failure_link_voltage(void **state) {
 
     assert_int_equal(get_event_count(ERR_CONTACTOR_PRECHARGE_VOLTAGE_TOO_HIGH), count_before + 1);
     assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_PRECHARGE_FAILED);
+}
+#endif
+
+#if IS_BMS_BOARD(REV1)
+// Fuse drop checks. Each starts with the contactors closed and settled, with
+// healthy readings.
+
+static void fuse_test_setup(bms_model_t *model) {
+    // Fatal events can't be cleared, so reset this one between tests
+    memset(&bms_event_slots[ERR_FUSE_VOLTAGE_DROP_HIGH], 0, sizeof(bms_event_slot_t));
+
+    model->contactor_sm.state = CONTACTORS_STATE_CLOSED;
+    model->contactor_sm.last_transition_time = stored_millis64;
+    model->high_voltages.battery = 400.0f;
+    model->high_voltages.output = 400.0f;
+    model->high_voltages.link = 400.0f;
+    model->high_voltages.pos_contactor = 0.0f;
+    model->high_voltages.neg_contactor = 0.0f;
+    model->high_voltages.fuse_drop = 0.0f;
+    model->current_mA = 50000;
+
+    // Bring the event escalation timer up to date
+    events_tick();
+}
+
+// Tick in the closed state for ms, in 100ms steps
+static void tick_closed(bms_model_t *model, uint32_t ms) {
+    for(uint32_t t = 0; t < ms; t += 100) {
+        expect_value(contactors_set_pos_pre_neg, pos, true);
+        expect_value(contactors_set_pos_pre_neg, pre, false);
+        expect_value(contactors_set_pos_pre_neg, neg, true);
+        tick_sm(model, 100);
+        events_tick();
+    }
+}
+
+static void test_fuse_drop_sustained_is_fatal(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+    fuse_test_setup(&model);
+    tick_closed(&model, 2500);
+    assert_int_equal(get_event_level(ERR_FUSE_VOLTAGE_DROP_HIGH), LEVEL_NONE);
+
+    model.high_voltages.fuse_drop = 50.0f;
+    tick_closed(&model, 500);
+    assert_int_equal(get_event_level(ERR_FUSE_VOLTAGE_DROP_HIGH), LEVEL_CRITICAL);
+
+    tick_closed(&model, 600);
+    assert_int_equal(get_event_level(ERR_FUSE_VOLTAGE_DROP_HIGH), LEVEL_FATAL);
+
+    // Stays fatal even once the drop goes away (until reset)
+    model.high_voltages.fuse_drop = 0.0f;
+    tick_closed(&model, 500);
+    assert_int_equal(get_event_level(ERR_FUSE_VOLTAGE_DROP_HIGH), LEVEL_FATAL);
+}
+
+static void test_fuse_drop_spikes_are_not_fatal(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+    fuse_test_setup(&model);
+    tick_closed(&model, 2500);
+
+    // Repeated brief spikes, with as long again between them
+    for(int i = 0; i < 10; i++) {
+        model.high_voltages.fuse_drop = 50.0f;
+        tick_closed(&model, 500);
+        assert_int_equal(get_event_level(ERR_FUSE_VOLTAGE_DROP_HIGH), LEVEL_CRITICAL);
+        model.high_voltages.fuse_drop = 0.0f;
+        tick_closed(&model, 500);
+        assert_int_equal(get_event_level(ERR_FUSE_VOLTAGE_DROP_HIGH), LEVEL_NONE);
+    }
+}
+
+static void test_fuse_drop_without_current_is_fatal(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+    fuse_test_setup(&model);
+    tick_closed(&model, 2500);
+
+    // A blown fuse can itself stop the current, so it must still be detected
+    model.current_mA = 0;
+    model.high_voltages.fuse_drop = 50.0f;
+    tick_closed(&model, 1100);
+    assert_int_equal(get_event_level(ERR_FUSE_VOLTAGE_DROP_HIGH), LEVEL_FATAL);
+}
+
+static void test_fuse_drop_cleared_when_reading_stale(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+    fuse_test_setup(&model);
+    tick_closed(&model, 2500);
+
+    model.high_voltages.fuse_drop = 50.0f;
+    tick_closed(&model, 500);
+    assert_int_equal(get_event_level(ERR_FUSE_VOLTAGE_DROP_HIGH), LEVEL_CRITICAL);
+
+    // Once the reading is too old the check can no longer be made, so the
+    // event must not keep escalating. (Until then, the last reading is still
+    // used.)
+    for(int i = 0; i < 20; i++) {
+        expect_value(contactors_set_pos_pre_neg, pos, true);
+        expect_value(contactors_set_pos_pre_neg, pre, false);
+        expect_value(contactors_set_pos_pre_neg, neg, true);
+        millis_t last_fuse_reading = stored_millis - CONTACTOR_VOLTAGE_STALE_THRESHOLD_MS;
+        stored_millis += 100;
+        stored_millis64 += 100;
+        model.high_voltages.battery_millis = stored_millis;
+        model.high_voltages.output_millis = stored_millis;
+        model.high_voltages.pos_contactor_millis = stored_millis;
+        model.high_voltages.neg_contactor_millis = stored_millis;
+        model.high_voltages.link_millis = stored_millis;
+        model.high_voltages.fuse_drop_millis = last_fuse_reading;
+        model.current_millis = stored_millis;
+        contactor_sm_tick(&model);
+        events_tick();
+    }
+    assert_int_equal(get_event_level(ERR_FUSE_VOLTAGE_DROP_HIGH), LEVEL_NONE);
+}
+
+static void test_fuse_drop_cleared_when_contactors_open(void **state) {
+    (void) state;
+    bms_model_t model = {0};
+    fuse_test_setup(&model);
+    tick_closed(&model, 2500);
+
+    model.high_voltages.fuse_drop = 50.0f;
+    tick_closed(&model, 500);
+    assert_int_equal(get_event_level(ERR_FUSE_VOLTAGE_DROP_HIGH), LEVEL_CRITICAL);
+
+    model.contactor_sm.state = CONTACTORS_STATE_OPEN;
+    for(int i = 0; i < 20; i++) {
+        expect_value(contactors_set_pos_pre_neg, pos, false);
+        expect_value(contactors_set_pos_pre_neg, pre, false);
+        expect_value(contactors_set_pos_pre_neg, neg, false);
+        tick_sm(&model, 100);
+        events_tick();
+    }
+    assert_int_equal(get_event_level(ERR_FUSE_VOLTAGE_DROP_HIGH), LEVEL_NONE);
 }
 #endif
 
@@ -455,6 +595,11 @@ int main(void) {
         cmocka_unit_test(test_precharge_failure_timeout),
 #if IS_BMS_BOARD(REV1)
         cmocka_unit_test(test_precharge_failure_link_voltage),
+        cmocka_unit_test(test_fuse_drop_sustained_is_fatal),
+        cmocka_unit_test(test_fuse_drop_spikes_are_not_fatal),
+        cmocka_unit_test(test_fuse_drop_without_current_is_fatal),
+        cmocka_unit_test(test_fuse_drop_cleared_when_reading_stale),
+        cmocka_unit_test(test_fuse_drop_cleared_when_contactors_open),
 #endif
         cmocka_unit_test(test_pos_weld_failure_detection),
         cmocka_unit_test(test_open_request_from_closed),
