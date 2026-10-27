@@ -2,9 +2,15 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
+
+#include "pico/stdlib.h"
 
 // Mock i2c types for testing
 typedef struct i2c_inst i2c_inst_t;
+
+#define i2c0 ((i2c_inst_t *)0x1000)
+#define i2c1 ((i2c_inst_t *)0x2000)
 
 // Mock i2c functions
 static inline int i2c_write_blocking(i2c_inst_t *i2c, uint8_t addr, const uint8_t *src, size_t len, bool nostop) {

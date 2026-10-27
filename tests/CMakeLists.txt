@@ -178,6 +178,20 @@ target_include_directories(test_calibration_sm PRIVATE
 )
 add_test(NAME test_calibration_sm COMMAND ${MEMORY_CHECK} test_calibration_sm)
 
+# ADS1115 scan driver, against fake I2C and timer drivers
+add_executable(test_ads1115
+    test_ads1115.c
+    ../bms/drivers/sensors/ads1115.c
+    ../bms/lib/sampler.c
+)
+target_link_libraries(test_ads1115 PRIVATE cmocka)
+target_include_directories(test_ads1115 PRIVATE
+    ${cmocka_SOURCE_DIR}/include
+    include
+    ../bms
+)
+add_test(NAME test_ads1115 COMMAND ${MEMORY_CHECK} test_ads1115)
+
 add_executable(test_sampler
     test_sampler.c
     ../bms/lib/sampler.c

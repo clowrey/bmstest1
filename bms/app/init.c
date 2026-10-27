@@ -21,7 +21,6 @@
 #include <math.h>
 
 ina228_t ina228_dev = {0};
-ads1115_t ads1115_dev = {0};
 
 static struct repeating_timer logging_timer;
 

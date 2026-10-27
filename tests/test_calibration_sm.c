@@ -30,24 +30,21 @@ void logging_printf(log_level_t level, const char *format, ...) {
 // Fake drivers
 // ============================================================================
 
-ads1115_t ads1115_dev;
 ina228_t ina228_dev;
 
 static bool adc_finished;
-static int32_t adc_calibration[6];
+static int32_t adc_calibration[ADS1115_CHANNEL_COUNT];
 
-void ads1115_start_calibration(ads1115_t *dev, uint16_t num_samples) {
-    (void)dev; (void)num_samples;
+void ads1115_start_calibration(uint16_t num_samples) {
+    (void)num_samples;
     adc_finished = false;
 }
 
-bool ads1115_calibration_finished(ads1115_t *dev) {
-    (void)dev;
+bool ads1115_calibration_finished(void) {
     return adc_finished;
 }
 
-int32_t ads1115_get_calibration(ads1115_t *dev, int channel) {
-    (void)dev;
+int32_t ads1115_get_calibration(int channel) {
     return adc_calibration[channel];
 }
 
