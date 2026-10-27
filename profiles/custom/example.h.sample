@@ -1,0 +1,9 @@
+#pragma once
+
+// Example custom profile. Copy this to a new .h file in this directory (e.g.
+// my_pack.h) and build with -DBMS_PROFILE=my_pack. See ../README.md.
+
+#include "builtin/lfp1.h"
+
+#undef  NAMEPLATE_CAPACITY_AH
+#define NAMEPLATE_CAPACITY_AH 155

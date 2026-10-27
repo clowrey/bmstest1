@@ -26,6 +26,8 @@ pico_sdk_init()
 
 include_directories(bms vendor/can2040/src)
 
+include(profiles/profiles.cmake)
+
 add_executable(bms
     bms/app/bms.c
     bms/app/hardware_checks.c
@@ -69,6 +71,7 @@ add_executable(bms
     bms/app/state_machines/contactors.c
     bms/app/state_machines/system.c
     bms/lib/sampler.c
+    bms/config/profile_check.c
     vendor/can2040/src/can2040.c
     vendor/littlefs/lfs.c
     vendor/littlefs/lfs_util.c
@@ -86,9 +89,8 @@ pico_generate_pio_header(bms ${CMAKE_CURRENT_LIST_DIR}/bms/drivers/isospi/isosno
 target_compile_definitions(bms PRIVATE PICO_CXX_DISABLE_ALLOCATION_OVERRIDES=1)
 set_target_properties(bms PROPERTIES LINKER_LANGUAGE C)
 
-if(BMS_PROFILE)
-    add_compile_definitions(BMS_PROFILE=${BMS_PROFILE})
-endif()
+set_source_files_properties(bms/config/profile_check.c PROPERTIES COMPILE_OPTIONS -pedantic-errors)
+pico_set_program_description(bms "Pack profile: ${BMS_PROFILE}")
 
 if(BMS_BOARD)
     add_compile_definitions(BMS_BOARD=${BMS_BOARD})

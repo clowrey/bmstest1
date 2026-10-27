@@ -127,6 +127,7 @@ static void init_model() {
         model.system_req = SYSTEM_REQUEST_RUN;
     }
 
+    info_printf("Pack profile: %s\n", BMS_PROFILE_NAME);
     model.nameplate_capacity_mC = NAMEPLATE_CAPACITY_AH * 3600 * 1000; // in mC
 
     model.current_filtered_mA = NAN;

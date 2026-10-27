@@ -1,53 +1,15 @@
 #pragma once
 
-#define LFP 1
-#define NMC 2
-//#define CHEMISTRY NMC
+// We include the relevant pack profile header, which defines pack-specific
+// constants and settings (see profiles/README.md).
 
-#define BMS_DESK 1
-#define BMS_BLUETESLA 2
-#define BMS_LFP1 3
-
-#ifndef BMS_PROFILE
-#define BMS_PROFILE BMS_BLUETESLA
+#ifndef BMS_PROFILE_HEADER
+#error "BMS_PROFILE_HEADER is not set (configure with -DBMS_PROFILE=<name>)"
 #endif
+#include BMS_PROFILE_HEADER
+#include "validate.h"
 
-
-#if BMS_PROFILE == BMS_DESK
-#define CHEMISTRY NMC
-#define CELL_PRESENCE_MASK { 0x7FFF, 0, 0, 0 }
-#define NUM_CELLS 15
-#define NUM_MODULE_VOLTAGES 1
-#define NUM_MODULE_TEMPS 1
-#define NAMEPLATE_CAPACITY_AH 1
-#define INA228_SHUNT_CAL 3088
-    
-#elif BMS_PROFILE == BMS_BLUETESLA
-    // for the 96-cell NMC pack:
-#define CHEMISTRY NMC
-#define CELL_PRESENCE_MASK { 0xc7ff8f7f, 0xf3ffe3ff, 0xfcfff8ff, 0x1ffe3d }
-#define NUM_CELLS 96
-#define NUM_MODULE_VOLTAGES 8
-#define NUM_MODULE_TEMPS 8
-#define NAMEPLATE_CAPACITY_AH 147
-#define INA228_SHUNT_CAL 332
-#define INVERTER_MODEL_STRING "CellKeeper Tesla NMC 1\x00\x00\x00\x00\x00";
-
-#elif BMS_PROFILE == BMS_LFP1
-
-#define CHEMISTRY LFP
-#define CELL_PRESENCE_MASK { 0x87ffbfff, 0xffffefff, 0xf9fffbff, 0x3ffeff }
-#define NUM_CELLS 108
-#define NUM_MODULE_VOLTAGES 8
-#define NUM_MODULE_TEMPS 8
-#define NAMEPLATE_CAPACITY_AH 163
-#define INA228_SHUNT_CAL 332
-#define PRECHARGE_ON_NEGATIVE 1
-#define INVERTER_MODEL_STRING "CellKeeper Tesla LFP 1\x00\x00\x00\x00\x00";
-
-#else
-    #error "Unsupported BMS_PROFILE"
-#endif
+#define CELL_PRESENCE_MASK { CELL_PRESENCE_WORDS }
 
 
 // PCB revision selection (orthogonal to the pack profile above)
@@ -84,111 +46,6 @@
 #endif
 
 
-// TODO - derate voltage limits based on temperature
-
-#if CHEMISTRY == LFP
-    // VOLTAGE
-
-    // Hard voltage limits, beyond which the battery will be cut off
-    #define CELL_VOLTAGE_HARD_MIN_mV 2500
-    #define CELL_VOLTAGE_HARD_MAX_mV 3650
-    // Soft voltage limits, beyond which the battery will only allow a low-current
-    // restoration charge/discharge
-    #define DEFAULT_CELL_VOLTAGE_SOFT_MIN_mV 2800
-    #define DEFAULT_CELL_VOLTAGE_SOFT_MAX_mV 3400
-    // Working voltage range, which defines 0% and 100% SoC. This may be
-    // overridden by user settings.
-    #define DEFAULT_CELL_VOLTAGE_WORKING_MIN_mV 2900
-    #define DEFAULT_CELL_VOLTAGE_WORKING_MAX_mV 3350
-
-    #define CELL_VOLTAGE_DELTA_THRESHOLD_UP_mV 100
-    #define CELL_VOLTAGE_DELTA_THRESHOLD_DOWN_mV 50
-    #define CELL_VOLTAGE_DELTA_CURRENT_LIMIT_dA 10
-
-    #define CHARGE_MAX_CURRENT_dA 500 // 50A
-    #define DISCHARGE_MAX_CURRENT_dA 500 // 50A
-
-    // TEMPERATURE
-
-    // Temperatures at which charge power limit falls to zero
-    #define MAX_CHARGE_TEMPERATURE_LIMIT 50.0f
-    #define MIN_CHARGE_TEMPERATURE_LIMIT  0.0f
-    // Charge current-per-temp linear derating (near min and max limits)
-    #define CHARGE_TEMPERATURE_DERATE_A_PER_C 2.0f
-
-    // Temperatures at which discharge power limit falls to zero
-    #define MAX_DISCHARGE_TEMPERATURE_LIMIT  55.0f
-    #define MIN_DISCHARGE_TEMPERATURE_LIMIT -15.0f
-    // Discharge current-per-temp linear derating (near min and max limits)
-    #define DISCHARGE_TEMPERATURE_DERATE_A_PER_C 2.0f
-
-    // Hard temperature limits, beyond which the battery will be cut off
-    #define TEMPERATURE_HARD_MAX 60.0f
-    #define TEMPERATURE_HARD_MIN -20.0f
-    // Soft temperature limits, beyond which the battery will warn
-    #define TEMPERATURE_SOFT_MAX 55.0f
-    #define TEMPERATURE_SOFT_MIN -15.0f
-
-#elif CHEMISTRY == NMC
-    // Hard voltage limits, beyond which the battery will be cut off
-    #define CELL_VOLTAGE_HARD_MIN_mV 2700
-    #define CELL_VOLTAGE_HARD_MAX_mV 4250
-    // Soft voltage limits, beyond which the battery will only allow a low-current
-    // restoration charge/discharge.
-    #define DEFAULT_CELL_VOLTAGE_SOFT_MIN_mV 3000
-    #define DEFAULT_CELL_VOLTAGE_SOFT_MAX_mV 4200
-    // Working voltage range, which defines 0% and 100% SoC. This may be
-    // overridden by user settings.
-    #define DEFAULT_CELL_VOLTAGE_WORKING_MIN_mV 3300
-    #define DEFAULT_CELL_VOLTAGE_WORKING_MAX_mV 4050
-
-    #define CELL_VOLTAGE_DELTA_THRESHOLD_UP_mV 100
-    #define CELL_VOLTAGE_DELTA_THRESHOLD_DOWN_mV 50
-    #define CELL_VOLTAGE_DELTA_CURRENT_LIMIT_dA 10
-
-    // Absolute maximum current limits
-    #define CHARGE_MAX_CURRENT_dA 300 // 30A
-    #define DISCHARGE_MAX_CURRENT_dA 300 // 30A
-
-    #define CHARGE_CELL_VOLTAGE_DERATE_dA_PER_SoC 40 // in 0.1A per percent SoC
-    #define DISCHARGE_CELL_VOLTAGE_DERATE_dA_PER_SoC 20 // in 0.1A per percent SoC
-
-    // Temperatures by which charge power limit falls to zero
-    #define MAX_CHARGE_TEMPERATURE_LIMIT  50.0f
-    #define MIN_CHARGE_TEMPERATURE_LIMIT   0.0f
-    // Charge current-per-temp linear derating (near min and max limits)
-    #define CHARGE_TEMPERATURE_DERATE_A_PER_C 2.0f
-
-    // Temperatures by which discharge power limit falls to zero
-    #define MAX_DISCHARGE_TEMPERATURE_LIMIT  55.0f
-    #define MIN_DISCHARGE_TEMPERATURE_LIMIT  -5.0f
-    // Discharge current-per-temp linear derating (near min and max limits)
-    #define DISCHARGE_TEMPERATURE_DERATE_A_PER_C 2.0f
-
-    #define TEMPERATURE_HARD_MAX  60.0f
-    #define TEMPERATURE_HARD_MIN -10.0f
-
-    #define TEMPERATURE_SOFT_MAX  50.0f
-    #define TEMPERATURE_SOFT_MIN   0.0f
-#else
-    #error "Unsupported CHEMISTRY"
-#endif
-
-// Cell presence bitmask (1 = present, 0 = not present, 32-bit groups, LSB = cell 0)
-// #define CELL_PRESENCE_MASK { 0x7FFF, 0, 0, 0 }
-// #define NUM_CELLS 15
-// #define NUM_MODULE_VOLTAGES 1
-// #define NUM_MODULE_TEMPS 1
-
-
-// for the 108-cell LFP pack:
-// #define CELL_PRESENCE_MASK { 0x87ffbfff, 0xffffefff, 0xf9fffbff, 0x3ffeff }
-// #define NUM_CELLS 108
-// #define NUM_MODULE_VOLTAGES 8
-// #define NUM_MODULE_TEMPS 8
-// #define NAMEPLATE_CAPACITY_AH 163
-
-
 // A deliberate overestimate of internal resistance of an individual cell, for working current limits
 #define WORKING_LIMIT_INTERNAL_RESISTANCE_uR 50
 
@@ -206,22 +63,6 @@
 // (which should be calibrated away at zero current). If in slow mode there
 // could be a considerable time delay between cellvoltage and pack samples.
 #define VOLTAGE_MISMATCH_THRESHOLD_mV 20000
-
-#define DEFAULT_MINIMUM_BALANCING_VOLTAGE_mV 3770
-//3830
-
-// Is voltage derating of current limits feasible, given the steepness of the
-// voltage curves at top of charge? Probably not?
-
-
-
-// So we stop at 4200mV. 90% SoC is about 4150mV, so we have about 50mV of
-//
-// TODO - do voltage-based-SoC-linearisation at the extremes (should be
-// reasonably accurate) and limit by SoC
-
-#define CHARGE_VOLTAGE_DERATE_dA_PER_mV 5
-#define DISCHARGE_VOLTAGE_DERATE_dA_PER_mV 5
 
 // Current limits to apply in the soft-limit region
 #define OVERCHARGE_DISCHARGE_CURRENT_LIMIT_dA 50 // in 0.1A units

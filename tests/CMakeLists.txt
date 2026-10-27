@@ -3,6 +3,8 @@ enable_testing()
 
 project(UnitTests LANGUAGES C)
 
+include(../profiles/profiles.cmake)
+
 include(FetchContent)
 
 FetchContent_Declare(
