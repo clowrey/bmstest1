@@ -142,9 +142,12 @@ static float nmc_ocv_curve[101] = {
 
     // From replaying ~10 days of logged pack data through this filter (scripts
     // in rpipico/kalman, next to this repo).
-    #define EKF_P0_AH   100.0f  // (10Ah)^2: the starting SOC comes from voltage or NVM, and
-                                // on the plateau voltage gives little. Too small and the
-                                // first full charge blames the starting error on the bias.
+    #define EKF_P0_AH   100.0f  // (10Ah)^2 when starting from the SOC stored in NVM. Too
+                                // small and the first knee blames the starting error on the bias.
+    #define EKF_P0_AH_VOLTAGE 900.0f // (30Ah)^2 when starting from a voltage lookup instead
+                                // (e.g. a reboot with a stale stored SOC): on the plateau that
+                                // can be 15-20% out. Replaying the car's reboots, this let the
+                                // next knee correct the SOC rather than the bias.
     #define EKF_P0_VC1  1e-4f
     #define EKF_P0_CAP  0.0f    // Capacity isn't observable without reaching both ends; hold it
     #define EKF_P0_BIAS 1e-2f   // (100mA)^2
@@ -163,6 +166,7 @@ static float nmc_ocv_curve[101] = {
     // keeps the voltage informative everywhere; there's no logged data to
     // retune against yet.
     #define EKF_P0_AH   1e-3f
+    #define EKF_P0_AH_VOLTAGE EKF_P0_AH
     #define EKF_P0_VC1  1e-2f
     #define EKF_P0_CAP  1.0f
     #define EKF_P0_BIAS 0.0f
@@ -420,8 +424,11 @@ double ekf_get_soc(ekf_t *ekf) {
     return 1.0 - (ah / cap);
 }
 
-static float estimate_initial_soc(const bms_model_t *model, float voltage_volts, float capacity_ah) {
+// Sets *from_voltage when the result is the voltage lookup rather than the stored SOC
+static float estimate_initial_soc(const bms_model_t *model, float voltage_volts, float capacity_ah,
+                                  bool *from_voltage) {
     float voltage_soc = ocv_to_soc(voltage_volts);
+    *from_voltage = true;
     if (capacity_ah <= 0.0f) return voltage_soc;
     if (model->charge_used_Ah >= 0.0f && model->charge_used_Ah <= capacity_ah) {
         float stored_soc = 1.0f - (model->charge_used_Ah / capacity_ah);
@@ -430,8 +437,10 @@ static float estimate_initial_soc(const bms_model_t *model, float voltage_volts,
         // overrides a fresh OCV reading after a reboot.
         // No != 0 guard needed: zero Ah used is valid at 100% SoC, and the tolerance
         // already rejects an uninitialized zero (stored=100%, voltage≈50% → 0.5 diff).
-        if (fabsf(stored_soc - voltage_soc) < 0.1f)
+        if (fabsf(stored_soc - voltage_soc) < 0.1f) {
+            *from_voltage = false;
             return stored_soc;
+        }
     }
     return voltage_soc;
 }
@@ -447,11 +456,13 @@ static float ekf_stored_bias(const bms_model_t *model) {
 static void ekf_init_from_model(bms_model_t *model, float voltage_volts) {
     if (model->ekf.initialized || voltage_volts <= 0.0f) return;
     float capacity_ah = (float)model->nameplate_capacity_mC / 3600000.0f;
-    float initial_soc = estimate_initial_soc(model, voltage_volts, capacity_ah);
-    info_printf("EKF init: SOC %.2f%% (voltage %.3fV, stored %.4fAh, bias %.1fmA)\n",
-                initial_soc * 100.0f, voltage_volts, model->charge_used_Ah,
-                model->current_bias_A * 1000.0f);
+    bool from_voltage;
+    float initial_soc = estimate_initial_soc(model, voltage_volts, capacity_ah, &from_voltage);
+    info_printf("EKF init: SOC %.2f%% from %s (voltage %.3fV, stored %.4fAh, bias %.1fmA)\n",
+                initial_soc * 100.0f, from_voltage ? "voltage" : "NVM", voltage_volts,
+                model->charge_used_Ah, model->current_bias_A * 1000.0f);
     ekf_init(&model->ekf, initial_soc, capacity_ah, ekf_stored_bias(model));
+    if (from_voltage) model->ekf.P[0][0] = EKF_P0_AH_VOLTAGE;
 }
 
 static void ekf_update_limits(bms_model_t *model) {
