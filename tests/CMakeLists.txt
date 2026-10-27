@@ -163,6 +163,21 @@ target_include_directories(test_calibration PRIVATE
 )
 add_test(NAME test_calibration COMMAND ${MEMORY_CHECK} test_calibration)
 
+# Calibration sequences, against fake ADC and current sensor drivers
+add_executable(test_calibration_sm
+    test_calibration_sm.c
+    ../bms/app/calibration/calibration.c
+    ../bms/app/calibration/common.c
+    ../bms/app/state_machines/base.c
+)
+target_link_libraries(test_calibration_sm PRIVATE cmocka m)
+target_include_directories(test_calibration_sm PRIVATE
+    ${cmocka_SOURCE_DIR}/include
+    include
+    ../bms
+)
+add_test(NAME test_calibration_sm COMMAND ${MEMORY_CHECK} test_calibration_sm)
+
 add_executable(test_sampler
     test_sampler.c
     ../bms/lib/sampler.c

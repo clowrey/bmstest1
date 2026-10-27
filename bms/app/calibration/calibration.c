@@ -6,8 +6,43 @@
 #include "app/model.h"
 #include "sys/logging/logging.h"
 
+#include <stddef.h>
+
 extern ads1115_t ads1115_dev;
 extern ina228_t ina228_dev;
+
+// Calibration values from before the current sequence started. Each
+// calibrate_*() call only updates its own values if it succeeds, but a sequence
+// runs several of them in turn, so if any step fails (or the sequence is
+// abandoned) the steps that did succeed are rolled back as well. Otherwise a
+// mix of old and new values would stay in use, and be saved by the next NVM
+// save.
+static calibration_data_t calibration_before;
+
+// The calibration values are embedded (anonymously) at the start of the
+// persistent settings
+_Static_assert(offsetof(bms_model_persistent_slow_t, battery_voltage_mul) == 0,
+    "calibration_data_t must be at the start of bms_model_persistent_slow_t");
+
+static calibration_data_t *calibration_data(bms_model_t *model) {
+    return (calibration_data_t *)&model->persistent_slow;
+}
+
+static void start_sequence(bms_model_t *model, calibration_state_t first_state) {
+    calibration_before = *calibration_data(model);
+    state_transition((sm_t*)&model->calibration_sm, first_state);
+}
+
+// End the sequence, saving the new values if every step succeeded, otherwise
+// restoring the values from before it started
+static void finish_sequence(bms_model_t *model, bool ok) {
+    if (ok) {
+        nvm_save_persistent_slow(model);
+    } else {
+        *calibration_data(model) = calibration_before;
+    }
+    state_transition((sm_t*)&model->calibration_sm, CALIBRATION_STATE_IDLE);
+}
 
 void calibration_sm_tick(bms_model_t *model) {
     calibration_sm_t *sm = &model->calibration_sm;
@@ -17,13 +52,13 @@ void calibration_sm_tick(bms_model_t *model) {
             if (model->calibration_req == CALIBRATION_REQUEST_START_OFFLINE_LONG) {
                 model->calibration_req = CALIBRATION_REQUEST_NULL;
                 model->contactor_req = CONTACTORS_REQUEST_CALIBRATE;
-                state_transition((sm_t*)sm, CALIBRATION_STATE_LONG_WAIT_BOTH);
+                start_sequence(model, CALIBRATION_STATE_LONG_WAIT_BOTH);
             } else if (model->calibration_req == CALIBRATION_REQUEST_START_OFFLINE_SHORT) {
                 model->calibration_req = CALIBRATION_REQUEST_NULL;
                 if (model->contactor_sm.state != CONTACTORS_STATE_OPEN) {
                     error_printf("Offline short calibration aborted: contactors must be OPEN (currently %d)\n", model->contactor_sm.state);
                 } else {
-                    state_transition((sm_t*)sm, CALIBRATION_STATE_SHORT_WAIT_OPEN);
+                    start_sequence(model, CALIBRATION_STATE_SHORT_WAIT_OPEN);
                 }
             } else if (model->calibration_req == CALIBRATION_REQUEST_START_ONLINE) {
                 model->calibration_req = CALIBRATION_REQUEST_NULL;
@@ -31,7 +66,7 @@ void calibration_sm_tick(bms_model_t *model) {
                     error_printf("Online calibration aborted: contactors in state %d\n", model->contactor_sm.state);
                 } else {
                     sm->initial_contactor_state = model->contactor_sm.state;
-                    state_transition((sm_t*)sm, CALIBRATION_STATE_ONLINE_STABILIZING);
+                    start_sequence(model, CALIBRATION_STATE_ONLINE_STABILIZING);
                 }
             }
             break;
@@ -41,7 +76,7 @@ void calibration_sm_tick(bms_model_t *model) {
             if (model->contactor_sm.state == CONTACTORS_STATE_CALIBRATING_CLOSED) {
                 state_transition((sm_t*)sm, CALIBRATION_STATE_LONG_STABILIZING);
             } else if (state_timeout((sm_t*)sm, 10000)) {
-                state_transition((sm_t*)sm, CALIBRATION_STATE_IDLE);
+                finish_sequence(model, false);
             }
             break;
 
@@ -66,8 +101,7 @@ void calibration_sm_tick(bms_model_t *model) {
                 int32_t offset = (int32_t)div_round_closest(ina228_dev.null_accumulator, ina228_dev.null_counter);
                 if(!calibrate_current_offset(model, offset)) ok = false;
 
-                if (ok) nvm_save_persistent_slow(model);
-                state_transition((sm_t*)sm, CALIBRATION_STATE_IDLE);
+                finish_sequence(model, ok);
             }
             break;
 
@@ -77,7 +111,7 @@ void calibration_sm_tick(bms_model_t *model) {
             if (model->contactor_sm.state == CONTACTORS_STATE_OPEN) {
                 state_transition((sm_t*)sm, CALIBRATION_STATE_SHORT_STABILIZING_OPEN);
             } else if (state_timeout((sm_t*)sm, 10000)) {
-                state_transition((sm_t*)sm, CALIBRATION_STATE_IDLE);
+                finish_sequence(model, false);
             }
             break;
         
@@ -105,7 +139,7 @@ void calibration_sm_tick(bms_model_t *model) {
                     model->contactor_req = CONTACTORS_REQUEST_CALIBRATE_ONLY_NEG;
                     state_transition((sm_t*)sm, CALIBRATION_STATE_SHORT_WAIT_NEG);
                 } else {
-                    state_transition((sm_t*)sm, CALIBRATION_STATE_IDLE);
+                    finish_sequence(model, false);
                 }
             }
             break;
@@ -115,7 +149,7 @@ void calibration_sm_tick(bms_model_t *model) {
             if (model->contactor_sm.state == CONTACTORS_STATE_CALIBRATING_ONLY_NEG) {
                 state_transition((sm_t*)sm, CALIBRATION_STATE_SHORT_STABILIZING_NEG);
             } else if (state_timeout((sm_t*)sm, 10000)) {
-                state_transition((sm_t*)sm, CALIBRATION_STATE_IDLE);
+                finish_sequence(model, false);
             }
             break;
 
@@ -136,10 +170,7 @@ void calibration_sm_tick(bms_model_t *model) {
                 // Channel 2 (Neg contactor) should be 0V -> calibrate offset.
                 if(!calibrate_neg_contactor(model, ads1115_get_calibration(&ads1115_dev, 2), n)) ok = false;
 
-                if (ok) {
-                    nvm_save_persistent_slow(model);
-                }
-                state_transition((sm_t*)sm, CALIBRATION_STATE_IDLE);
+                finish_sequence(model, ok);
             }
             break;
 
@@ -156,7 +187,7 @@ void calibration_sm_tick(bms_model_t *model) {
         case CALIBRATION_STATE_ONLINE_MEASURING:
             if (model->contactor_sm.state != sm->initial_contactor_state) {
                 error_printf("Online calibration aborted: contactor state changed\n");
-                state_transition((sm_t*)sm, CALIBRATION_STATE_IDLE);
+                finish_sequence(model, false);
                 break;
             }
             if (ads1115_calibration_finished(&ads1115_dev)) {
@@ -178,8 +209,7 @@ void calibration_sm_tick(bms_model_t *model) {
                         }
                     }
                 }
-                if (ok) nvm_save_persistent_slow(model);
-                state_transition((sm_t*)sm, CALIBRATION_STATE_IDLE);
+                finish_sequence(model, ok);
             }
             break;
     }
