@@ -104,7 +104,12 @@ static void test_close_request_to_testing_sequence(void **state) {
     // 4. TESTING_NEG_CLOSED
     model.high_voltages.neg_contactor = 0.1f; // Below threshold (closed)
     expect_value(contactors_set_pos_pre_neg, pos, false);
+#ifdef PRECHARGE_ON_NEGATIVE
+    // pre is logically true here (leaves the bypass contactor open)
+    expect_value(contactors_set_pos_pre_neg, pre, true);
+#else
     expect_value(contactors_set_pos_pre_neg, pre, false);
+#endif
     expect_value(contactors_set_pos_pre_neg, neg, true);
     tick_sm(&model, 1100);
     assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_TESTING_POS_OPEN);
@@ -121,7 +126,12 @@ static void test_close_request_to_testing_sequence(void **state) {
     // 6. TESTING_POS_CLOSED
     model.high_voltages.pos_contactor = 0.5f; // Below threshold (closed)
     expect_value(contactors_set_pos_pre_neg, pos, true);
+#ifdef PRECHARGE_ON_NEGATIVE
+    expect_value(contactors_set_pos_pre_neg, pre, false);
+#else
+    // pre is logically true here (leaves the bypass contactor open)
     expect_value(contactors_set_pos_pre_neg, pre, true);
+#endif
     expect_value(contactors_set_pos_pre_neg, neg, false);
     tick_sm(&model, 1100);
     assert_int_equal(model.contactor_sm.state, CONTACTORS_STATE_PRECHARGING_INIT);
@@ -147,9 +157,15 @@ static void test_precharge_success(void **state) {
     model.contactor_sm.pre_close_current_mA = 300.0f;
     model.current_millis = stored_millis;
 
+#ifdef PRECHARGE_ON_NEGATIVE
+    expect_value(contactors_set_pos_pre_neg, pos, true);
+    expect_value(contactors_set_pos_pre_neg, pre, true);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+#else
     expect_value(contactors_set_pos_pre_neg, pos, false);
     expect_value(contactors_set_pos_pre_neg, pre, true);
     expect_value(contactors_set_pos_pre_neg, neg, true);
+#endif
     
     tick_sm(&model, 1100);
 
@@ -172,9 +188,15 @@ static void test_precharge_failure_timeout(void **state) {
     model.high_voltages.neg_contactor_millis = stored_millis;
     model.current_millis = stored_millis;
 
+#ifdef PRECHARGE_ON_NEGATIVE
+    expect_value(contactors_set_pos_pre_neg, pos, true);
+    expect_value(contactors_set_pos_pre_neg, pre, true);
+    expect_value(contactors_set_pos_pre_neg, neg, false);
+#else
     expect_value(contactors_set_pos_pre_neg, pos, false);
     expect_value(contactors_set_pos_pre_neg, pre, true);
     expect_value(contactors_set_pos_pre_neg, neg, true);
+#endif
     
     tick_sm(&model, 15000);
 

@@ -50,8 +50,34 @@
 #endif
 
 
-// Voltage multiplier for uncalibrated ADS1115 channels (divider ratio is ~416:1)
+// PCB revision selection (orthogonal to the pack profile above)
+
+#define BMS_BOARD_REV0 1
+#define BMS_BOARD_REV1 2
+
+#ifndef BMS_BOARD
+#define BMS_BOARD BMS_BOARD_REV0
+#endif
+
+// Check the board with #if IS_BMS_BOARD(REV1), rather than comparing BMS_BOARD
+// directly. If this header hasn't been included, an undefined function-like
+// macro is a compile error, whereas BMS_BOARD == BMS_BOARD_REV1 would quietly
+// compare two undefined (zero) values and pick the wrong board.
+#define IS_BMS_BOARD(rev) (BMS_BOARD == BMS_BOARD_##rev)
+
+#if IS_BMS_BOARD(REV1)
+// Rev1's default contactor arrangement precharges via the FC negative contactor
+#ifndef PRECHARGE_ON_NEGATIVE
+#define PRECHARGE_ON_NEGATIVE 1
+#endif
+// Rev1 uses 501:1 dividers (12M/24k): 501 * 1.024/32768 V per count
+#define ADS1115_DEFAULT_MUL 0.015656f
+#elif IS_BMS_BOARD(REV0)
+// Rev0 divider ratio is ~416:1
 #define ADS1115_DEFAULT_MUL 0.013f
+#else
+    #error "Unsupported BMS_BOARD"
+#endif
 
 
 // TODO - derate voltage limits based on temperature
