@@ -15,7 +15,9 @@
 #include <stdint.h>
 #include <stdio.h>
 
-void logging_printf(const char *fmt, ...) {
+#include "sys/logging/logging.h"
+void logging_printf(log_level_t level, const char *fmt, ...) {
+    (void)level;
     va_list args;
     va_start(args, fmt);
     vprintf(fmt, args);
