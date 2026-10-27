@@ -1,5 +1,7 @@
 #pragma once
 
+#include "sys/time/time.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -107,6 +109,57 @@ print(list(((hex(n), hex(crc8_2f(bytes([n])))) for n in range(0, 0xFF))))
   // but got hex: 02 00 06 AC 07 5E FF FF
 
 
+// New 0x33 instruction: returns 4 bytes per BMB - a 16-bit module ID
+// (little-endian) followed by a big-endian CRC14 (init 0x0010) over the two
+// ID bytes. Short-command encoding is first byte 0x33 plus CRC8(poly 0x2F,
+// init 0x10) = 0x02.
+#define BMB3Y_CMD_READ_MODULE_ID 0x3302
+
+// 0x33 ID word layout: 11-bit code in the low bits plus a 5-bit
+// Hamming/SECDED-style check on top (affine (16,11) code: check = 0x0C ^
+// XOR of the G[i] contributions of each set data bit, validated).
+#define BMB3Y_MODULE_ID_CODE_MASK 0x7FF
+#define BMB3Y_MODULE_ID_CHECK_SHIFT 11
+#define BMB3Y_MODULE_ID_CHECK_MASK 0x1F
+
+// The IDs are static, so re-sample the 0x33 read at most this often.
+#define BMB3Y_MODULE_ID_READ_INTERVAL_MS 60000
+
+#define BMB3Y_MAX_MODULES 8
+
+// Last-read snapshot and sticky stats for one module's 0x33 ID word.
+// The 11-bit code / 5-bit check split is derived from raw on demand.
+typedef struct {
+    uint16_t raw_last;       // last raw ID word seen (LE, 0 = none yet)
+    uint16_t crc_field_last; // received CRC14 field for that read
+    uint16_t crc_calc_last;  // calculated CRC14 for that read
+    bool crc_ok_last;        // transport check passed on that read
+    bool hamming_ok_last;    // Hamming content check passed on that read
+    uint16_t validated_id;   // last fully-validated raw word (0 = none yet)
+    uint32_t reads;          // total 0x33 reads sampling this module
+    uint32_t crc_errors;     // CRC14 mismatches (transport noise)
+    uint32_t hamming_errors; // CRC-ok but Hamming-invalid (BMB-side data fault)
+} bmb3y_module_diag_t;
+
+// BMB communication diagnostics, sampled by the 0x33 reads. Runtime only -
+// never persisted to NVM. Zero-initialised at startup.
+typedef struct {
+    bmb3y_module_diag_t module[BMB3Y_MAX_MODULES];
+    millis_t last_read_millis; // last 0x33 sample (any outcome, 0 = none yet)
+    millis_t validated_millis; // last read with every module fully validated
+    uint32_t transport_errors; // malformed isoSPI transactions
+
+    // Observed cell presence, built from actual BMB voltage reads (raw 0xFFFF
+    // = absent channel). Physical channels, LSB = channel 0; compared against
+    // the compiled CELL_PRESENCE_MASK once all banks have contributed.
+    uint32_t observed_presence_mask[4];
+    uint8_t presence_banks_seen;       // bit per voltage bank (5 banks)
+    millis_t presence_millis;          // last bank contributing (0 = none yet)
+    millis_t presence_complete_millis; // first all-5-banks cycle (0 = incomplete)
+    bool presence_mismatch;            // observed != compiled (once complete)
+    uint32_t presence_mismatch_count;  // false->true transitions
+} bmb3y_diagnostics_t;
+
 //#define BMB3Y_CMD_READ_TEMPS   0x0E1B0000
 
 // extra RE'd ones:
@@ -136,4 +189,5 @@ print(list(((hex(n), hex(crc8_2f(bytes([n])))) for n in range(0, 0xFF))))
 // 27 10  is interesting, gets sent before every IDLE_WAKE
 
 
+bool bmb3y_read_module_ids_blocking(bms_model_t *model);
 void bmb3y_tick(bms_model_t *model);

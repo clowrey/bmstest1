@@ -132,7 +132,8 @@ typedef enum {
     X(RESTARTING, LEVEL_FATAL, 0)                               \
                                                                 \
     X(LINK_VOLTAGE_MISMATCH, LEVEL_WARNING, 0)                  \
-    X(FUSE_VOLTAGE_DROP_HIGH, LEVEL_CRITICAL, FUSE_DROP_FAULT_DELAY_MS)
+    X(FUSE_VOLTAGE_DROP_HIGH, LEVEL_CRITICAL, FUSE_DROP_FAULT_DELAY_MS) \
+    X(BMB_PACK_MISMATCH, LEVEL_WARNING, 0)
 
 typedef enum {
 #define X(name, _1, _2) ERR_##name,

@@ -1,4 +1,5 @@
 #include "hmi_serial.h"
+#include "hmi_arrays.h"
 #include "drivers/comms/duart.h"
 #include "config/allocations.h"
 #include "config/pins.h"
@@ -359,6 +360,10 @@ static uint8_t hmi_append_register_value(uint8_t *buf, uint16_t reg_id, bms_mode
             buf[idx++] = HMI_TYPE_UINT16;
             idx += hmi_buf_append_uint16(&buf[idx], DISCHARGE_MAX_CURRENT_dA);
             break;
+        case HMI_REG_PROTOCOL_VERSION:
+            buf[idx++] = HMI_TYPE_UINT16;
+            idx += hmi_buf_append_uint16(&buf[idx], HMI_PROTOCOL_VERSION);
+            break;
 
         default:
             if (reg_id >= HMI_REG_CELL_VOLTAGES_START && reg_id <= HMI_REG_CELL_VOLTAGES_END) {
@@ -618,30 +623,6 @@ static void hmi_handle_write_registers(const uint8_t *rx_buf, size_t len, bms_mo
     }
 }
 
-static size_t encode_int16_delta_array(uint8_t *buf, const int16_t *values, size_t count) {
-    // Note: Delta coding for cell voltages
-    //   Absolute values sent as two-byte big-endian signed integers, with the MSB set
-    //   Delta values sent as single-byte signed integers in the range -64 to +63, with MSB clear
-    //   Initial value is zero (if first byte is a delta).
-
-    int16_t last_value = 0;
-    size_t idx = 0;
-    for(size_t i = 0; i < count; i++) {
-        int16_t value = values[i];
-        int16_t delta = value - last_value;
-        if(delta >= -64 && delta <= 63) {
-            // can encode as delta
-            buf[idx++] = (delta & 0x7F);
-        } else {
-            // encode as absolute
-            buf[idx++] = ((value >> 8) & 0xFF) | 0x80; // set high bit for absolute values
-            buf[idx++] = (value >> 0) & 0xFF;
-        }
-        last_value = value;
-    }
-    return idx;
-}
-
 static void hmi_handle_read_cell_voltages(const uint8_t *rx_buf, size_t len, bms_model_t *model) {
     if (len < 2) return;
     uint8_t addr = rx_buf[1];
@@ -659,7 +640,7 @@ static void hmi_handle_read_cell_voltages(const uint8_t *rx_buf, size_t len, bms
     tx_buf[tx_idx++] = device_address;
     tx_buf[tx_idx++] = 120; // number of cell voltages
 
-    tx_idx += encode_int16_delta_array(&tx_buf[tx_idx], model->cell_voltages_mV, 120);
+    tx_idx += hmi_encode_int16_delta_array(&tx_buf[tx_idx], sizeof(tx_buf) - tx_idx, model->cell_voltages_mV, 120, NULL);
 
     duart_send_packet(&HMI_SERIAL_DUART, tx_buf, tx_idx);
 }
@@ -676,9 +657,23 @@ static void hmi_handle_read_balancing_times(const uint8_t *rx_buf, size_t len, b
     tx_buf[tx_idx++] = device_address;
     tx_buf[tx_idx++] = 120; // number of cell balancing times
 
-    tx_idx += encode_int16_delta_array(&tx_buf[tx_idx], model->balancing_sm.balance_time_remaining, 120);
+    tx_idx += hmi_encode_int16_delta_array(&tx_buf[tx_idx], sizeof(tx_buf) - tx_idx, model->balancing_sm.balance_time_remaining, 120, NULL);
 
     duart_send_packet(&HMI_SERIAL_DUART, tx_buf, tx_idx);
+}
+
+static void hmi_handle_read_array(const uint8_t *rx_buf, size_t len, bms_model_t *model) {
+    if (len < 5) return;
+    uint8_t addr = rx_buf[1];
+    if (addr != device_address) return;
+
+    uint8_t array_id = rx_buf[2];
+    uint16_t start_index = hmi_buf_get_uint16(&rx_buf[3]);
+
+    uint8_t tx_buf[256];
+    size_t tx_len = hmi_build_read_array_response(tx_buf, sizeof(tx_buf), device_address, model, array_id, start_index);
+
+    duart_send_packet(&HMI_SERIAL_DUART, tx_buf, tx_len);
 }
 
 static void hmi_handle_read_log(const uint8_t *rx_buf, size_t len) {
@@ -804,6 +799,9 @@ void hmi_serial_tick(bms_model_t *model) {
                 break;
             case HMI_MSG_READ_LOG:
                 hmi_handle_read_log(rx_buf, len);
+                break;
+            case HMI_MSG_READ_ARRAY:
+                hmi_handle_read_array(rx_buf, len, model);
                 break;
             default:
                 // Ignore other messages (responses or unknown)

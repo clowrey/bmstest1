@@ -1,5 +1,6 @@
 #include "bmb3y.h"
 #include "crc.h"
+#include "bmb3y_cells.h"
 
 #include "config/limits.h"
 #include "app/model.h"
@@ -103,47 +104,17 @@ void bmb3y_send_balancing_blocking(bms_model_t *model) {
     tx_buf[0] = (BMB3Y_CMD_WRITE_CONFIG >> 8) & 0xFF;
     tx_buf[1] = BMB3Y_CMD_WRITE_CONFIG & 0xFF;
 
-    /* 
-    The balancing mask consists of four 32-bit ints, with a bit for each cell -
-    the LSB of the first int is cell 0.
-
-    However the BMB modules consume the mask 15-bits at a time, so it is
-    necessary to re-pack the bits accordingly.
-    */
-
+    // Balance flags go in the per-module records after the command (see
+    // bmb3y_cells.h for the layout)
     uint32_t cell_presence_mask[] = CELL_PRESENCE_MASK;
-
-    int logical_index = 0;
-    for (int word_idx = 0; word_idx < 4; word_idx++) {
-        uint32_t presence = cell_presence_mask[word_idx];
-        while (presence) {
-            // Find the index of the next cell in the balance mask
-            int bit_in_word = __builtin_ctz(presence);
-            // Clear that bit so the next iteration will find the next cell
-            presence &= ~(1U << bit_in_word);
-
-            // Are we requesting to balance this cell?
-            if (balancing_sm->balance_request_mask[logical_index / 32] & (1U << (logical_index & 0x1F))) {
-                int physical_index = (word_idx * 32) | bit_in_word;
-
-                // The balancing register has an extra padding bit after every 15
-                // cells, compared to our cell presence mask.
-                int balance_index = physical_index + (physical_index / 15);
-                int module = 7 - (balance_index >> 4);
-                int module_cell_index = balance_index & 0x0F;
-
-                tx_buf[2 + 2 + module * 6 + (module_cell_index / 8)] |= (1 << (module_cell_index & 0x07));
-            }
-            logical_index++;
-        }
-    }
+    bmb3y_pack_balance_requests(cell_presence_mask, balancing_sm->balance_request_mask, &tx_buf[2]);
 
     // Fill in config bytes and calculate CRCs
     for(int module=0; module<8; module++) {
         tx_buf[2 + 0 + module*6] = 0xf3;
         tx_buf[2 + 1 + module*6] = 0;
 
-        // bytes 2, 3 are already filled in by the loop above
+        // bytes 2, 3 are already filled in by bmb3y_pack_balance_requests
 
         uint16_t calc_crc = crc14(&tx_buf[2 + 0 + module*6], 4, 0x0010, 0);
 
@@ -203,8 +174,8 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
     //     return false;
     // }
 
-    uint8_t cell_offset = bank_index * 3;
     uint32_t cell_presence_mask[] = CELL_PRESENCE_MASK;
+    bmb3y_diagnostics_t *diag = &model->bmb_diag;
     bool crc_ok = true;
 
     for(int module=0; module<NUM_MODULE_VOLTAGES; module++) {
@@ -235,34 +206,29 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
 
         // Go through each cell (three per bank)
         for(int cell=0; cell<3; cell++) {
-            int physical_index = (module * 15) + cell_offset + cell;
+            int physical_index = bmb3y_physical_index(module, bank_index, cell);
+            // Presence mask word and bit for this channel
+            int word_offset = bmb3y_presence_word(physical_index);
+            uint32_t bit = bmb3y_presence_bit(physical_index);
 
-            // Physical index is the channel number of the cell on the BMBs,
-            // however not every channel is populated.
-
-            // Logical index is the actual cell number (with no gaps).
-
-            // To calculate logical from physical, we need to count how many
-            // bits are set in the cell presence mask up to the physical index.
-
-            uint8_t logical_index = 0;
-            // Calculate which presence mask word the physical index is in
-            int word_offset = physical_index / 32;
-            // Is this cell actually present according to the presence mask?
-            if((cell_presence_mask[word_offset] & (1U << (physical_index % 32))) == 0) {
-                // Not present, skip
-                continue;
-            }
-            // Count all the bits in previous presence mask words
-            for(int word=0; word<word_offset; word++) {
-                logical_index += __builtin_popcount(cell_presence_mask[word]);
-            }
-            // Count the bits in the presence mask word up to the physical index
-            logical_index += __builtin_popcount(cell_presence_mask[word_offset] & ((1 << (physical_index % 32)) - 1));
-
-            uint16_t voltage = 
+            uint16_t voltage =
                 (uint16_t)(rx_buf[module * 9 + cell * 2]) |
                 (uint16_t)(rx_buf[module * 9 + cell * 2 + 1] << 8);
+
+            // Record whether this slot looks populated or not in the observed
+            // presence mask.
+            if(voltage == 0xFFFF) {
+                diag->observed_presence_mask[word_offset] &= ~bit;
+            } else {
+                diag->observed_presence_mask[word_offset] |= bit;
+            }
+
+            // Map the BMB channel to the cell number (see bmb3y_cells.h),
+            // skipping channels the compiled mask says are unpopulated.
+            int logical_index = bmb3y_logical_index(cell_presence_mask, physical_index);
+            if(logical_index < 0) {
+                continue;
+            }
 
             int16_t converted = 0;
 
@@ -284,6 +250,45 @@ bool bmb3y_read_cell_voltage_bank_blocking(bms_model_t *model, int bank_index) {
             }
         }
     }
+
+    if(crc_ok) {
+        diag->presence_banks_seen |= (1u << bank_index);
+        diag->presence_millis = millis();
+        if(diag->presence_banks_seen == 0x1F) {
+            uint32_t compiled_mask[] = CELL_PRESENCE_MASK;
+            bool mismatch = false;
+            uint32_t diff_bits = 0;
+            for(int w = 0; w < 4; w++) {
+                uint32_t diff = diag->observed_presence_mask[w] ^ compiled_mask[w];
+                if(diff != 0) {
+                    mismatch = true;
+                    diff_bits += (uint32_t)__builtin_popcount(diff);
+                }
+            }
+            if(diag->presence_complete_millis == 0) {
+                diag->presence_complete_millis = diag->presence_millis;
+                info_printf("BMB3Y observed presence mask: %08X %08X %08X %08X\n",
+                    (unsigned)diag->observed_presence_mask[0],
+                    (unsigned)diag->observed_presence_mask[1],
+                    (unsigned)diag->observed_presence_mask[2],
+                    (unsigned)diag->observed_presence_mask[3]);
+            }
+            if(mismatch && !diag->presence_mismatch) {
+                diag->presence_mismatch_count++;
+                count_bms_event(ERR_BMB_PACK_MISMATCH, diff_bits);
+                warning_printf("BMB3Y pack presence mismatch (%u channels differ): observed %08X %08X %08X %08X\n",
+                    (unsigned)diff_bits,
+                    (unsigned)diag->observed_presence_mask[0],
+                    (unsigned)diag->observed_presence_mask[1],
+                    (unsigned)diag->observed_presence_mask[2],
+                    (unsigned)diag->observed_presence_mask[3]);
+            } else if(!mismatch && diag->presence_mismatch) {
+                info_printf("BMB3Y pack presence now matches compiled mask\n");
+            }
+            diag->presence_mismatch = mismatch;
+        }
+    }
+
     return crc_ok;
 }
 
@@ -455,6 +460,101 @@ bool bmb3y_read_temperatures_blocking(bms_model_t *model) {
     return crc_ok;
 }
 
+// Affine (16,11) Hamming/SECDED-style code protecting the 0x33 module ID
+// word: check = C0 ^ XOR of G[i] over each set data bit. Validated against
+// hardware (LE 0x8023: code 0x023, check 0x10; the BE reading fails, which
+// independently settles the endianness as little-endian).
+static const uint8_t BMB3Y_MODULE_ID_C0 = 0x0C;
+static const uint8_t BMB3Y_MODULE_ID_G[11] = {
+    0x0E, 0x0B, 0x13, 0x15, 0x16, 0x19, 0x1A, 0x1C, 0x1F, 0x0D, 0x07
+};
+
+static uint8_t bmb3y_module_id_check(uint16_t id) {
+    uint8_t c = BMB3Y_MODULE_ID_C0;
+    for(int i = 0; i < 11; i++) {
+        if(id & (1u << i)) {
+            c ^= BMB3Y_MODULE_ID_G[i];
+        }
+    }
+    return c & BMB3Y_MODULE_ID_CHECK_MASK;
+}
+
+static bool bmb3y_module_id_valid(uint16_t word) {
+    return ((word >> BMB3Y_MODULE_ID_CHECK_SHIFT) & BMB3Y_MODULE_ID_CHECK_MASK) ==
+        bmb3y_module_id_check(word & BMB3Y_MODULE_ID_CODE_MASK);
+}
+
+// Sample the 0x33 module-ID instruction and log the result.
+//
+// Response is 4 bytes per module: a 16-bit ID in bytes 0-1 (little-endian),
+// then a big-endian CRC14 (init 0x0010) over the two ID bytes in bytes 2-3.
+// Anything after is bus idle (0xFF).
+bool bmb3y_read_module_ids_blocking(bms_model_t *model) {
+    uint8_t rx_buf[8 * 4];
+
+    int response_len = NUM_MODULE_TEMPS * 4;
+    if(response_len > (int)sizeof(rx_buf)) {
+        response_len = sizeof(rx_buf);
+    }
+
+    if(!bmb3y_short_command_get_data_blocking(BMB3Y_CMD_READ_MODULE_ID, rx_buf, response_len)) {
+        error_printf("BMB3Y module ID read failed\n");
+        count_bms_event(ERR_BMB_READ_ERROR, 0x0400000000000000);
+        model->bmb_diag.transport_errors++;
+        return false;
+    }
+
+    bool all_ok = true;
+    for(int module=0; module<NUM_MODULE_TEMPS; module++) {
+        uint8_t *m = &rx_buf[module * 4];
+        bmb3y_module_diag_t *diag = &model->bmb_diag.module[module];
+
+        uint16_t id_le = (uint16_t)m[0] | ((uint16_t)m[1] << 8);
+        uint16_t id_be = ((uint16_t)m[0] << 8) | m[1];
+        uint16_t crc_field = ((uint16_t)m[2] << 8) | m[3];
+        uint16_t calc = crc14(m, 2, 0x0010, crc_field);
+
+        // The 16-bit word splits into an 11-bit code and a 5-bit
+        // Hamming/SECDED-style check.
+        uint16_t id_code = id_le & BMB3Y_MODULE_ID_CODE_MASK;
+        uint8_t id_check = (uint8_t)((id_le >> BMB3Y_MODULE_ID_CHECK_SHIFT) & BMB3Y_MODULE_ID_CHECK_MASK);
+
+        bool ok = ((crc_field & 0x3fff) == calc);
+        bool hamming_ok = bmb3y_module_id_valid(id_le);
+
+        // Snapshot this read for diagnostics.
+        diag->raw_last = id_le;
+        diag->crc_field_last = crc_field;
+        diag->crc_calc_last = calc;
+        diag->crc_ok_last = ok;
+        diag->hamming_ok_last = hamming_ok;
+        diag->reads++;
+        if(!ok) {
+            diag->crc_errors++;
+        } else if(!hamming_ok) {
+            diag->hamming_errors++;
+        }
+
+        if(ok && hamming_ok) {
+            // Only store if the hamming check passes
+            diag->validated_id = id_le;
+        } else {
+            all_ok = false;
+        }
+
+        info_printf("BMB3Y module %d ID: raw LE 0x%04X BE 0x%04X code 0x%03X (%u) check 0x%02X raw %02X %02X %02X %02X CRC field 0x%04X calc 0x%04X %s Hamming %s\n",
+            module, id_le, id_be, id_code, (unsigned)id_code, id_check, m[0], m[1], m[2], m[3], crc_field, calc,
+            ok ? "OK" : "MISMATCH", hamming_ok ? "VALID" : "INVALID");
+    }
+
+    model->bmb_diag.last_read_millis = millis();
+    if(all_ok) {
+        model->bmb_diag.validated_millis = model->bmb_diag.last_read_millis;
+    }
+
+    return all_ok;
+}
+
 static void bmb3y_read_cell_voltages_blocking(bms_model_t *model) {
     // Read all cell voltage banks in one go
 
@@ -585,6 +685,14 @@ void bmb3y_tick(bms_model_t *model) {
         // offset. This allows us to get back to balancing sooner, we just need
         // to have left enough time for voltages to settle.
         bmb3y_timestep_offset = (bmb3y_timestep_offset + (period_mask + 1) - PAUSE_CYCLE_LENGTH - 1) & period_mask;
+    } else if(step == 10 &&
+            (model->bmb_diag.last_read_millis == 0 ||
+             millis() - model->bmb_diag.last_read_millis >= BMB3Y_MODULE_ID_READ_INTERVAL_MS)) {
+        // We're not in a pause cycle so there are spare steps for extra things.
+        // Sample the 0x33 module IDs, if we haven't done so recently.
+
+        bmb3y_send_super_wakeup();
+        bmb3y_read_module_ids_blocking(model);
     }
 }
 

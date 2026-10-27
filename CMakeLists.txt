@@ -57,6 +57,7 @@ add_executable(bms
     bms/sys/logging/logging.c
     bms/protocols/cli/cli.c
     bms/protocols/hmi_serial/hmi_serial.c
+    bms/protocols/hmi_serial/hmi_arrays.c
     bms/protocols/internal_serial/internal_serial.c
     bms/protocols/inverter/can.c
     bms/protocols/inverter/byd_can.c

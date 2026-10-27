@@ -1,6 +1,7 @@
 #pragma once
 
 #include "sys/time/time.h"
+#include "drivers/bmb3y/bmb3y.h"
 #include "app/calibration/calibration.h"
 #include "app/battery/balancing.h"
 #include "app/state_machines/contactors.h"
@@ -285,6 +286,9 @@ typedef struct bms_model {
     inverter_outputs_t inverter_outputs;
 
     bool balancing_active; // whether balancing was requested during the past BMB cycle (and so whether any read voltages are unstable)
+
+    // BMB communication diagnostics (0x33 module IDs etc).
+    bmb3y_diagnostics_t bmb_diag;
 
     bool estop_pressed;
     // Detected via the aux contacts (note that this is actually the precharge bypass contactor)

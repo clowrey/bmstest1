@@ -276,6 +276,31 @@ target_include_directories(test_events_detailed PRIVATE
 
 add_test(NAME test_events_detailed COMMAND ${MEMORY_CHECK} test_events_detailed)
 
+add_executable(test_hmi_arrays
+    test_hmi_arrays.c
+    ../bms/protocols/hmi_serial/hmi_arrays.c
+)
+target_link_libraries(test_hmi_arrays PRIVATE cmocka m)
+target_include_directories(test_hmi_arrays PRIVATE
+    ${cmocka_SOURCE_DIR}/include
+    include
+    ../bms
+)
+
+add_test(NAME test_hmi_arrays COMMAND ${MEMORY_CHECK} test_hmi_arrays)
+
+add_executable(test_bmb3y_cells
+    test_bmb3y_cells.c
+)
+target_link_libraries(test_bmb3y_cells PRIVATE cmocka)
+target_include_directories(test_bmb3y_cells PRIVATE
+    ${cmocka_SOURCE_DIR}/include
+    include
+    ../bms
+)
+
+add_test(NAME test_bmb3y_cells COMMAND ${MEMORY_CHECK} test_bmb3y_cells)
+
 add_custom_target(coverage
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/coverage_report.sh ${CMAKE_CURRENT_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}

@@ -1,3 +1,5 @@
+#pragma once
+
 #define HMI_MSG_ANNOUNCE_DEVICE      0x81
 #define HMI_MSG_SET_DEVICE_ADDRESS   0x01
 
@@ -17,6 +19,13 @@
 
 #define HMI_MSG_READ_LOG             0x08
 #define HMI_MSG_READ_LOG_RESPONSE    0x88
+
+#define HMI_MSG_READ_ARRAY           0x09
+#define HMI_MSG_READ_ARRAY_RESPONSE  0x89
+
+// Version of this protocol, in HMI_REG_PROTOCOL_VERSION:
+//   1 = READ_ARRAY
+#define HMI_PROTOCOL_VERSION 1
 
 #define HMI_ANNOUNCE_DEVICE_TYPE_BMS 0x01
 
@@ -91,6 +100,11 @@
 
 #define HMI_REG_LINK_VOLTAGE           56 // int32 (mV), rev1 boards only
 
+#define HMI_REG_PROTOCOL_VERSION       71 // uint16, HMI_PROTOCOL_VERSION; absent before READ_ARRAY
+
+// Deprecated: these ranges and READ_CELL_VOLTAGES / READ_BALANCING_TIMES stay
+// for older HMIs, and are fixed at the first 120 cells and 8 modules. Use
+// READ_ARRAY instead.
 
 #define HMI_REG_CELL_VOLTAGES_START 0x100
 #define HMI_REG_CELL_VOLTAGES_END   0x1FF
@@ -213,6 +227,45 @@ The format is:
 <event 1 timestamp (8 bytes)>
 <event 1 data (8 bytes)>
 ...
+
+2.8. Read array (from HMI to BMS)
+
+The read array message is used by the HMI to read part of one of the BMS's
+arrays (HMI_ARRAY_* in hmi_arrays.h). The format is:
+
+<message type byte = HMI_MSG_READ_ARRAY (0x09)>
+<device address (1 byte)>
+<array id (1 byte)>
+<start index (2 bytes)>
+
+BMS firmware before HMI_PROTOCOL_VERSION 1 ignores this message; the HMI can
+check for HMI_REG_PROTOCOL_VERSION first (it is left out of the read register
+response by older firmware).
+
+2.9. Read array response (from BMS to HMI)
+
+The read array response is sent by the BMS in response to a read array request,
+holding as many elements from the start index as fit in one packet. The HMI
+reads the rest by asking again from start index + element count. The format is:
+
+<message type byte = HMI_MSG_READ_ARRAY_RESPONSE (0x89)>
+<device address (1 byte)>
+<array id (1 byte)>
+<encoding (1 byte)> (HMI_ARRAY_ENCODING_*, or an HMI_TYPE_* for fixed size elements)
+<start index (2 bytes)>
+<total elements in the array (2 bytes)>
+<element count in packet (1 byte)>
+<sample time (4 bytes)> (millis when the values were read, 0 if not tracked)
+<elements>
+
+An unknown array id gives a total of 0 and encoding HMI_ARRAY_ENCODING_NONE.
+An array with a sample time and no reading yet gives an element count of 0.
+Pages read at different sample times may come from different readings.
+
+Delta coded int16 elements start from zero in every packet: absolute values
+are two bytes, big-endian, with the MSB set (keeping the low 15 bits of the
+value); deltas from the previous value in -64 to +63 are one byte with the MSB
+clear.
 
 */
 
