@@ -53,17 +53,17 @@ void read_inputs(bms_model_t *model) {
     // For differential readings, full scale should be 436V
     // const int32_t full_scale_mv = 436000;
 
-    float battery_voltage_mul = fabs(model->battery_voltage_mul) > 0.001f ? model->battery_voltage_mul : 0.013f;
+    float battery_voltage_mul = effective_voltage_mul(model->battery_voltage_mul);
     model->high_voltages.battery_millis = ads1115_get_sample_millis(0);
     model->high_voltages.battery = ads1115_float_sample(0, battery_voltage_mul);
     model->high_voltages.battery_deviation = ads1115_float_deviation(0, battery_voltage_mul);
 
-    float output_voltage_mul = fabs(model->output_voltage_mul) > 0.001f ? model->output_voltage_mul : 0.013f;
+    float output_voltage_mul = effective_voltage_mul(model->output_voltage_mul);
     model->high_voltages.output_millis = ads1115_get_sample_millis(1);
     model->high_voltages.output = ads1115_float_sample(1, output_voltage_mul);
     model->high_voltages.output_deviation = ads1115_float_deviation(1, output_voltage_mul);
 
-    float neg_contactor_mul = fabs(model->neg_contactor_mul) > 0.001f ? model->neg_contactor_mul : 0.013f;
+    float neg_contactor_mul = effective_voltage_mul(model->neg_contactor_mul);
     model->high_voltages.neg_contactor_millis = ads1115_get_sample_millis(2);
     model->high_voltages.neg_contactor = ads1115_float_sample(2, neg_contactor_mul) + (0.001f * model->neg_contactor_offset_mV);
     model->high_voltages.neg_contactor_deviation = ads1115_float_deviation(2, neg_contactor_mul);
@@ -71,7 +71,7 @@ void read_inputs(bms_model_t *model) {
     // Positive contactor voltage has to be derived from the difference between (battery+
     // to output-) and (output+ to output-), since we can't sample relative to battery+.
 
-    float pos_contactor_mul = fabs(model->pos_contactor_mul) > 0.001f ? model->pos_contactor_mul : 0.013f;
+    float pos_contactor_mul = effective_voltage_mul(model->pos_contactor_mul);
     millis_t raw_bat_pos_to_out_neg_millis = ads1115_get_sample_millis(3);
     float raw_bat_plus_to_out_neg = ads1115_float_sample(3, pos_contactor_mul);
     

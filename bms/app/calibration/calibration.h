@@ -1,6 +1,8 @@
 #pragma once
 
 #include "app/state_machines/base.h"
+#include "config/limits.h"
+#include <math.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -9,6 +11,12 @@
 
 
 typedef struct bms_model bms_model_t;
+
+// The voltage multiplier to actually use for a stored calibration value, which
+// is zero until that channel has been calibrated
+static inline float effective_voltage_mul(float stored_mul) {
+    return fabsf(stored_mul) > 0.001f ? stored_mul : ADS1115_DEFAULT_MUL;
+}
 
 typedef enum {
     CALIBRATION_TYPE_OFFLINE_LONG,

@@ -50,6 +50,10 @@
 #endif
 
 
+// Voltage multiplier for uncalibrated ADS1115 channels (divider ratio is ~416:1)
+#define ADS1115_DEFAULT_MUL 0.013f
+
+
 // TODO - derate voltage limits based on temperature
 
 #if CHEMISTRY == LFP
