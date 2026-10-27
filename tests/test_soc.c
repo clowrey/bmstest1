@@ -350,6 +350,32 @@ static void test_ocv_learn_cycles(void **state) {
     assert_true(learn.capacity_depth_cycles >= 1.5f);
 }
 
+static void test_ocv_learn_reanchors_when_charge_voltage_moves(void **state) {
+    (void)state;
+
+    memset(&learn, 0, sizeof(learn));
+    for (int i = 0; i <= 100; i++) learn_factory[i] = 3.0f + 1.2f * i / 100.0f;
+    learn_cycle();
+    learn_run(1200, 0.0f, 4.08f);
+    learn_cycle();
+    learn_run(1200, 0.0f, 4.08f);
+    assert_int_equal(learn.capacity_state, OCV_LEARN_CAPACITY_PRELIMINARY);
+    double corr6 = learn.persistent.corr[6];
+
+    // A few mV (0.4% of the curve) isn't a move
+    assert_false(ocv_learn_tick(&learn, learn_factory, 100.0, 4.085f, 0.0, 0.0f, 4.0f));
+    assert_float_equal(learn.persistent.s_full, 0.9f, 1e-6f);
+
+    // A lower working max: full is re-anchored at 85%, and the bins earn their trust again
+    assert_true(ocv_learn_tick(&learn, learn_factory, 100.0, 4.02f, 0.0, 0.0f, 4.0f));
+    assert_float_equal(learn.persistent.s_full, 0.85f, 1e-4f);
+    for (int i = 0; i < OCV_LEARN_BINS; i++) assert_true(learn.persistent.cycles[i] == 0.0f);
+    assert_false(learn.have_anchor);
+    assert_int_equal(learn.capacity_state, OCV_LEARN_CAPACITY_NO_DATA);
+    assert_true(isnan(learn.capacity_Ah));
+    assert_float_equal(learn.persistent.corr[6], corr6, 1e-12); // kept, see ocv_learn_tick
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_ekf_soc_scaling_midrange),
@@ -361,6 +387,7 @@ int main(void) {
         cmocka_unit_test(test_ekf_pinned_at_full_charge),
         cmocka_unit_test(test_actual_capacity_default_and_saved),
         cmocka_unit_test(test_ekf_set_capacity_keeps_ah_used),
+        cmocka_unit_test(test_ocv_learn_reanchors_when_charge_voltage_moves),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

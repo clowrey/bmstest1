@@ -111,6 +111,7 @@
 // The OCV learner (bms/app/estimators/ocv_learn.h), when the profile has OCV_LEARN
 #define HMI_REG_OCV_LEARN_S_FULL       72 // float, factory-curve SOC (0-1] of full charge; absent until learning
                                           // starts. Writing it starts learning (to restore a saved learner).
+                                          // More than 1% from the charge voltage's, it's re-anchored there.
 #define HMI_REG_OCV_LEARN_CAPACITY_REF 73 // float (Ah), from full to OCV_LEARN_V_REF; NaN until trusted
 
 #define HMI_REG_NAMEPLATE_CAPACITY     74 // uint32 (mC), the profile's NAMEPLATE_CAPACITY_AH (the label's); read only

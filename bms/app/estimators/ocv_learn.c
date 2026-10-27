@@ -29,6 +29,8 @@
 #define CAPACITY_GOOD_SD 0.05     // relative uncertainty for OCV_LEARN_CAPACITY_GOOD
 #define CAPACITY_MAX_SD 0.25      // beyond this it's no figure at all, e.g. only an LFP plateau
 
+#define S_FULL_MOVE 0.01f         // factory-curve SOC the charge voltage may move before full is re-anchored
+
 // Bin index and weight of the upper bin for a given Ah below full. The bins run
 // from full down to the factory curve's 0%, so they scale with the pack.
 static int bin_of(const ocv_learn_t *l, double a, double *w) {
@@ -228,6 +230,27 @@ bool ocv_learn_tick(ocv_learn_t *l, const float factory[101], double capacity_Ah
             changed = true;
         }
     }
+
+    // The charge voltage moved (a new working max or inverter offset, or a new factory
+    // curve): full now sits elsewhere on the curve. For now, re-anchor full there, drop
+    // the readings held against the old full, and have every bin earn its trust again.
+    // The corrections stay, though they're now out by the Ah between the old and new full.
+    // A fuller fix would shift them by that Ah instead, measured across a charge from one
+    // to the other or estimated from the factory curve, so what was learned carries over.
+    if (p->valid) {
+        float s_charge = table_soc(l->factory, charge_V);
+        if (fabsf(s_charge - p->s_full) > S_FULL_MOVE) {
+            info_printf("OCV learn: full moved from %.1f%% to %.1f%% (charge voltage %.3fV), relearning\n",
+                        p->s_full * 100.0f, s_charge * 100.0f, charge_V);
+            p->s_full = s_charge;
+            for (int i = 0; i < OCV_LEARN_BINS; i++) p->cycles[i] = 0.0f;
+            l->n_readings = 0;
+            l->have_anchor = false;
+            l->dirty = true;
+            rebuild(l);
+            changed = true;
+        }
+    }
     l->t_s++;
     l->charge_Ah += charge_Ah;
 
@@ -244,7 +267,8 @@ bool ocv_learn_tick(ocv_learn_t *l, const float factory[101], double capacity_Ah
     if (l->full_s >= OCV_LEARN_FULL_SETTLE_S) {
         if (l->full_s == OCV_LEARN_FULL_SETTLE_S) {
             // Settled full charge reached. Fix where full sits on the factory curve once,
-            // at the charge voltage, so the learned Ah-based correction keeps one frame.
+            // at the charge voltage, so the learned Ah-based correction keeps one frame
+            // (until the charge voltage moves, above).
             if (!p->valid) {
                 init_prior(p, table_soc(l->factory, charge_V));
                 l->dirty = true;
