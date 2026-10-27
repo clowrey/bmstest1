@@ -55,3 +55,8 @@ typedef struct {
 // within 10mV of it is full.
 bool ocv_learn_tick(ocv_learn_t *l, const float factory[101], double capacity_Ah, float charge_V,
                     double charge_Ah, float current_A, float voltage_V);
+
+// At a settled full charge, which sits at SOC persistent.s_full on the table
+static inline bool ocv_learn_at_full(const ocv_learn_t *l) {
+    return l->persistent.valid && l->full_s >= OCV_LEARN_FULL_SETTLE_S;
+}

@@ -167,7 +167,7 @@ static const float nmc_ocv_curve[101] = {
     #define ocv_factory nmc_ocv_curve
     #define ocv_curve ocv_table
     #define OCV_LEARN       // learn a per-pack correction to the table as we go (ocv_learn.c)...
-    #define OCV_LEARN_TABLE // ...and use it
+    #define OCV_LEARN_TABLE // ...and use it, with the SOC pinned at full charge
     #define OCV_DIFF_HALF_WIDTH 1
 
     // From replaying ~94 days of a 96S BLUETESLA pack, plus synthetic fresher
@@ -443,6 +443,18 @@ void ekf_step(ekf_t *ekf, double charge_Ah, double current_amps, double voltage_
     }
 }
 
+#ifdef OCV_LEARN_TABLE
+// Pin the SOC with the given uncertainty, forgetting its correlation with the other states
+static void ekf_pin_soc(ekf_t *ekf, double soc, double var_Ah) {
+    ekf->x[0] = (1.0 - soc) * ekf->x[2];
+    for (int i = 0; i < EKF_N; i++) {
+        ekf->P[0][i] = 0.0;
+        ekf->P[i][0] = 0.0;
+    }
+    ekf->P[0][0] = var_Ah;
+}
+#endif
+
 double ekf_get_soc(ekf_t *ekf) {
     double ah = ekf->x[0];
     double cap = ekf->x[2];
@@ -501,7 +513,7 @@ static void ekf_update_limits(bms_model_t *model) {
     }
 
     // Cache the scaling factors. On the factory table, so learning doesn't move 0% and
-    // 100%.
+    // 100%; a full charge is pinned at the charge voltage's factory SOC, so reads 100%.
     model->ekf.prev_soc_min = table_soc(ocv_factory, (float)min_mV / 1000.0f);
     float soc_max = table_soc(ocv_factory, (float)max_mV / 1000.0f);
     model->ekf.prev_soc_mul = 1.0f / (soc_max - model->ekf.prev_soc_min);
@@ -540,6 +552,15 @@ uint32_t ekf_tick(bms_model_t *model, float charge_Ah, int32_t current_mA, int32
     }
 
     ekf_step(&model->ekf, charge_Ah, current_amps, voltage_volts);
+
+#ifdef OCV_LEARN_TABLE
+    // While floating, the charger holds the voltage above OCV with almost no current,
+    // which the filter would read as fuller than full. Full is where the learner says.
+    // This also corrects a wrong starting count at the first full charge.
+    if (ocv_learn_at_full(&model->ocv_learn)) {
+        ekf_pin_soc(&model->ekf, model->ocv_learn.persistent.s_full, 1.0); // (1Ah)^2
+    }
+#endif
 
     float soc = ekf_get_soc(&model->ekf);
 

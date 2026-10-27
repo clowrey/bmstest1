@@ -237,6 +237,26 @@ static void test_inverter_soc_scaling(void **state) {
     assert_int_equal(sent_soc, 10000);
 }
 
+static void test_ekf_pinned_at_full_charge(void **state) {
+    (void)state;
+
+    memset(&model, 0, sizeof(bms_model_t));
+    model.nameplate_capacity_mC = 100 * 3600 * 1000; // 100 Ah
+    model.cell_voltage_working_min_mV = 3300;
+    model.cell_voltage_working_max_mV = 4100;
+    model.charge_used_Ah = 12.0f; // a stale count, close enough to voltage to be used
+
+    // Held at the charge voltage with no current: after 10 minutes it counts as
+    // full, and the filter is set there rather than reading the held voltage as OCV
+    uint32_t soc_out = 0;
+    for (int i = 0; i < 300; i++) soc_out = ekf_tick(&model, 0, 0, 4100);
+    assert_true(model.ekf.P[0][0] != 1.0);
+    for (int i = 0; i < 400; i++) soc_out = ekf_tick(&model, 0, 0, 4100);
+    assert_float_equal(model.ekf.P[0][0], 1.0, 1e-9);
+    assert_float_equal(model.ekf.x[0], (1.0 - model.ocv_learn.persistent.s_full) * 100.0, 1e-6);
+    assert_int_equal(soc_out, 10000);
+}
+
 // Pack whose cells rest 30mV above a linear factory table, cycled from full to
 // 48.75Ah below (between bins 6 and 7, 7.5Ah apart) and back with a 6h rest there
 static ocv_learn_t learn;
@@ -285,6 +305,7 @@ int main(void) {
         cmocka_unit_test(test_ekf_init_uninitialized_falls_back_to_voltage),
         cmocka_unit_test(test_inverter_soc_scaling),
         cmocka_unit_test(test_ocv_learn_cycles),
+        cmocka_unit_test(test_ekf_pinned_at_full_charge),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
