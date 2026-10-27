@@ -198,56 +198,56 @@ float ocv_to_soc(float ocv) {
 
 // --- Helper: OCV Curve ---
 // Returns Open Circuit Voltage for a given SOC
-static float soc_to_ocv(float soc) {
+static double soc_to_ocv(double soc) {
     // Clamp SOC for safety
-    if (soc < 0.0f) soc = 0.0f;
-    if (soc > 1.0f) soc = 1.0f;
+    if (soc < 0.0) soc = 0.0;
+    if (soc > 1.0) soc = 1.0;
 
     // Simple linear interpolation on the OCV curve
-    float index = soc * 100.0f;
+    double index = soc * 100.0;
     int idx_lower = (int)index;
     if (idx_lower >= 100) return ocv_curve[100];
     int idx_upper = idx_lower + 1;
-    float frac = index - (float)idx_lower;
-    return ocv_curve[idx_lower] * (1.0f - frac) + ocv_curve[idx_upper] * frac;
+    double frac = index - (double)idx_lower;
+    return ocv_curve[idx_lower] * (1.0 - frac) + ocv_curve[idx_upper] * frac;
 }
 
 // --- Helper: OCV Derivative ---
 // Returns d(OCV)/d(SOC)
-static float soc_to_ocv_derivative(float soc) {
-    if (soc < 0.0f) soc = 0.0f;
-    if (soc > 1.0f) soc = 1.0f;
+static double soc_to_ocv_derivative(double soc) {
+    if (soc < 0.0) soc = 0.0;
+    if (soc > 1.0) soc = 1.0;
 
-    int idx = (int)(soc * 100.0f);
+    int idx = (int)(soc * 100.0);
     if (idx > 99) idx = 99;
 
     int lo = idx - OCV_DIFF_HALF_WIDTH + 1;
     int hi = idx + OCV_DIFF_HALF_WIDTH;
     if (lo < 0) lo = 0;
     if (hi > 100) hi = 100;
-    return (ocv_curve[hi] - ocv_curve[lo]) * 100.0f / (float)(hi - lo);
+    return (ocv_curve[hi] - ocv_curve[lo]) * 100.0 / (double)(hi - lo);
 }
 
 // Returns d(OCV)/d(SOC) of the curve segment containing soc, without smoothing
-static float ocv_segment_slope(float soc) {
-    if (soc < 0.0f) soc = 0.0f;
-    if (soc > 1.0f) soc = 1.0f;
+static double ocv_segment_slope(double soc) {
+    if (soc < 0.0) soc = 0.0;
+    if (soc > 1.0) soc = 1.0;
 
-    int idx = (int)(soc * 100.0f);
+    int idx = (int)(soc * 100.0);
     if (idx > 99) idx = 99;
-    return (ocv_curve[idx + 1] - ocv_curve[idx]) * 100.0f;
+    return (ocv_curve[idx + 1] - ocv_curve[idx]) * 100.0;
 }
 
-void ekf_init(ekf_t *ekf, float initial_soc, float initial_capacity, float initial_bias_A) {
+void ekf_init(ekf_t *ekf, double initial_soc, double initial_capacity, double initial_bias_A) {
     // Initial States
-    ekf->x[0] = (1.0f - initial_soc) * initial_capacity; // Ah_used
-    ekf->x[1] = 0.0f;               // V_c1 starts relaxed
+    ekf->x[0] = (1.0 - initial_soc) * initial_capacity; // Ah_used
+    ekf->x[1] = 0.0;               // V_c1 starts relaxed
     ekf->x[2] = initial_capacity;   // Initial guess
     ekf->x[3] = initial_bias_A;     // Current sensor bias, from NVM if we have it
 
     // Initial Covariance P
     for(int i=0; i<EKF_N; i++) {
-        for(int j=0; j<EKF_N; j++) ekf->P[i][j] = 0.0f;
+        for(int j=0; j<EKF_N; j++) ekf->P[i][j] = 0.0;
     }
     ekf->P[0][0] = EKF_P0_AH;   // Uncertainty in Ah_used
     ekf->P[1][1] = EKF_P0_VC1;  // Uncertainty in V_c1
@@ -267,9 +267,9 @@ void ekf_init(ekf_t *ekf, float initial_soc, float initial_capacity, float initi
     ekf->knee_ocv_slope = EKF_KNEE_OCV_SLOPE;
 
     // Fitted RC model parameters
-    ekf->R0 = 0.00076f;
-    ekf->R1 = 0.00054f;
-    ekf->C1 = 150000.0f;
+    ekf->R0 = 0.00076;
+    ekf->R1 = 0.00054;
+    ekf->C1 = 150000.0;
 
     // Reset scaling cache
     ekf->prev_min_mV = 0;
@@ -278,26 +278,26 @@ void ekf_init(ekf_t *ekf, float initial_soc, float initial_capacity, float initi
     ekf->initialized = true;
 }
 
-void ekf_step(ekf_t *ekf, float charge_Ah, float current_amps, float voltage_measured) {
+void ekf_step(ekf_t *ekf, double charge_Ah, double current_amps, double voltage_measured) {
     // -----------------------------------------
     // 1. PREDICTION STEP
     // -----------------------------------------
-    float dt = 1.0f;
+    double dt = 1.0;
 
     // Positive current/charge = Charging. The measured values include the
     // sensor bias x[3], so the true current is current_amps - bias.
-    float bias = ekf->x[3];
-    float current_true = current_amps - bias;
+    double bias = ekf->x[3];
+    double current_true = current_amps - bias;
 
     // --- State Prediction ---
     // x[0] = Ah_used - true charge = Ah_used - charge_Ah + bias * dt / 3600
-    ekf->x[0] = ekf->x[0] - charge_Ah + bias * dt / 3600.0f;
+    ekf->x[0] = ekf->x[0] - charge_Ah + bias * dt / 3600.0;
 
     // x[1] = V_c1 * exp - I * R1 * (1 - exp)
-    float exp_val = expf(-dt / (ekf->R1 * ekf->C1));
-    ekf->x[1] = ekf->x[1] * exp_val - current_true * ekf->R1 * (1.0f - exp_val);
+    double exp_val = exp(-dt / (ekf->R1 * ekf->C1));
+    ekf->x[1] = ekf->x[1] * exp_val - current_true * ekf->R1 * (1.0 - exp_val);
     //printf("Predicted V_c1: %2.3f V | exp: %2.8f | I*R1*(1-exp): %2.8f V\n",
-    //       ekf->x[1], exp_val, -current_true * ekf->R1 * (1.0f - exp_val));
+    //       ekf->x[1], exp_val, -current_true * ekf->R1 * (1.0 - exp_val));
 
     // x[2] Capacity and x[3] bias stay constant in prediction
 
@@ -307,24 +307,24 @@ void ekf_step(ekf_t *ekf, float charge_Ah, float current_amps, float voltage_mea
     //     [0, exp, 0, R1 * (1 - exp)   ]
     //     [0, 0,   1, 0                ]
     //     [0, 0,   0, 1                ]
-    float F[EKF_N][EKF_N] = {
-        {1.0f, 0.0f,    0.0f, dt / 3600.0f},
-        {0.0f, exp_val, 0.0f, ekf->R1 * (1.0f - exp_val)},
-        {0.0f, 0.0f,    1.0f, 0.0f},
-        {0.0f, 0.0f,    0.0f, 1.0f},
+    double F[EKF_N][EKF_N] = {
+        {1.0, 0.0,    0.0, dt / 3600.0},
+        {0.0, exp_val, 0.0, ekf->R1 * (1.0 - exp_val)},
+        {0.0, 0.0,    1.0, 0.0},
+        {0.0, 0.0,    0.0, 1.0},
     };
 
     // P_pred = F * P * F^T + Q
-    float FP[EKF_N][EKF_N];
+    double FP[EKF_N][EKF_N];
     for(int i=0; i<EKF_N; i++) {
         for(int j=0; j<EKF_N; j++) {
-            FP[i][j] = 0.0f;
+            FP[i][j] = 0.0;
             for(int k=0; k<EKF_N; k++) FP[i][j] += F[i][k] * ekf->P[k][j];
         }
     }
     for(int i=0; i<EKF_N; i++) {
         for(int j=0; j<EKF_N; j++) {
-            float sum = 0.0f;
+            double sum = 0.0;
             for(int k=0; k<EKF_N; k++) sum += FP[i][k] * F[j][k];
             ekf->P[i][j] = sum;
         }
@@ -335,50 +335,50 @@ void ekf_step(ekf_t *ekf, float charge_Ah, float current_amps, float voltage_mea
     // 2. UPDATE STEP
     // -----------------------------------------
 
-    float ah_used = ekf->x[0];
-    float v_c1    = ekf->x[1];
-    float cap     = ekf->x[2];
+    double ah_used = ekf->x[0];
+    double v_c1    = ekf->x[1];
+    double cap     = ekf->x[2];
 
     // Calculate dynamic SOC: 1 - (Ah_used / Capacity)
-    float soc_est = 1.0f - (ah_used / cap);
+    double soc_est = 1.0 - (ah_used / cap);
 
     // Predict Voltage
-    float ocv = soc_to_ocv(soc_est);
-    float v_pred = ocv - v_c1 + (current_true * ekf->R0);
+    double ocv = soc_to_ocv(soc_est);
+    double v_pred = ocv - v_c1 + (current_true * ekf->R0);
     //printf("v_pred: %2.3f V | OCV: %2.3f V | V_c1: %2.3f V | I*R0: %2.3f V | SOC_est: %2.2f %%\n",
-    //       v_pred, ocv, v_c1, current_true * ekf->R0, soc_est * 100.0f);
+    //       v_pred, ocv, v_c1, current_true * ekf->R0, soc_est * 100.0);
 
     // Calculate Residual (y)
-    float y = voltage_measured - v_pred;
+    double y = voltage_measured - v_pred;
 
     // --- Calculate Jacobian H ---
     // H = [dH/dAh, dH/dVc1, dH/dCap, dH/dBias]
-    float d_ocv = soc_to_ocv_derivative(soc_est);
+    double d_ocv = soc_to_ocv_derivative(soc_est);
 
     // On the plateaus, rely on (bias corrected) coulomb counting alone
-    if (fabsf(d_ocv) < ekf->min_ocv_slope) {
-        float ocv_measured = voltage_measured + v_c1 - current_true * ekf->R0;
-        if (fabsf(ocv_segment_slope(ocv_to_soc(ocv_measured))) < ekf->knee_ocv_slope) return;
+    if (fabs(d_ocv) < ekf->min_ocv_slope) {
+        double ocv_measured = voltage_measured + v_c1 - current_true * ekf->R0;
+        if (fabs(ocv_segment_slope(ocv_to_soc(ocv_measured))) < ekf->knee_ocv_slope) return;
     }
 
-    float H[EKF_N] = {
-        d_ocv * (-1.0f / cap),             // dV/dAh = dOCV/dSOC * dSOC/dAh
-        -1.0f,                             // dV/dVc1
+    double H[EKF_N] = {
+        d_ocv * (-1.0 / cap),             // dV/dAh = dOCV/dSOC * dSOC/dAh
+        -1.0,                             // dV/dVc1
         d_ocv * (ah_used / (cap * cap)),   // dV/dCap = dOCV/dSOC * dSOC/dCap
         -ekf->R0,                          // dV/dBias, via the I*R0 term
     };
 
     // --- Calculate Kalman Gain K ---
     // PH = P * H^T, S = H * P * H^T + R (scalar, since measurement is 1D)
-    float PH[EKF_N];
-    float S = ekf->R;
+    double PH[EKF_N];
+    double S = ekf->R;
     for(int i=0; i<EKF_N; i++) {
-        PH[i] = 0.0f;
+        PH[i] = 0.0;
         for(int j=0; j<EKF_N; j++) PH[i] += ekf->P[i][j] * H[j];
         S += H[i] * PH[i];
     }
 
-    float K[EKF_N];
+    double K[EKF_N];
     for(int i=0; i<EKF_N; i++) K[i] = PH[i] / S;
 
     // --- Update State Vector ---
@@ -389,9 +389,9 @@ void ekf_step(ekf_t *ekf, float charge_Ah, float current_amps, float voltage_mea
 
     // Constraints
     // Capacity cannot be <= 0
-    if(ekf->x[2] < 0.1f) ekf->x[2] = 0.1f;
+    if(ekf->x[2] < 0.1) ekf->x[2] = 0.1;
     // Ah_used cannot be negative (cannot be "more than full")
-    if(ekf->x[0] < 0.0f) ekf->x[0] = 0.0f;
+    if(ekf->x[0] < 0.0) ekf->x[0] = 0.0;
     // Keep the bias within a plausible range for the shunt
     if(ekf->x[3] > EKF_BIAS_LIMIT_A) ekf->x[3] = EKF_BIAS_LIMIT_A;
     if(ekf->x[3] < -EKF_BIAS_LIMIT_A) ekf->x[3] = -EKF_BIAS_LIMIT_A;
@@ -403,21 +403,21 @@ void ekf_step(ekf_t *ekf, float charge_Ah, float current_amps, float voltage_mea
             ekf->P[i][j] -= K[i] * PH[j];
         }
     }
-    // Keep P symmetric against float rounding
+    // Keep P symmetric against rounding
     for(int i=0; i<EKF_N; i++) {
         for(int j=i+1; j<EKF_N; j++) {
-            float avg = 0.5f * (ekf->P[i][j] + ekf->P[j][i]);
+            double avg = 0.5 * (ekf->P[i][j] + ekf->P[j][i]);
             ekf->P[i][j] = avg;
             ekf->P[j][i] = avg;
         }
     }
 }
 
-float ekf_get_soc(ekf_t *ekf) {
-    float ah = ekf->x[0];
-    float cap = ekf->x[2];
-    if (cap < 0.0001f) return 0.0f; // Prevent div by zero
-    return 1.0f - (ah / cap);
+double ekf_get_soc(ekf_t *ekf) {
+    double ah = ekf->x[0];
+    double cap = ekf->x[2];
+    if (cap < 0.0001) return 0.0; // Prevent div by zero
+    return 1.0 - (ah / cap);
 }
 
 static float estimate_initial_soc(const bms_model_t *model, float voltage_volts, float capacity_ah) {
@@ -504,7 +504,8 @@ uint32_t ekf_tick(bms_model_t *model, float charge_Ah, int32_t current_mA, int32
     model->charge_used_Ah = model->ekf.x[0];
     model->current_bias_A = model->ekf.x[3];
 
-    return (uint32_t)(soc * 10000.0f); // Return SOC in 0.01% units
+    // Round rather than truncate, so a SoC a hair under 1.0 still reads 100.00%
+    return (uint32_t)(soc * 10000.0f + 0.5f); // Return SOC in 0.01% units
 }
 
 void ekf_set_soc(bms_model_t *model, uint16_t soc) {
