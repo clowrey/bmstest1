@@ -136,6 +136,11 @@ typedef enum {
     /* by the HMI, so inserting mid-list breaks its decoding */ \
     X(LINK_VOLTAGE_MISMATCH, LEVEL_WARNING, 0)                  \
     X(FUSE_VOLTAGE_DROP_HIGH, LEVEL_WARNING, 0)                 \
+    /* Upstream's (jonny5532) event 54: the cell presence    */ \
+    /* seen on the BMBs doesn't match the cell map. Not      */ \
+    /* raised here yet; listed so both firmwares number      */ \
+    /* their events alike and one HMI decodes both           */ \
+    X(BMB_PACK_MISMATCH, LEVEL_WARNING, 0)                      \
     X(ISOLATION_ASYMMETRY, LEVEL_WARNING, 0)                    \
     X(CONTACTOR_PORT_ENERGIZED, LEVEL_INFO, 0)                  \
     /* PCB revision strap doesn't match the BMS_BOARD build */  \
@@ -239,6 +244,7 @@ typedef enum {
 // data LINK_VOLTAGE_MISMATCH: u32 mV link; u32@32 mV pack
 // data LINK_VOLTAGE_MISMATCH = 0x3000000000000000: the link or pack voltage reading is stale
 // data FUSE_VOLTAGE_DROP_HIGH: i32 mV drop
+// data BMB_PACK_MISMATCH: u32 count channels that differ from the cell map
 // data ISOLATION_ASYMMETRY: i32 count midpoint offset
 // data CONTACTOR_PORT_ENERGIZED: i32 mV output
 // data BOARD_MISMATCH: u16 - built for; u16@16 - strap reads
